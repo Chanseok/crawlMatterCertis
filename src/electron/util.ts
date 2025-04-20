@@ -1,8 +1,19 @@
+import { ipcMain, WebContents } from "electron";
+
 export function isDev(): boolean {
   return process.env.NODE_ENV === 'development';
 }
 
-export function ipcWebContentsSend(event: string, webContents: Electron.WebContents, data: Statistics) {
-    webContents.send(event, data);
+export function ipcWebContentsSend<Key extends keyof EventPayloadMapping>(
+  key: Key,
+  webContents: WebContents,
+  payload: EventPayloadMapping[Key]
+) {
+  webContents.send(key, payload);
+}
+
+export function ipcMainHandle<Key extends keyof EventPayloadMapping>(
+  key: Key, handler: () => EventPayloadMapping[Key]) {
+  ipcMain.handle(key, () => handler());
 }
 
