@@ -5,10 +5,8 @@ import './App.css'
 function App() {
   const [count, setCount] = useState(0)
 
-  useEffect(() => {
-    // @ts-ignore
+  useEffect(() => {    
     window.electron.subscribeStatistics((statistics) => console.log(statistics));
-
   }, []);
   return (
     <>

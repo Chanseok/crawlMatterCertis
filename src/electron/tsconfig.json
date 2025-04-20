@@ -1,5 +1,8 @@
 {
     "compilerOptions": {
+        // add global types
+        "types": ["../../types"],
+    
         // requre strict types (null-safety)
         "strict": true,
         // tell TypeScript to generate ESM syntax
