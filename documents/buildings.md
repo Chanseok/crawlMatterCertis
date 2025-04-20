@@ -24,3 +24,10 @@
 - ``` npm run dev:electron  ```
 - to fix path problem in '/dist-react/index.html', add base: './' in vite.config.ts
 -  
+### setting typescript for electron
+- root의 tsconfig에서 src/electron은 제외하고, src/electron 내부에 tsconfig.json을 설정해서 electron 전용 typescipt configuration 적용
+- package.json에 transpile:electron 옵션 생성
+- package.json에 dist-electron의 main.js가 실행되도록 main의 경로 변경
+
+### setting electron builder
+- ``` npm i --save-dev electron-builder ```
