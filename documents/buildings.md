@@ -41,3 +41,7 @@
 - ``` npm i --save-dev npm-run-all ```
 - package.json의 스크립트 추가
   
+### system feature 사용 (POC)
+- ``` npm i os-utils ```
+- ``` npm i --save-dev @types/os-utils ```
+- 
