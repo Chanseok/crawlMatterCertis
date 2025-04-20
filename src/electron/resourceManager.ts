@@ -1,19 +1,20 @@
 import osUtils from 'os-utils';
 import fs from 'fs';
 import os from 'os';
+import { BrowserWindow } from 'electron';
 
 const POLLING_INTERVAL = 500; // .5 second
 
-export function pollResources() {
-    setInterval( async () => {
+export function pollResources(mainWindow: BrowserWindow) {
+    setInterval(async () => {
         const cpuUsage = await getCpuUsage();
         const ramUsage = getRamUsage();
-        const storageData = getStorageData();        
-        console.log({cpuUsage, ramUsage, storageUsage: storageData.usage});
+        const storageData = getStorageData();
+        mainWindow.webContents.send('statistics', { cpuUsage, ramUsage, storageUsage: storageData.usage });
     }, POLLING_INTERVAL);
 }
 
-export function getStaticData(){
+export function getStaticData() {
     const totalStorage = getStorageData().total;
     const cpuModel = os.cpus()[0].model;
     const totalMemoryGB = Math.floor(os.totalmem() / 1024);
@@ -25,7 +26,7 @@ export function getStaticData(){
     }
 }
 
-function getCpuUsage() : Promise<number> {
+function getCpuUsage(): Promise<number> {
     return new Promise((resolve) => {
         osUtils.cpuUsage(resolve)
     })
