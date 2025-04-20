@@ -31,3 +31,13 @@
 
 ### setting electron builder
 - ``` npm i --save-dev electron-builder ```
+- electron-builder.json으로 설정을 하고 
+- package.json에서 '"dist:mac": "npm run transpile:electron && npm run build && electron-builder --mac --arm64",' 추가하고 
+- ``` npm run dist:mac ``` 실행해서 ~.dmg 파일 생성 확인 및 (dmg 파일로 설치하지는 않고) dist/mac-arm64 아래의 실행 파일 확인
+
+### improve dx
+- ``` npm i --save-dev cross-env ```
+- vite.config.ts에서 server port를 고정하고 util.ts에서 isDev() 함수를 만들어서 NODE_ENV === 'development'인 상황에선 main에서 loadUrl을 하고 배포버전에서는 index.html을 loadFile하도록 수정해서 HMR을 활용할 수 있도록 함
+- ``` npm i --save-dev npm-run-all ```
+- package.json의 스크립트 추가
+  
