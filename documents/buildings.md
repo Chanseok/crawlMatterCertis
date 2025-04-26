@@ -44,4 +44,8 @@
 ### system feature 사용 (POC)
 - ``` npm i os-utils ```
 - ``` npm i --save-dev @types/os-utils ```
-- 
+
+### ipc 측면 구현
+
+### ui chart 구현 
+- ``` npm install recharts ```
