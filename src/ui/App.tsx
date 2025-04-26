@@ -14,10 +14,7 @@ function App() {
   // console.log(statistics);
 
   return (
-    <div className="App">
-      <div style={{ height: 120 }}> 
-        <Chart data={cpuUsage} maxDataPoints={10}/>
-      </div>
+  
     <div className="App">
       <div style={{ height: 120 }}> 
         <Chart data={cpuUsage} maxDataPoints={10}/>
@@ -39,7 +36,7 @@ function App() {
       <p className="read-the-docs">
         Click on the Vite and React logos to learn more
       </p>
-    </div>
+    
     </div>
   )
 }
