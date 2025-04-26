@@ -49,3 +49,47 @@
 
 ### ui chart 구현 
 - ``` npm install recharts ```
+
+### tauri 전환을 위한 platform layer 추가 
+
+### 필요한 모듈 추가 설치 
+요구사항에 맞는 모듈들을 설치하겠습니다. 그 후 동작 테스트를 진행해보겠습니다.
+
+먼저 필요한 모든 모듈을 설치하겠습니다:
+``` npm install playwright playwright-chromium better-sqlite3 tailwindcss postcss autoprefixer nanostores @nanostores/react exceljs date-fns zod nanoid ```
+기본 모듈 설치가 성공적으로 완료되었습니다. 이제 개발에 필요한 타입 정의 파일을 설치하겠습니다:
+``` npm install --save-dev @types/better-sqlite3 @types/tailwindcss ```
+모듈 설치가 성공적으로 완료되었습니다. 설치된 모듈은 다음과 같습니다:
+1. **크롤링 관련**: playwright, playwright-chromium
+2. **데이터베이스 관련**: better-sqlite3 
+3. **UI 관련**: tailwindcss, postcss, autoprefixer
+4. **상태 관리**: nanostores, @nanostores/react
+5. **유틸리티**: exceljs, date-fns, zod, nanoid
+6. **타입 정의 (개발용)**: @types/better-sqlite3, @types/tailwindcss
+
+이제 Tailwind CSS를 초기화하여 프로젝트에 설정하겠습니다:
+``` npx tailwindcss init -p ```
+Tailwind CSS 초기화 명령어에서 문제가 발생했습니다. 이는 npm이 실행 파일을 결정할 수 없다는 오류입니다. 다른 방법으로 Tailwind CSS를 설정해보겠습니다.
+
+먼저 설치된 모듈들이 정상적으로 동작하는지 확인하기 위해 간단한 테스트를 진행해보겠습니다:
+``` node -e "console.log('Installed modules: ' + ['playwright', 'better-sqlite3', 'tailwindcss', 'nanostores', 'exceljs', 'date-fns', 'zod', 'nanoid'].map(m => { try { require.resolve(m); return m + ' ✓'; } catch(e) { return m + ' ✗'; } }).join(', '))" ```
+모든 필요한 모듈들이 성공적으로 설치되었습니다! 테스트 결과를 보면 다음 모듈들이 모두 정상적으로 설치되어 사용 가능한 상태입니다:
+
+- playwright ✓ (웹 크롤링)
+- better-sqlite3 ✓ (SQLite 데이터베이스)
+- tailwindcss ✓ (UI 스타일링)
+- nanostores ✓ (상태 관리)
+- exceljs ✓ (Excel 파일 생성)
+- date-fns ✓ (날짜 처리)
+- zod ✓ (데이터 유효성 검증)
+- nanoid ✓ (고유 ID 생성)
+
+Tailwind CSS 초기화 명령어에서 약간의 문제가 있었지만, 패키지 자체는 정상적으로 설치되었습니다. Tailwind CSS 설정은 수동으로 진행할 수 있습니다.
+
+이제 프로젝트에서 필요한 모든 모듈이 설치되었습니다. 실제로 프로젝트를 실행해보면서 동작을 테스트해 볼 수 있습니다. 다음 단계로는:
+
+1. Tailwind CSS 설정 파일을 수동으로 생성하고 설정
+2. 프로젝트 코드에 필요한 모듈을 import하여 사용 시작
+3. 크롤링, 데이터베이스, UI 등 각 기능별로 구현 진행
+
+필요하시다면 Tailwind CSS 설정 파일을 수동으로 생성하거나, 실제 기능 구현을 시작할 수 있도록 도와드릴 수 있습니다. 어떤 부분부터 진행하면 좋을지 알려주시겠어요?
