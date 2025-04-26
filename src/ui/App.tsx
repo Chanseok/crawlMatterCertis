@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import reactLogo from './assets/react.svg'
 import './App.css'
+import { useStatistics } from './useStatistics'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [count, setCount] = useState(0);
+  const statistics = useStatistics(10);
 
-  useEffect(() => {    
-    const unsub = window.electron.subscribeStatistics((statistics) => console.log(statistics));
-    return unsub;
-  }, []);
+  console.log(statistics);
+
   return (
     <>
       <div>
