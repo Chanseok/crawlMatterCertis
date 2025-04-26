@@ -17,10 +17,22 @@
     "dist:linux": "npm run transpile:electron && npm run build && electron-builder --linux --x64"
   },
   "dependencies": {
+    "@nanostores/react": "^1.0.0",
+    "autoprefixer": "^10.4.21",
+    "better-sqlite3": "^11.9.1",
+    "date-fns": "^4.1.0",
+    "exceljs": "^4.4.0",
+    "nanoid": "^5.1.5",
+    "nanostores": "^1.0.1",
     "os-utils": "^0.0.14",
+    "playwright": "^1.52.0",
+    "playwright-chromium": "^1.52.0",
+    "postcss": "^8.5.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^2.15.3"
+    "recharts": "^2.15.3",
+    "tailwindcss": "^4.1.4",
+    "zod": "^3.24.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
