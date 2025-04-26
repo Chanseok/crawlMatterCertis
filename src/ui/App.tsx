@@ -3,12 +3,11 @@ import reactLogo from './assets/react.svg'
 import './App.css'
 import { useStatistics } from './useStatistics'
 import { Chart } from './Charts';
-import { Chart } from './Charts';
+
 
 function App() {
   const [count, setCount] = useState(0);
   const statistics = useStatistics(10);
-  const cpuUsage = useMemo(() => statistics.map(stat => stat.cpuUsage), [statistics]);
   const cpuUsage = useMemo(() => statistics.map(stat => stat.cpuUsage), [statistics]);
 
   // console.log(statistics);
