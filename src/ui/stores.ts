@@ -39,21 +39,25 @@ export const databaseSummaryStore = map<DatabaseSummary>({
 // API 참조
 let api = getPlatformApi();
 
+// 이벤트 구독 해제 함수를 저장하는 배열
+let unsubscribeFunctions: (() => void)[] = [];
+
 // API 구독 설정
 export function initializeApiSubscriptions() {
-  // 이전 구독 이벤트가 있다면 정리할 수 있는 로직이 필요하지만,
-  // 현재 구현은 단순화를 위해 생략함 (추후 보완 필요)
-
+  // 기존 구독이 있으면 모두 해제
+  unsubscribeAll();
+  
   // 크롤링 진행 상황 구독
-  api.subscribeToEvent('crawlingProgress', (progress) => {
+  const unsubProgress = api.subscribeToEvent('crawlingProgress', (progress) => {
     crawlingProgressStore.set({
       ...crawlingProgressStore.get(),
       ...progress
     });
   });
+  unsubscribeFunctions.push(unsubProgress);
 
   // 크롤링 완료 이벤트 구독
-  api.subscribeToEvent('crawlingComplete', ({ success, count }) => {
+  const unsubComplete = api.subscribeToEvent('crawlingComplete', ({ success, count }) => {
     if (success) {
       crawlingStatusStore.set('completed');
       addLog(`크롤링이 완료되었습니다. 총 ${count}개의 항목이 수집되었습니다.`, 'success');
@@ -62,28 +66,41 @@ export function initializeApiSubscriptions() {
       addLog('크롤링 중 오류가 발생했습니다.', 'error');
     }
   });
+  unsubscribeFunctions.push(unsubComplete);
 
   // 크롤링 오류 이벤트 구독
-  api.subscribeToEvent('crawlingError', ({ message, details }) => {
+  const unsubError = api.subscribeToEvent('crawlingError', ({ message, details }) => {
     crawlingStatusStore.set('error');
     addLog(`크롤링 오류: ${message}`, 'error');
     if (details) {
       addLog(`상세 정보: ${details}`, 'error');
     }
   });
+  unsubscribeFunctions.push(unsubError);
 
   // 데이터베이스 요약 정보 구독
-  api.subscribeToEvent('dbSummary', (summary) => {
+  const unsubDbSummary = api.subscribeToEvent('dbSummary', (summary) => {
     databaseSummaryStore.set(summary);
   });
+  unsubscribeFunctions.push(unsubDbSummary);
   
   // 제품 데이터 변경 구독
-  api.subscribeToEvent('products', (products) => {
+  const unsubProducts = api.subscribeToEvent('products', (products) => {
     productsStore.set(products);
   });
+  unsubscribeFunctions.push(unsubProducts);
 
   // 초기 데이터 로드
   loadInitialData();
+}
+
+// 모든 구독 해제
+function unsubscribeAll() {
+  if (unsubscribeFunctions.length > 0) {
+    console.log(`Unsubscribing from ${unsubscribeFunctions.length} event listeners`);
+    unsubscribeFunctions.forEach(unsubscribe => unsubscribe());
+    unsubscribeFunctions = [];
+  }
 }
 
 // 초기 데이터 로드
