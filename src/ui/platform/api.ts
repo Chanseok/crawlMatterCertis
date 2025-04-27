@@ -244,7 +244,7 @@ class ElectronApiAdapter implements IPlatformAPI {
     params?: MethodParamsMapping[K]
   ): Promise<R> {
     try {
-      console.log(`[ElectronAPI] Invoking method: ${String(methodName)}`, params);
+      // console.log(`[ElectronAPI] Invoking method: ${String(methodName)}`, params);
       
       // 안전장치: 함수 존재 여부 확인
       if (window?.electron?.invokeMethod && typeof window.electron.invokeMethod === 'function') {
@@ -351,9 +351,9 @@ export function initPlatformApi(): void { // 반환 타입을 void로 변경
       }, 500); // 지연 시간 증가
     }
 
-    // 앱 시작 시 즉시 첫 시도 - 이것만으로 충분할 수 있음
-    console.log('[API] Attempting immediate initialization on app start');
-    initialize();
+    // // 앱 시작 시 즉시 첫 시도 - 이것만으로 충분할 수 있음
+    // console.log('[API] Attempting immediate initialization on app start');
+    // initialize();
   } else {
     // window 객체가 없는 환경 (예: 서버 사이드)
     console.warn('[API] No window object available. Using MockApiAdapter.');
