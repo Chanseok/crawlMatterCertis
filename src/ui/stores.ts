@@ -112,7 +112,7 @@ async function loadInitialData() {
     productsStore.set(products);
     
     if (products.length > 0) {
-      addLog(`데이터베이스에서 ${products.length}개의 제품 정보를 불러왔습니다.`, 'info');
+      addLog(`데이터베이스에서 ${products.length}개의 제품 정보를 불러왔습니다. (총 ${total}개 중)`, 'info');
     } else {
       addLog('데이터베이스에 제품 정보가 없습니다. 크롤링을 시작하여 데이터를 수집하세요.', 'info');
     }
