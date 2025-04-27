@@ -9,28 +9,37 @@ type Statistics = {
 
 // Matter 제품 정보 타입
 type MatterProduct = {
-    url: string; // Added based on FR-CRAWL-007 example
-    pageId: number; // Added based on FR-CRAWL-007 example
-    indexInPage: number; // Added based on FR-CRAWL-007 example
-    id: string;
-    manufacturer: string;
-    model: string;
-    deviceType: string;
-    certificationId: string; // Kept the first instance
-    certificationDate: string;
-    softwareVersion: string;
-    hardwareVersion: string;
-    vid: string;
-    pid: string;
-    familySku: string;
-    familyVariantSku: string;
-    firmwareVersion: string;
-    familyId: string;
-    tisTrpTested: string;
-    specificationVersion: string;
-    transportInterface: string;
-    primaryDeviceTypeId: string;
-    applicationCategories: string[];
+    url: string;
+    pageId?: number;
+    indexInPage?: number;
+    id?: string;
+    manufacturer?: string;
+    model?: string;
+    deviceType?: string;
+    certificationId?: string;
+    certificationDate?: string | Date;
+    softwareVersion?: string;
+    hardwareVersion?: string;
+    vid?: string;
+    pid?: string;
+    familySku?: string;
+    familyVariantSku?: string;
+    firmwareVersion?: string;
+    familyId?: string;
+    tisTrpTested?: string;
+    specificationVersion?: string;
+    transportInterface?: string;
+    primaryDeviceTypeId?: string;
+    applicationCategories?: string[];
+};
+
+type Product = {
+    url: string;
+    manufacturer?: string;
+    model?: string;
+    certificateId?: string;
+    pageId?: number;
+    indexInPage?: number;
 };
 
 // 크롤링 진행 상태 타입

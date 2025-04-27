@@ -1,5 +1,5 @@
 import { atom, map } from 'nanostores';
-import { AppMode, CrawlingStatus, LogEntry, MatterProduct, CrawlingProgress, DatabaseSummary } from './types';
+import { AppMode, CrawlingStatus, LogEntry, CrawlingProgress, DatabaseSummary, ProductDetail } from './types';
 import { getPlatformApi, updateApiForAppMode } from './platform/api';
 
 // 앱 모드 상태 관리
@@ -21,7 +21,7 @@ export const crawlingProgressStore = map<CrawlingProgress>({
 export const logsStore = atom<LogEntry[]>([]);
 
 // 제품 데이터 관리
-export const productsStore = atom<MatterProduct[]>([]);
+export const productsStore = atom<ProductDetail[]>([]);
 
 // 선택된 제품 ID 관리
 export const selectedProductIdStore = atom<string | null>(null);

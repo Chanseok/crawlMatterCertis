@@ -63,11 +63,6 @@ export const createDevDatabaseService = (): DatabaseService => {
         // TypeScript 타입 문제를 우회하기 위해 any 타입으로 일시적 캐스팅 후 올바른 타입으로 재캐스팅
         const product = await (window.electron.invokeMethod as any)('getProductById', id) as MatterProduct | null;
         
-        // Convert date strings to Date objects if needed
-        if (product && product.certificationDate && typeof product.certificationDate === 'string') {
-          product.certificationDate = new Date(product.certificationDate);
-        }
-        
         return product;
       } catch (error) {
         console.error('[Dev DB Service] Error fetching product by ID via IPC:', error);

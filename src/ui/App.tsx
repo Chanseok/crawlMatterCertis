@@ -1,14 +1,14 @@
 import { useStore } from '@nanostores/react'
 import { useEffect } from 'react'
 import './App.css'
-import { 
-  appModeStore, 
-  crawlingStatusStore, 
-  crawlingProgressStore, 
-  logsStore, 
-  productsStore, 
-  searchQueryStore, 
-  startCrawling, 
+import {
+  appModeStore,
+  crawlingStatusStore,
+  crawlingProgressStore,
+  logsStore,
+  productsStore,
+  searchQueryStore,
+  startCrawling,
   stopCrawling,
   toggleAppMode,
   addLog,
@@ -27,22 +27,22 @@ function App() {
   const logs = useStore(logsStore);
   const products = useStore(productsStore);
   const searchQuery = useStore(searchQueryStore);
-  
+
   // API 초기화
   useEffect(() => {
     initializeApiSubscriptions();
     addLog('애플리케이션이 시작되었습니다.', 'info');
   }, []);
-  
+
   // 검색어 변경시 검색 실행
   useEffect(() => {
     const delaySearch = setTimeout(() => {
       searchProducts(searchQuery);
     }, 500);
-    
+
     return () => clearTimeout(delaySearch);
   }, [searchQuery]);
-  
+
   // 크롤링 시작/중지 핸들러
   const handleCrawlToggle = () => {
     if (crawlingStatus === 'running') {
@@ -51,7 +51,7 @@ function App() {
       startCrawling();
     }
   };
-  
+
   // 데이터 내보내기 핸들러
   const handleExport = () => {
     exportToExcel();
@@ -79,17 +79,16 @@ function App() {
       <header className="bg-white dark:bg-gray-800 shadow-md p-4">
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Matter 인증 정보 수집기</h1>
-          
+
           <div className="flex items-center space-x-4">
             <div className="flex items-center">
               <span className="mr-2 text-gray-600 dark:text-gray-300">모드:</span>
-              <button 
+              <button
                 onClick={toggleAppMode}
-                className={`px-3 py-1 rounded-md text-sm font-medium ${
-                  mode === 'development' 
-                    ? 'bg-amber-500 text-white' 
+                className={`px-3 py-1 rounded-md text-sm font-medium ${mode === 'development'
+                    ? 'bg-amber-500 text-white'
                     : 'bg-green-500 text-white'
-                }`}
+                  }`}
               >
                 {mode === 'development' ? '개발 모드' : '실사용 모드'}
               </button>
@@ -104,19 +103,18 @@ function App() {
           {/* 컨트롤 패널 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
             <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">크롤링 제어</h2>
-            
-            <button 
+
+            <button
               onClick={handleCrawlToggle}
-              className={`w-full py-2 px-4 rounded-md text-white font-medium ${
-                crawlingStatus === 'running' 
-                  ? 'bg-red-500 hover:bg-red-600' 
+              className={`w-full py-2 px-4 rounded-md text-white font-medium ${crawlingStatus === 'running'
+                  ? 'bg-red-500 hover:bg-red-600'
                   : 'bg-blue-500 hover:bg-blue-600'
-              }`}
+                }`}
               disabled={crawlingStatus === 'paused'}
             >
               {crawlingStatus === 'running' ? '크롤링 중지' : '크롤링 시작'}
             </button>
-            
+
             {crawlingStatus === 'running' && (
               <div className="mt-4">
                 <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
@@ -124,8 +122,8 @@ function App() {
                   <span>{progress.percentage.toFixed(1)}%</span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                  <div 
-                    className="bg-blue-500 h-2 rounded-full" 
+                  <div
+                    className="bg-blue-500 h-2 rounded-full"
                     style={{ width: `${progress.percentage}%` }}
                   ></div>
                 </div>
@@ -148,7 +146,7 @@ function App() {
               </button>
             </div>
           </div>
-          
+
           {/* 로그 패널 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
             <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">로그</h2>
@@ -161,32 +159,32 @@ function App() {
             </div>
           </div>
         </div>
-        
+
         {/* 오른쪽 메인 콘텐츠 (데이터 표시) */}
         <div className="lg:col-span-2">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-semibold text-gray-800 dark:text-white">수집된 제품 정보</h2>
-              
+
               <div className="relative">
-                <input 
-                  type="text" 
-                  placeholder="검색..." 
+                <input
+                  type="text"
+                  placeholder="검색..."
                   value={searchQuery}
                   onChange={(e) => searchQueryStore.set(e.target.value)}
                   className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <svg 
-                  className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" 
-                  fill="none" 
-                  stroke="currentColor" 
+                <svg
+                  className="absolute left-3 top-2.5 h-5 w-5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
             </div>
-            
+
             {/* 데이터 테이블 */}
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -208,15 +206,14 @@ function App() {
                     </tr>
                   ) : (
                     products.map((product) => (
-                      <tr key={product.id} className="hover:bg-gray-50 dark:hover:bg-gray-750">
+                      <tr key={product.url} className="hover:bg-gray-50 dark:hover:bg-gray-750">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.manufacturer}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.model}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.deviceType}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.certificationId}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">
-                          {product.certificationDate instanceof Date 
-                            ? format(product.certificationDate, 'yyyy-MM-dd')
-                            : product.certificationDate}
+                          {product.certificationDate instanceof Date
+                            ? format(product.certificationDate, 'yyyy-MM-dd') : product.certificationDate}
                         </td>
                       </tr>
                     ))
@@ -224,7 +221,7 @@ function App() {
                 </tbody>
               </table>
             </div>
-            
+
             {/* 페이지네이션 (나중에 구현 예정) */}
             <div className="flex justify-between items-center mt-6">
               <div className="text-sm text-gray-500 dark:text-gray-400">

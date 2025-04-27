@@ -2,35 +2,8 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import type { MatterProduct, DatabaseSummary } from '../ui/types.js'; // Fixed import with extension and added explicit type import
+import type { MatterProduct, DatabaseSummary, ProductDetail } from '../ui/types.js'; // Fixed import with extension and added explicit type import
 
-// Define the structure for detailed product info
-interface ProductDetail extends MatterProduct {
-    // Explicitly redefine properties to ensure they exist on the type
-    id: string;
-    url: string;
-    pageId: number;
-    indexInPage: number;
-    manufacturer: string;
-    model: string;
-    deviceType: string;
-    certificationId: string;
-    certificationDate: string;
-    softwareVersion: string;
-    hardwareVersion: string;
-    vid: string;
-    pid: string;
-    familySku: string;
-    familyVariantSku: string;
-    firmwareVersion: string;
-    familyId: string;
-    tisTrpTested: string;
-    specificationVersion: string;
-    transportInterface: string;
-    primaryDeviceTypeId: string;
-    applicationCategories: string[];
-    // Add any additional fields specific to detailed info if they exist
-}
 
 const dbPath = path.join(app.getPath('userData'), 'dev-database.sqlite');
 const db = new sqlite3.Database(dbPath);

@@ -1,27 +1,37 @@
 // Matter 인증 제품 정보에 대한 타입 정의
 export interface MatterProduct {
-  url: string; // Added based on FR-CRAWL-007 example
-  pageId: number; // Added based on FR-CRAWL-007 example
-  indexInPage: number; // Added based on FR-CRAWL-007 example
-  id: string;
-  manufacturer: string;
-  model: string;
-  deviceType: string;
-  certificationId: string; // Kept the first instance
-  certificationDate: string | Date; // 문자열 또는 Date 객체 모두 허용하도록 수정
-  softwareVersion: string;
-  hardwareVersion: string;
-  vid: string;
-  pid: string;
-  familySku: string;
-  familyVariantSku: string;
-  firmwareVersion: string;
-  familyId: string;
-  tisTrpTested: string;
-  specificationVersion: string;
-  transportInterface: string;
-  primaryDeviceTypeId: string;
-  applicationCategories: string[];
+    url: string;
+    manufacturer?: string;
+    model?: string;
+    certificateId?: string;
+    pageId?: number;
+    indexInPage?: number;
+}
+
+// Define the structure for detailed product info
+export interface ProductDetail  {
+    url: string;
+    pageId?: number;
+    indexInPage?: number;
+    id?: string;
+    manufacturer?: string;
+    model?: string;
+    deviceType?: string;
+    certificationId?: string;
+    certificationDate?: string | Date;
+    softwareVersion?: string;
+    hardwareVersion?: string;
+    vid?: string;
+    pid?: string;
+    familySku?: string;
+    familyVariantSku?: string;
+    firmwareVersion?: string;
+    familyId?: string;
+    tisTrpTested?: string;
+    specificationVersion?: string;
+    transportInterface?: string;
+    primaryDeviceTypeId?: string;
+    applicationCategories?: string[];
 }
 
 // 앱 모드 타입
