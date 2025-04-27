@@ -11,6 +11,7 @@ node_modules
 dist
 dist-react
 dist-electron
+data-for-dev
 *.local
 
 # Editor directories and files
