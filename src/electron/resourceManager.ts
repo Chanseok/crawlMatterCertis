@@ -12,11 +12,15 @@ export function pollResources(mainWindow: BrowserWindow) {
         const ramUsage = getRamUsage();
         const storageData = getStorageData();
 
-        ipcWebContentsSend('statistics', mainWindow.webContents,
-            { cpuUsage, ramUsage, storageUsage: storageData.usage });
+        ipcWebContentsSend('statistics', mainWindow.webContents, {
+            timestamp: Date.now(),
+            cpuUsage,
+            memoryUsage: ramUsage, // 새 타입에 맞춰 memoryUsage로 함께 전달
+            ramUsage,  // 이전 호환성 유지
+            storageUsage: storageData.usage
+        });
     }, POLLING_INTERVAL);
 }
-
 
 export function getStaticData() {
     const totalStorage = getStorageData().total;
