@@ -1,0 +1,397 @@
+import sqlite3 from 'sqlite3';
+import path from 'path';
+import fs from 'fs';
+import { app } from 'electron';
+import type { MatterProduct, DatabaseSummary } from '../ui/types.js'; // Fixed import with extension and added explicit type import
+
+// Define the structure for detailed product info
+interface ProductDetail extends MatterProduct {
+    // Explicitly redefine properties to ensure they exist on the type
+    id: string;
+    url: string;
+    pageId: number;
+    indexInPage: number;
+    manufacturer: string;
+    model: string;
+    deviceType: string;
+    certificationId: string;
+    certificationDate: string;
+    softwareVersion: string;
+    hardwareVersion: string;
+    vid: string;
+    pid: string;
+    familySku: string;
+    familyVariantSku: string;
+    firmwareVersion: string;
+    familyId: string;
+    tisTrpTested: string;
+    specificationVersion: string;
+    transportInterface: string;
+    primaryDeviceTypeId: string;
+    applicationCategories: string[];
+    // Add any additional fields specific to detailed info if they exist
+}
+
+const dbPath = path.join(app.getPath('userData'), 'dev-database.sqlite');
+const db = new sqlite3.Database(dbPath);
+
+const allDevicesPath = path.join(app.getAppPath(), 'data-for-dev', 'all_matter_devices.json');
+const mergedDevicesPath = path.join(app.getAppPath(), 'data-for-dev', 'merged_matter_devices.json');
+
+// --- Initialization --- 
+
+export async function initializeDatabase(): Promise<void> {
+    return new Promise((resolve, reject) => {
+        db.serialize(() => {
+            db.run(`
+                CREATE TABLE IF NOT EXISTS products (
+                    id TEXT PRIMARY KEY,
+                    url TEXT,
+                    pageId INTEGER,
+                    indexInPage INTEGER,
+                    manufacturer TEXT,
+                    model TEXT,
+                    deviceType TEXT,
+                    certificationId TEXT,
+                    certificationDate TEXT,
+                    softwareVersion TEXT,
+                    hardwareVersion TEXT,
+                    vid TEXT,
+                    pid TEXT,
+                    familySku TEXT,
+                    familyVariantSku TEXT,
+                    firmwareVersion TEXT,
+                    familyId TEXT,
+                    tisTrpTested TEXT,
+                    specificationVersion TEXT,
+                    transportInterface TEXT,
+                    primaryDeviceTypeId TEXT,
+                    applicationCategories TEXT
+                )
+            `, (err) => {
+                if (err) return reject(err);
+                console.log("'products' table checked/created.");
+            });
+
+            db.run(`
+                CREATE TABLE IF NOT EXISTS product_details (
+                    id TEXT PRIMARY KEY,
+                    url TEXT,
+                    pageId INTEGER,
+                    indexInPage INTEGER,
+                    manufacturer TEXT,
+                    model TEXT,
+                    deviceType TEXT,
+                    certificationId TEXT,
+                    certificationDate TEXT,
+                    softwareVersion TEXT,
+                    hardwareVersion TEXT,
+                    vid TEXT,
+                    pid TEXT,
+                    familySku TEXT,
+                    familyVariantSku TEXT,
+                    firmwareVersion TEXT,
+                    familyId TEXT,
+                    tisTrpTested TEXT,
+                    specificationVersion TEXT,
+                    transportInterface TEXT,
+                    primaryDeviceTypeId TEXT,
+                    applicationCategories TEXT
+                    // Add other fields from merged_matter_devices.json if necessary
+                )
+            `, (err) => {
+                if (err) return reject(err);
+                console.log("'product_details' table checked/created.");
+            });
+
+            // Check if tables are empty and populate if needed
+            db.get("SELECT COUNT(*) as count FROM products", async (err, row: { count: number }) => {
+                if (err) return reject(err);
+                if (row.count === 0) {
+                    console.log("Populating 'products' table...");
+                    await populateProductsTable();
+                }
+                db.get("SELECT COUNT(*) as count FROM product_details", async (err, rowDetails: { count: number }) => {
+                    if (err) return reject(err);
+                    if (rowDetails.count === 0) {
+                        console.log("Populating 'product_details' table...");
+                        await populateProductDetailsTable();
+                    }
+                    resolve(); // Resolve after both checks/populations are done
+                });
+            });
+        });
+    });
+}
+
+async function populateProductsTable(): Promise<void> {
+    try {
+        const data = fs.readFileSync(allDevicesPath, 'utf-8');
+        const products: MatterProduct[] = JSON.parse(data);
+
+        const stmt = db.prepare(`
+            INSERT INTO products (
+                id, url, pageId, indexInPage, manufacturer, model, deviceType, 
+                certificationId, certificationDate, softwareVersion, hardwareVersion, 
+                vid, pid, familySku, familyVariantSku, firmwareVersion, familyId, 
+                tisTrpTested, specificationVersion, transportInterface, 
+                primaryDeviceTypeId, applicationCategories
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        db.serialize(() => {
+            db.run("BEGIN TRANSACTION");
+            products.forEach(product => {
+                // Ensure all fields exist, provide defaults if necessary
+                stmt.run(
+                    product.id ?? null,
+                    product.url ?? null,
+                    product.pageId ?? null,
+                    product.indexInPage ?? null,
+                    product.manufacturer ?? null,
+                    product.model ?? null,
+                    product.deviceType ?? null,
+                    product.certificationId ?? null,
+                    product.certificationDate ?? null,
+                    product.softwareVersion ?? null,
+                    product.hardwareVersion ?? null,
+                    product.vid ?? null,
+                    product.pid ?? null,
+                    product.familySku ?? null,
+                    product.familyVariantSku ?? null,
+                    product.firmwareVersion ?? null,
+                    product.familyId ?? null,
+                    product.tisTrpTested ?? null,
+                    product.specificationVersion ?? null,
+                    product.transportInterface ?? null,
+                    product.primaryDeviceTypeId ?? null,
+                    JSON.stringify(product.applicationCategories ?? []) // Store array as JSON string
+                );
+            });
+            stmt.finalize((err) => {
+                if (err) {
+                    console.error("Error finalizing product statement:", err);
+                    db.run("ROLLBACK");
+                } else {
+                    db.run("COMMIT");
+                    console.log(`Populated 'products' table with ${products.length} records.`);
+                }
+            });
+        });
+    } catch (error) {
+        console.error("Error reading or parsing all_matter_devices.json:", error);
+        throw error; // Re-throw to be caught by initializeDatabase
+    }
+}
+
+async function populateProductDetailsTable(): Promise<void> {
+    try {
+        const data = fs.readFileSync(mergedDevicesPath, 'utf-8');
+        const details: ProductDetail[] = JSON.parse(data);
+
+        const stmt = db.prepare(`
+            INSERT INTO product_details (
+                id, url, pageId, indexInPage, manufacturer, model, deviceType, 
+                certificationId, certificationDate, softwareVersion, hardwareVersion, 
+                vid, pid, familySku, familyVariantSku, firmwareVersion, familyId, 
+                tisTrpTested, specificationVersion, transportInterface, 
+                primaryDeviceTypeId, applicationCategories
+                // Add other fields here if they exist in ProductDetail
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        db.serialize(() => {
+            db.run("BEGIN TRANSACTION");
+            details.forEach(detail => {
+                stmt.run(
+                    detail.id ?? null,
+                    detail.url ?? null,
+                    detail.pageId ?? null,
+                    detail.indexInPage ?? null,
+                    detail.manufacturer ?? null,
+                    detail.model ?? null,
+                    detail.deviceType ?? null,
+                    detail.certificationId ?? null,
+                    detail.certificationDate ?? null,
+                    detail.softwareVersion ?? null,
+                    detail.hardwareVersion ?? null,
+                    detail.vid ?? null,
+                    detail.pid ?? null,
+                    detail.familySku ?? null,
+                    detail.familyVariantSku ?? null,
+                    detail.firmwareVersion ?? null,
+                    detail.familyId ?? null,
+                    detail.tisTrpTested ?? null,
+                    detail.specificationVersion ?? null,
+                    detail.transportInterface ?? null,
+                    detail.primaryDeviceTypeId ?? null,
+                    JSON.stringify(detail.applicationCategories ?? []) // Store array as JSON string
+                    // Add other fields here
+                );
+            });
+            stmt.finalize((err) => {
+                if (err) {
+                    console.error("Error finalizing product_details statement:", err);
+                    db.run("ROLLBACK");
+                } else {
+                    db.run("COMMIT");
+                    console.log(`Populated 'product_details' table with ${details.length} records.`);
+                }
+            });
+        });
+    } catch (error) {
+        console.error("Error reading or parsing merged_matter_devices.json:", error);
+        throw error; // Re-throw to be caught by initializeDatabase
+    }
+}
+
+// --- Query Functions --- 
+
+export async function getProductsFromDb(page: number = 1, limit: number = 20): Promise<{ products: MatterProduct[], total: number }> {
+    return new Promise((resolve, reject) => {
+        const offset = (page - 1) * limit;
+        const query = `SELECT * FROM products LIMIT ? OFFSET ?`;
+        const countQuery = `SELECT COUNT(*) as total FROM products`;
+
+        db.get(countQuery, (err, row: { total: number }) => {
+            if (err) {
+                return reject(err);
+            }
+            const total = row.total;
+            db.all(query, [limit, offset], (err, rows: any[]) => {
+                if (err) {
+                    return reject(err);
+                }
+                // Parse applicationCategories back into an array
+                const products = rows.map(row => ({
+                    ...row,
+                    applicationCategories: JSON.parse(row.applicationCategories || '[]')
+                }));
+                resolve({ products, total });
+            });
+        });
+    });
+}
+
+export async function getProductByIdFromDb(id: string): Promise<ProductDetail | null> {
+    return new Promise((resolve, reject) => {
+        const query = `SELECT * FROM product_details WHERE id = ?`;
+        db.get(query, [id], (err, row: any) => {
+            if (err) {
+                return reject(err);
+            }
+            if (row) {
+                // Parse applicationCategories back into an array
+                const productDetail = {
+                    ...row,
+                    applicationCategories: JSON.parse(row.applicationCategories || '[]')
+                };
+                resolve(productDetail);
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
+export async function searchProductsInDb(query: string, page: number = 1, limit: number = 20): Promise<{ products: MatterProduct[], total: number }> {
+    return new Promise((resolve, reject) => {
+        const offset = (page - 1) * limit;
+        const searchQuery = `%${query}%`;
+        const sql = `
+            SELECT * FROM products 
+            WHERE manufacturer LIKE ? OR model LIKE ? OR deviceType LIKE ? OR certificationId LIKE ?
+            LIMIT ? OFFSET ?
+        `;
+        const countSql = `
+            SELECT COUNT(*) as total FROM products 
+            WHERE manufacturer LIKE ? OR model LIKE ? OR deviceType LIKE ? OR certificationId LIKE ?
+        `;
+
+        db.get(countSql, [searchQuery, searchQuery, searchQuery, searchQuery], (err, row: { total: number }) => {
+            if (err) {
+                return reject(err);
+            }
+            const total = row.total;
+            db.all(sql, [searchQuery, searchQuery, searchQuery, searchQuery, limit, offset], (err, rows: any[]) => {
+                if (err) {
+                    return reject(err);
+                }
+                // Parse applicationCategories back into an array
+                const products = rows.map(row => ({
+                    ...row,
+                    applicationCategories: JSON.parse(row.applicationCategories || '[]')
+                }));
+                resolve({ products, total });
+            });
+        });
+    });
+}
+
+// --- Summary and Update --- 
+
+// Store summary info in a separate table or use file system
+const summaryFilePath = path.join(app.getPath('userData'), 'db_summary.json');
+
+interface DbSummaryData {
+    lastUpdated: string | null;
+    newlyAddedCount: number;
+}
+
+async function readSummary(): Promise<DbSummaryData> {
+    try {
+        if (fs.existsSync(summaryFilePath)) {
+            const data = await fs.promises.readFile(summaryFilePath, 'utf-8');
+            return JSON.parse(data);
+        } else {
+            return { lastUpdated: null, newlyAddedCount: 0 };
+        }
+    } catch (error) {
+        console.error("Error reading summary file:", error);
+        return { lastUpdated: null, newlyAddedCount: 0 }; // Default on error
+    }
+}
+
+async function writeSummary(summary: DbSummaryData): Promise<void> {
+    try {
+        await fs.promises.writeFile(summaryFilePath, JSON.stringify(summary, null, 2));
+    } catch (error) {
+        console.error("Error writing summary file:", error);
+    }
+}
+
+export async function getDatabaseSummaryFromDb(): Promise<DatabaseSummary> {
+    return new Promise((resolve, reject) => {
+        const countQuery = `SELECT COUNT(*) as total FROM products`;
+        db.get(countQuery, async (err, row: { total: number }) => {
+            if (err) {
+                return reject(err);
+            }
+            const summaryData = await readSummary();
+            resolve({
+                totalProducts: row.total,
+                lastUpdated: summaryData.lastUpdated ? new Date(summaryData.lastUpdated) : null,
+                newlyAddedCount: summaryData.newlyAddedCount
+            });
+        });
+    });
+}
+
+export async function markLastUpdatedInDb(count: number): Promise<void> {
+    const summaryData: DbSummaryData = {
+        lastUpdated: new Date().toISOString(),
+        newlyAddedCount: count
+    };
+    await writeSummary(summaryData);
+}
+
+// Close the database connection when the app quits
+app.on('quit', () => {
+    db.close((err) => {
+        if (err) {
+            console.error('Error closing database:', err.message);
+        } else {
+            console.log('Database connection closed.');
+        }
+    });
+});

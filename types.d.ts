@@ -9,11 +9,14 @@ type Statistics = {
 
 // Matter 제품 정보 타입
 type MatterProduct = {
+    url: string; // Added based on FR-CRAWL-007 example
+    pageId: number; // Added based on FR-CRAWL-007 example
+    indexInPage: number; // Added based on FR-CRAWL-007 example
     id: string;
     manufacturer: string;
     model: string;
     deviceType: string;
-    certificationId: string;
+    certificationId: string; // Kept the first instance
     certificationDate: string;
     softwareVersion: string;
     hardwareVersion: string;
@@ -22,7 +25,6 @@ type MatterProduct = {
     familySku: string;
     familyVariantSku: string;
     firmwareVersion: string;
-    certificateId: string;
     familyId: string;
     tisTrpTested: string;
     specificationVersion: string;

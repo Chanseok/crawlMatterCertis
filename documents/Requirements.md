@@ -42,11 +42,16 @@ FR-CRAWL-005: CSA Matter 인증 정보 페이지는 통상 12개의 제품 정�
     "manufacturer": "Tuya Global Inc.",
     "model": "Wi-Fi Bulb RGBCW",
     "certificateId": "CSA22042MAT40042-24",
+    "pageId": 0,
+    "indexInPage": 5
   }
 ```
 FR-CRAWL-006: 로컬 데이터베이스 상에 존재하는 데이터 이후에 추가로 새로 CSA 인증 정보 웹사이트에 추가된 인증 기기 정보에 대해서만 수집할 수 있어야 한다.
 FR-CRAWL-007: 추출해야 하는 데이터 필드의 예시는 Json Object 형태로 다음과 같다:
 ``` {
+    "url": "https://csa-iot.org/csa_product/wi-fi-plug-19/",
+    "pageId": 0,
+    "indexInPage": 7,
     "id": "csa-matter-0-11",
     "manufacturer": "MMD HONG KONG HOLDING LIMITED",
     "model": "Philips 43PUS8909",

@@ -11,6 +11,9 @@ import { nanoid } from "nanoid";
 // Mock 제품 데이터
 export const mockProducts: MatterProduct[] = [
   {
+    url: 'https://csa-iot.org/csa-iot_products/philips-43pus8909/', // Added mock data
+    pageId: 1, // Added mock data
+    indexInPage: 0, // Added mock data
     id: 'mock-1',
     manufacturer: 'MMD HONG KONG HOLDING LIMITED',
     model: 'Philips 43PUS8909',
@@ -24,7 +27,6 @@ export const mockProducts: MatterProduct[] = [
     familySku: 'Philips 43PUS8909',
     familyVariantSku: '',
     firmwareVersion: 'TPN248E_V248.003.088.000',
-    certificateId: 'CSA244D4MAT43911-00',
     familyId: 'FAM226196',
     tisTrpTested: 'No',
     specificationVersion: '1.2',
@@ -33,6 +35,9 @@ export const mockProducts: MatterProduct[] = [
     applicationCategories: ['Matter Device']
   },
   {
+    url: 'https://csa-iot.org/csa-iot_products/tuya-wifi-bulb-rgbcw/', // Added mock data
+    pageId: 1, // Added mock data
+    indexInPage: 1, // Added mock data
     id: 'mock-2',
     manufacturer: 'Tuya Global Inc.',
     model: 'Wi-Fi Bulb RGBCW',
@@ -46,7 +51,6 @@ export const mockProducts: MatterProduct[] = [
     familySku: 'TY-BLB-RGBCW',
     familyVariantSku: '',
     firmwareVersion: '1.0.5',
-    certificateId: 'CSA22042MAT40042-24',
     familyId: 'FAM220177',
     tisTrpTested: 'Yes',
     specificationVersion: '1.1',
@@ -55,6 +59,9 @@ export const mockProducts: MatterProduct[] = [
     applicationCategories: ['Light Bulb', 'Smart Home']
   },
   {
+    url: 'https://csa-iot.org/csa-iot_products/samsung-smartthings-hub/', // Added mock data
+    pageId: 1, // Added mock data
+    indexInPage: 2, // Added mock data
     id: 'mock-3',
     manufacturer: 'Samsung Electronics',
     model: 'SmartThings Hub',
@@ -68,7 +75,6 @@ export const mockProducts: MatterProduct[] = [
     familySku: 'SM-HUB-3',
     familyVariantSku: '',
     firmwareVersion: '2.3.1',
-    certificateId: 'CSA25012MAT50123-01',
     familyId: 'FAM225502',
     tisTrpTested: 'Yes',
     specificationVersion: '1.2',
@@ -77,6 +83,9 @@ export const mockProducts: MatterProduct[] = [
     applicationCategories: ['Hub', 'Controller']
   },
   {
+    url: 'https://csa-iot.org/csa-iot_products/apple-homepod-mini/', // Added mock data
+    pageId: 1, // Added mock data
+    indexInPage: 3, // Added mock data
     id: 'mock-4',
     manufacturer: 'Apple Inc.',
     model: 'HomePod mini',
@@ -90,7 +99,6 @@ export const mockProducts: MatterProduct[] = [
     familySku: 'HomePod mini',
     familyVariantSku: '',
     firmwareVersion: '16.5.1',
-    certificateId: 'CSA24531MAT60789-00',
     familyId: 'FAM227801',
     tisTrpTested: 'Yes',
     specificationVersion: '1.2',
@@ -99,6 +107,9 @@ export const mockProducts: MatterProduct[] = [
     applicationCategories: ['Speaker', 'Voice Assistant']
   },
   {
+    url: 'https://csa-iot.org/csa-iot_products/google-nest-thermostat/', // Added mock data
+    pageId: 1, // Added mock data
+    indexInPage: 4, // Added mock data
     id: 'mock-5',
     manufacturer: 'Google LLC',
     model: 'Nest Thermostat',
@@ -112,7 +123,6 @@ export const mockProducts: MatterProduct[] = [
     familySku: 'Nest Thermostat',
     familyVariantSku: 'Gen 4',
     firmwareVersion: '4.2.0',
-    certificateId: 'CSA25118MAT70456-02',
     familyId: 'FAM229103',
     tisTrpTested: 'Yes',
     specificationVersion: '1.2',
@@ -144,8 +154,13 @@ export const generateMoreMockProducts = (count: number = 20): MatterProduct[] =>
     const manufacturer = manufacturers[Math.floor(Math.random() * manufacturers.length)];
     const deviceType = deviceTypes[Math.floor(Math.random() * deviceTypes.length)];
     const model = `${manufacturer.split(' ')[0]} ${deviceType} ${Math.floor(Math.random() * 1000)}`;
+    const pageId = Math.floor(i / 10) + 2; // Example logic for pageId
+    const indexInPage = i % 10; // Example logic for indexInPage
     
     const product: MatterProduct = {
+      url: `https://csa-iot.org/csa-iot_products/mock-${nanoid(5)}/`, // Added mock data
+      pageId, // Added mock data
+      indexInPage, // Added mock data
       id: `gen-${nanoid(8)}`,
       manufacturer,
       model,
@@ -159,7 +174,6 @@ export const generateMoreMockProducts = (count: number = 20): MatterProduct[] =>
       familySku: model,
       familyVariantSku: Math.random() > 0.7 ? `Gen ${Math.floor(Math.random() * 5) + 1}` : '',
       firmwareVersion: `${Math.floor(Math.random() * 10)}.${Math.floor(Math.random() * 10)}.${Math.floor(Math.random() * 100)}`,
-      certificateId: `CSA${Math.floor(10000 + Math.random() * 90000)}MAT${Math.floor(10000 + Math.random() * 90000)}-${Math.floor(Math.random() * 100).toString().padStart(2, '0')}`,
       familyId: `FAM${Math.floor(100000 + Math.random() * 900000)}`,
       tisTrpTested: Math.random() > 0.5 ? 'Yes' : 'No',
       specificationVersion: `1.${Math.floor(Math.random() * 3)}`,
