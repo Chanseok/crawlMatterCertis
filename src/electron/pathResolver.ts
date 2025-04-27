@@ -88,11 +88,6 @@ contextBridge.exposeInMainWorld('electron', {
     return devPreloadPath;
 }
 
-// 하위 호환성을 위해 오타난 함수명도 유지
-export function getPreoladPath() {
-    return getPreloadPath();
-}
-
 export function getUIPath(){
     if (isDev()) {
         return 'http://localhost:5123'; // 개발 모드에서는 URL 반환
