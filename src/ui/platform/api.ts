@@ -196,17 +196,46 @@ class MockApiAdapter implements IPlatformAPI {
 
 // Electron API 어댑터
 class ElectronApiAdapter implements IPlatformAPI {
+  private mockAdapter: MockApiAdapter;
+
+  constructor() {
+    // 안전장치로 Mock 어댑터 생성
+    this.mockAdapter = new MockApiAdapter();
+    
+    // window.electron 객체 체크
+    if (typeof window !== 'undefined' && window.electron) {
+      // 실제 함수가 존재하는지 확인
+      if (typeof window.electron.subscribeToEvent !== 'function') {
+        console.error('[API] window.electron.subscribeToEvent is not a function!');
+        console.log('[API] electron object:', window.electron);
+      }
+      if (typeof window.electron.invokeMethod !== 'function') {
+        console.error('[API] window.electron.invokeMethod is not a function!');
+        console.log('[API] electron object:', window.electron);
+      }
+    } else {
+      console.error('[API] window.electron is not properly initialized!');
+    }
+  }
+
   subscribeToEvent<K extends keyof EventPayloadMapping>(
     eventName: K,
     callback: (data: EventPayloadMapping[K]) => void
   ): UnsubscribeFunction {
     try {
-      // 기본 구독 메서드를 사용
-      return window.electron.subscribeToEvent(eventName, callback);
+      // 안전장치: 함수 존재 여부 확인
+      if (window?.electron?.subscribeToEvent && typeof window.electron.subscribeToEvent === 'function') {
+        // 기본 구독 메서드를 사용
+        return window.electron.subscribeToEvent(eventName, callback);
+      } else {
+        console.warn(`[API] window.electron.subscribeToEvent is not available. Using mock for: ${String(eventName)}`);
+        // Mock 어댑터의 메서드 사용
+        return this.mockAdapter.subscribeToEvent(eventName, callback);
+      }
     } catch (error) {
       console.error(`Error subscribing to ${String(eventName)}:`, error);
-      // 오류 발생시 비어있는 리스너 반환
-      return () => {};
+      // 오류 발생시 Mock 어댑터의 메서드 사용
+      return this.mockAdapter.subscribeToEvent(eventName, callback);
     }
   }
 
@@ -216,11 +245,22 @@ class ElectronApiAdapter implements IPlatformAPI {
   ): Promise<R> {
     try {
       console.log(`[ElectronAPI] Invoking method: ${String(methodName)}`, params);
-      // 기본 호출 메서드를 사용
-      return await window.electron.invokeMethod(methodName, params) as Promise<R>;
+      
+      // 안전장치: 함수 존재 여부 확인
+      if (window?.electron?.invokeMethod && typeof window.electron.invokeMethod === 'function') {
+        // 기본 호출 메서드를 사용
+        return await window.electron.invokeMethod(methodName, params) as Promise<R>;
+      } else {
+        console.warn(`[API] window.electron.invokeMethod is not available. Using mock for: ${String(methodName)}`);
+        // Mock 어댑터의 메서드 사용
+        return await this.mockAdapter.invokeMethod(methodName, params);
+      }
     } catch (error) {
       console.error(`Error invoking ${String(methodName)}:`, error);
-      throw error;
+      
+      // 오류 발생시 Mock 어댑터의 메서드 사용 (자동 fallback)
+      console.warn(`[API] Falling back to mock implementation for: ${String(methodName)}`);
+      return await this.mockAdapter.invokeMethod(methodName, params);
     }
   }
 }
@@ -275,61 +315,78 @@ function detectPlatformAndInitApi(): IPlatformAPI {
 }
 
 // API 인스턴스 초기화 및 공개
-export function initPlatformApi(): IPlatformAPI {
-  // window.electron이 초기화될 때까지 기다리는 로직 추가
+export function initPlatformApi(): void { // 반환 타입을 void로 변경
   if (typeof window !== 'undefined') {
-    // DOMContentLoaded 이벤트를 사용하여 DOM이 완전히 로드된 후 API 초기화
+    const initialize = () => {
+      console.log('[API] Running initialize function...');
+      console.log('[API] window.electron exists:', !!window.electron);
+      currentPlatformAPI = detectPlatformAndInitApi();
+      console.log('[API] currentPlatformAPI set to:', currentPlatformAPI instanceof ElectronApiAdapter ? 'ElectronApiAdapter' : 'MockApiAdapter');
+      // 개발 환경에서 디버깅을 위해 window 객체에 노출
+      if (import.meta.env.DEV) {
+        // @ts-ignore
+        window.platformAPI = currentPlatformAPI;
+      }
+    };
+
     if (document.readyState === 'loading') {
+      console.log('[API] DOM is loading. Adding DOMContentLoaded listener.');
       document.addEventListener('DOMContentLoaded', () => {
-        // DOMContentLoaded 이후에도 window.electron이 없는 경우가 있을 수 있으므로
-        // 약간의 지연을 줌
+        // DOMContentLoaded 이후에도 window.electron 로딩 시간이 필요할 수 있음
+        // 지연 시간을 늘려 안정성 확보
         setTimeout(() => {
-          console.log('[API] Delayed initialization after DOMContentLoaded');
-          console.log('[API] window.electron exists after delay:', !!window.electron);
-          currentPlatformAPI = detectPlatformAndInitApi();
-        }, 100);
+          console.log('[API] Delayed initialization after DOMContentLoaded (500ms).');
+          initialize();
+        }, 500); // 지연 시간 증가
       });
       
-      // 임시로 MockApiAdapter를 반환하고, 실제 API는 이벤트 후에 초기화됨
-      console.log('[API] Returning temporary MockApiAdapter while waiting for DOMContentLoaded');
-      currentPlatformAPI = new MockApiAdapter();
+      // 임시 어댑터 설정 안함
+      console.log('[API] Waiting for DOMContentLoaded event...');
     } else {
       // 이미 DOM이 로드된 경우 약간의 지연 후 초기화
+      console.log('[API] DOM already loaded. Scheduling delayed initialization (500ms).');
       setTimeout(() => {
-        console.log('[API] Delayed initialization as DOM is already loaded');
-        console.log('[API] window.electron exists after delay:', !!window.electron);
-        currentPlatformAPI = detectPlatformAndInitApi();
-      }, 100);
-      
-      // 임시로 MockApiAdapter를 반환
-      console.log('[API] Returning temporary MockApiAdapter while waiting for delayed initialization');
-      currentPlatformAPI = new MockApiAdapter();
+        console.log('[API] Running delayed initialization as DOM was already loaded.');
+        initialize();
+      }, 500); // 지연 시간 증가
     }
+
+    // 앱 시작 시 즉시 첫 시도 - 이것만으로 충분할 수 있음
+    console.log('[API] Attempting immediate initialization on app start');
+    initialize();
   } else {
     // window 객체가 없는 환경 (예: 서버 사이드)
     console.warn('[API] No window object available. Using MockApiAdapter.');
     currentPlatformAPI = new MockApiAdapter();
   }
-  
-  return currentPlatformAPI;
 }
 
 // 플랫폼 API 싱글톤 인스턴스 얻기
 export function getPlatformApi(): IPlatformAPI {
   if (!currentPlatformAPI) {
-    currentPlatformAPI = initPlatformApi();
+    console.warn('[API] getPlatformApi called before API was initialized');
     
-    // 설정된 지연 후에 API가 제대로 초기화되었는지 확인
-    setTimeout(() => {
-      console.log('[API] Checking if API was properly initialized');
-      console.log('[API] window.electron exists after getPlatformApi delay:', !!window.electron);
+    // 즉시 초기화 시도 (window.electron이 있는지 확인)
+    if (window.electron) {
+      console.log('[API] window.electron is available. Creating ElectronApiAdapter directly.');
+      currentPlatformAPI = new ElectronApiAdapter();
+    } else {
+      console.warn('[API] window.electron not available. Using MockApiAdapter temporarily.');
+      currentPlatformAPI = new MockApiAdapter();
       
-      // window.electron이 존재하는데 MockApiAdapter를 사용 중이면 API 재초기화
-      if (window.electron && currentPlatformAPI instanceof MockApiAdapter) {
-        console.log('[API] Found window.electron but using MockApiAdapter. Reinitializing...');
-        currentPlatformAPI = detectPlatformAndInitApi();
-      }
-    }, 500);
+      // API가 나중에 초기화될 수 있음을 대비해 지연된 체크 추가
+      setTimeout(() => {
+        if (window.electron && currentPlatformAPI instanceof MockApiAdapter) {
+          console.log('[API] window.electron now available. Replacing MockApiAdapter with ElectronApiAdapter.');
+          currentPlatformAPI = new ElectronApiAdapter();
+          
+          if (import.meta.env.DEV) {
+            // @ts-ignore
+            window.platformAPI = currentPlatformAPI;
+          }
+        }
+      }, 1000);
+    }
   }
   
   return currentPlatformAPI;
@@ -348,11 +405,4 @@ export function setUseMockApiInDevelopment(value: boolean): void {
   if (currentAppMode === 'development') {
     currentPlatformAPI = detectPlatformAndInitApi();
   }
-}
-
-// 이 API를 window 객체에도 노출하여 개발 과정에서 디버깅 용이하게 함
-// 실제 배포 환경에서는 제거 고려
-if (import.meta.env.DEV) {
-  // @ts-ignore - 개발 환경에서만 사용되는 코드
-  window.platformAPI = getPlatformApi();
 }

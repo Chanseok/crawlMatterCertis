@@ -22,6 +22,22 @@ function typedIpcMainHandle<T, R>(
 }
 
 app.on('ready', async () => {
+    // 디버깅을 위해 preload 경로 로깅
+    const preloadPath = getPreloadPath();
+    console.log('Using preload script path:', preloadPath);
+    console.log('File exists check will be in main process logs');
+
+    const mainWindow = new BrowserWindow({
+        width: 800,
+        height: 1800,
+        webPreferences: {
+            preload: preloadPath,
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: false // preload 스크립트가 제대로 로드되지 않을 때는 sandbox를 비활성화해볼 수 있습니다
+        }
+    });
+
     // Initialize the database first
     try {
         await initializeDatabase();
@@ -32,21 +48,6 @@ app.on('ready', async () => {
         return;
     }
 
-    // 디버깅을 위해 preload 경로 로깅
-    const preloadPath = getPreloadPath();
-    console.log('Using preload script path:', preloadPath);
-    console.log('File exists check will be in main process logs');
-
-    const mainWindow = new BrowserWindow({
-        width: 1200,
-        height: 800,
-        webPreferences: {
-            preload: preloadPath,
-            nodeIntegration: false,
-            contextIsolation: true,
-            sandbox: false // preload 스크립트가 제대로 로드되지 않을 때는 sandbox를 비활성화해볼 수 있습니다
-        }
-    });
 
     // getUIPath 함수 반환값에 따라 loadURL 또는 loadFile 호출
     const uiPath = getUIPath();

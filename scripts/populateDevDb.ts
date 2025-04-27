@@ -17,42 +17,52 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // MatterProduct 인터페이스 직접 정의 (types.ts에서 가져오지 않음)
-interface MatterProduct {
-  id?: string;
-  url?: string;
-  pageId?: number;
-  indexInPage?: number;
-  manufacturer?: string;
-  model?: string;
-  deviceType?: string;
-  certificationId?: string;
-  certificationDate?: string;
-  softwareVersion?: string;
-  hardwareVersion?: string;
-  vid?: string;
-  pid?: string;
-  familySku?: string;
-  familyVariantSku?: string;
-  firmwareVersion?: string;
-  familyId?: string;
-  tisTrpTested?: string;
-  specificationVersion?: string;
-  transportInterface?: string;
-  primaryDeviceTypeId?: string;
-  applicationCategories?: string[];
+interface Product {
+    url: string;
+    manufacturer?: string;
+    model?: string;
+    certificateId?: string;
+    pageId?: number;
+    indexInPage?: number;
+}
+
+interface Detailed {
+    url: string;
+    pageId?: number;
+    indexInPage?: number;
+    id?: string;
+    manufacturer?: string;
+    model?: string;
+    deviceType?: string;
+    certificationId?: string;
+    certificationDate?: string;
+    softwareVersion?: string;
+    hardwareVersion?: string;
+    vid?: string;
+    pid?: string;
+    familySku?: string;
+    familyVariantSku?: string;
+    firmwareVersion?: string;
+    familyId?: string;
+    tisTrpTested?: string;
+    specificationVersion?: string;
+    transportInterface?: string;
+    primaryDeviceTypeId?: string;
+    applicationCategories?: string[];
 }
 
 // DatabaseSummary 인터페이스 직접 정의
 interface DatabaseSummary {
-  totalProducts: number;
-  lastUpdated: Date | null;
-  newlyAddedCount: number;
+    totalProducts: number;
+    lastUpdated: Date | null;
+    newlyAddedCount: number;
 }
 
 // 개발 환경에서 사용자 디렉토리 경로 - 실제 앱과 동일한 위치에 DB 생성
-const userDataPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.config', 'crawlMatterCertis');
+// const userDataPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.config', 'crawlMatterCertis');
+const userDataPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', 'Library', 'Application Support', 'crawlMatterCertis');
 if (!fs.existsSync(userDataPath)) {
-  fs.mkdirSync(userDataPath, { recursive: true });
+    fs.mkdirSync(userDataPath, { recursive: true });
 }
 const dbPath = path.join(userDataPath, 'dev-database.sqlite');
 
@@ -60,12 +70,12 @@ console.log(`데이터베이스 경로: ${dbPath}`);
 
 // 데이터 파일 경로
 const rootDir = path.resolve(__dirname, '..');
-const allDevicesPath = path.join(rootDir, 'data-for-dev', 'all_matter_devices.json');
-const mergedDevicesPath = path.join(rootDir, 'data-for-dev', 'merged_matter_devices.json');
+const productsPath = path.join(rootDir, 'data-for-dev', 'merged_devices.json');
+const detailedPath = path.join(rootDir, 'data-for-dev', 'merged_matter_devices.json');
 
 console.log(`데이터 파일 경로: 
-  - all_matter_devices.json: ${allDevicesPath}
-  - merged_matter_devices.json: ${mergedDevicesPath}
+  products info - merged_devices.json: ${productsPath}
+  detailed info - merged_matter_devices.json: ${detailedPath}
 `);
 
 // 데이터베이스 연결
@@ -73,52 +83,36 @@ const db = new sqlite3.Database(dbPath);
 
 // 'products' 테이블 생성
 function createProductsTable(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    db.run(`
+    return new Promise((resolve, reject) => {
+        db.run(`
       CREATE TABLE IF NOT EXISTS products (
-        id TEXT PRIMARY KEY,
-        url TEXT,
-        pageId INTEGER,
-        indexInPage INTEGER,
+        url TEXT PRIMARY KEY,
         manufacturer TEXT,
         model TEXT,
-        deviceType TEXT,
-        certificationId TEXT,
-        certificationDate TEXT,
-        softwareVersion TEXT,
-        hardwareVersion TEXT,
-        vid TEXT,
-        pid TEXT,
-        familySku TEXT,
-        familyVariantSku TEXT,
-        firmwareVersion TEXT,
-        familyId TEXT,
-        tisTrpTested TEXT,
-        specificationVersion TEXT,
-        transportInterface TEXT,
-        primaryDeviceTypeId TEXT,
-        applicationCategories TEXT
+        certificateId TEXT,
+        pageId INTEGER,
+        indexInPage INTEGER
       )
     `, (err) => {
-      if (err) {
-        reject(err);
-      } else {
-        console.log("'products' 테이블이 생성되었습니다.");
-        resolve();
-      }
+            if (err) {
+                reject(err);
+            } else {
+                console.log("'products' 테이블이 생성되었습니다.");
+                resolve();
+            }
+        });
     });
-  });
 }
 
 // 'product_details' 테이블 생성
 function createProductDetailsTable(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    db.run(`
+    return new Promise((resolve, reject) => {
+        db.run(`
       CREATE TABLE IF NOT EXISTS product_details (
-        id TEXT PRIMARY KEY,
-        url TEXT,
+        url TEXT PRIMARY KEY,
         pageId INTEGER,
         indexInPage INTEGER,
+        id TEXT,
         manufacturer TEXT,
         model TEXT,
         deviceType TEXT,
@@ -139,148 +133,123 @@ function createProductDetailsTable(): Promise<void> {
         applicationCategories TEXT
       )
     `, (err) => {
-      if (err) {
-        reject(err);
-      } else {
-        console.log("'product_details' 테이블이 생성되었습니다.");
-        resolve();
-      }
+            if (err) {
+                reject(err);
+            } else {
+                console.log("'product_details' 테이블이 생성되었습니다.");
+                resolve();
+            }
+        });
     });
-  });
 }
 
 // 'products' 테이블에 데이터 추가
 async function populateProductsTable(): Promise<void> {
-  try {
-    // 기존 데이터 지우기
-    await new Promise<void>((resolve, reject) => {
-      db.run("DELETE FROM products", (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    try {
+        // 기존 데이터 지우기
+        await new Promise<void>((resolve, reject) => {
+            db.run("DELETE FROM products", (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
 
-    const data = fs.readFileSync(allDevicesPath, 'utf-8');
-    const products: MatterProduct[] = JSON.parse(data);
+        const data = fs.readFileSync(productsPath, 'utf-8');
+        const products: Product[] = JSON.parse(data);
 
-    // 데이터가 없으면 종료
-    if (!products || !Array.isArray(products) || products.length === 0) {
-      console.error("all_matter_devices.json 파일에 유효한 데이터가 없습니다.");
-      return;
-    }
+        // 데이터가 없으면 종료
+        if (!products || !Array.isArray(products) || products.length === 0) {
+            console.error("all_matter_devices.json 파일에 유효한 데이터가 없습니다.");
+            return;
+        }
 
-    console.log(`${products.length}개의 제품 데이터를 가져왔습니다.`);
+        console.log(`${products.length}개의 제품 데이터를 가져왔습니다.`);
 
-    const stmt = db.prepare(`
+        const stmt = db.prepare(`
       INSERT INTO products (
-        id, url, pageId, indexInPage, manufacturer, model, deviceType, 
-        certificationId, certificationDate, softwareVersion, hardwareVersion, 
-        vid, pid, familySku, familyVariantSku, firmwareVersion, familyId, 
-        tisTrpTested, specificationVersion, transportInterface, 
-        primaryDeviceTypeId, applicationCategories
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        url, manufacturer, model, certificateId, pageId, indexInPage  
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `);
 
-    // 트랜잭션 시작
-    await new Promise<void>((resolve, reject) => {
-      db.run("BEGIN TRANSACTION", (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-
-    let insertedCount = 0;
-    for (const product of products) {
-      try {
+        // 트랜잭션 시작
         await new Promise<void>((resolve, reject) => {
-          // ID 필드가 없으면 생성
-          if (!product.id) {
-            product.id = `csa-matter-auto-${insertedCount}`;
-          }
-
-          stmt.run(
-            product.id,
-            product.url || null,
-            product.pageId || null,
-            product.indexInPage || null,
-            product.manufacturer || null,
-            product.model || null,
-            product.deviceType || null,
-            product.certificationId || null,
-            product.certificationDate || null,
-            product.softwareVersion || null,
-            product.hardwareVersion || null,
-            product.vid || null,
-            product.pid || null,
-            product.familySku || null,
-            product.familyVariantSku || null,
-            product.firmwareVersion || null,
-            product.familyId || null,
-            product.tisTrpTested || null,
-            product.specificationVersion || null,
-            product.transportInterface || null,
-            product.primaryDeviceTypeId || null,
-            JSON.stringify(product.applicationCategories || []), // 배열을 JSON 문자열로 저장
-            function(err) {
-              if (err) reject(err);
-              else {
-                insertedCount++;
-                resolve();
-              }
-            }
-          );
+            db.run("BEGIN TRANSACTION", (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
         });
-      } catch (error) {
-        console.error(`제품 데이터 삽입 중 오류 발생: ${JSON.stringify(product)}`, error);
-      }
-    }
 
-    // 트랜잭션 종료
-    await new Promise<void>((resolve, reject) => {
-      db.run("COMMIT", (err) => {
-        if (err) {
-          db.run("ROLLBACK");
-          reject(err);
-        } else {
-          resolve();
+        let insertedCount = 0;
+        for (const product of products) {
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    stmt.run(
+                        product.url,
+                        product.manufacturer || null,
+                        product.model || null,
+                        product.certificateId || null,
+                        product.pageId || null,
+                        product.indexInPage || null,
+                        function (err) {
+                            if (err) reject(err);
+                            else {
+                                insertedCount++;
+                                resolve();
+                            }
+                        }
+                    );
+                });
+            } catch (error) {
+                console.error(`제품 데이터 삽입 중 오류 발생: ${JSON.stringify(product)}`, error);
+            }
         }
-      });
-    });
 
-    stmt.finalize();
-    console.log(`'products' 테이블에 ${insertedCount}개의 레코드가 추가되었습니다.`);
-  } catch (error) {
-    console.error("제품 데이터 추가 중 오류 발생:", error);
-    // 트랜잭션 롤백
-    db.run("ROLLBACK");
-  }
+        // 트랜잭션 종료
+        await new Promise<void>((resolve, reject) => {
+            db.run("COMMIT", (err) => {
+                if (err) {
+                    db.run("ROLLBACK");
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+
+        stmt.finalize();
+        console.log(`'products' 테이블에 ${insertedCount}개의 레코드가 추가되었습니다.`);
+    } catch (error) {
+        console.error("제품 데이터 추가 중 오류 발생:", error);
+        // 트랜잭션 롤백
+        db.run("ROLLBACK");
+    }
 }
 
 // 'product_details' 테이블에 데이터 추가
 async function populateProductDetailsTable(): Promise<void> {
-  try {
-    // 기존 데이터 지우기
-    await new Promise<void>((resolve, reject) => {
-      db.run("DELETE FROM product_details", (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    try {
+        // 기존 데이터 지우기
+        await new Promise<void>((resolve, reject) => {
+            db.run("DELETE FROM product_details", (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
 
-    const data = fs.readFileSync(mergedDevicesPath, 'utf-8');
-    const details: MatterProduct[] = JSON.parse(data);
+        const data = fs.readFileSync(detailedPath, 'utf-8');
+        const details: Detailed[] = JSON.parse(data);
 
-    // 데이터가 없으면 종료
-    if (!details || !Array.isArray(details) || details.length === 0) {
-      console.error("merged_matter_devices.json 파일에 유효한 데이터가 없습니다.");
-      return;
-    }
+        // 데이터가 없으면 종료
+        if (!details || !Array.isArray(details) || details.length === 0) {
+            console.error("merged_matter_devices.json 파일에 유효한 데이터가 없습니다.");
+            return;
+        }
 
-    console.log(`${details.length}개의 제품 상세 정보를 가져왔습니다.`);
+        console.log(`${details.length}개의 제품 상세 정보를 가져왔습니다.`);
 
-    const stmt = db.prepare(`
+        const stmt = db.prepare(`
       INSERT INTO product_details (
-        id, url, pageId, indexInPage, manufacturer, model, deviceType, 
+        url, pageId, indexInPage, id, manufacturer, model, deviceType, 
         certificationId, certificationDate, softwareVersion, hardwareVersion, 
         vid, pid, familySku, familyVariantSku, firmwareVersion, familyId, 
         tisTrpTested, specificationVersion, transportInterface, 
@@ -288,135 +257,131 @@ async function populateProductDetailsTable(): Promise<void> {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    // 트랜잭션 시작
-    await new Promise<void>((resolve, reject) => {
-      db.run("BEGIN TRANSACTION", (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-
-    let insertedCount = 0;
-    for (const detail of details) {
-      try {
+        // 트랜잭션 시작
         await new Promise<void>((resolve, reject) => {
-          // ID 필드가 없으면 생성
-          if (!detail.id) {
-            detail.id = `csa-matter-detail-${insertedCount}`;
-          }
-
-          stmt.run(
-            detail.id,
-            detail.url || null,
-            detail.pageId || null,
-            detail.indexInPage || null,
-            detail.manufacturer || null,
-            detail.model || null,
-            detail.deviceType || null,
-            detail.certificationId || null,
-            detail.certificationDate || null,
-            detail.softwareVersion || null,
-            detail.hardwareVersion || null,
-            detail.vid || null,
-            detail.pid || null,
-            detail.familySku || null,
-            detail.familyVariantSku || null,
-            detail.firmwareVersion || null,
-            detail.familyId || null,
-            detail.tisTrpTested || null,
-            detail.specificationVersion || null,
-            detail.transportInterface || null,
-            detail.primaryDeviceTypeId || null,
-            JSON.stringify(detail.applicationCategories || []), // 배열을 JSON 문자열로 저장
-            function(err) {
-              if (err) reject(err);
-              else {
-                insertedCount++;
-                resolve();
-              }
-            }
-          );
+            db.run("BEGIN TRANSACTION", (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
         });
-      } catch (error) {
-        console.error(`제품 상세 정보 삽입 중 오류 발생: ${JSON.stringify(detail)}`, error);
-      }
-    }
 
-    // 트랜잭션 종료
-    await new Promise<void>((resolve, reject) => {
-      db.run("COMMIT", (err) => {
-        if (err) {
-          db.run("ROLLBACK");
-          reject(err);
-        } else {
-          resolve();
+        let insertedCount = 0;
+        for (const detail of details) {
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    stmt.run(
+                        detail.url,
+                        detail.pageId || null,
+                        detail.indexInPage || null,
+                        detail.id || null,
+                        detail.manufacturer || null,
+                        detail.model || null,
+                        detail.deviceType || null,
+                        detail.certificationId || null,
+                        detail.certificationDate || null,
+                        detail.softwareVersion || null,
+                        detail.hardwareVersion || null,
+                        detail.vid || null,
+                        detail.pid || null,
+                        detail.familySku || null,
+                        detail.familyVariantSku || null,
+                        detail.firmwareVersion || null,
+                        detail.familyId || null,
+                        detail.tisTrpTested || null,
+                        detail.specificationVersion || null,
+                        detail.transportInterface || null,
+                        detail.primaryDeviceTypeId || null,
+                        JSON.stringify(detail.applicationCategories || []), // 배열을 JSON 문자열로 저장
+                        function (err) {
+                            if (err) reject(err);
+                            else {
+                                insertedCount++;
+                                resolve();
+                            }
+                        }
+                    );
+                });
+            } catch (error) {
+                console.error(`제품 상세 정보 삽입 중 오류 발생: ${JSON.stringify(detail)}`, error);
+            }
         }
-      });
-    });
 
-    stmt.finalize();
-    console.log(`'product_details' 테이블에 ${insertedCount}개의 레코드가 추가되었습니다.`);
-  } catch (error) {
-    console.error("제품 상세 정보 추가 중 오류 발생:", error);
-    // 트랜잭션 롤백
-    db.run("ROLLBACK");
-  }
+        // 트랜잭션 종료
+        await new Promise<void>((resolve, reject) => {
+            db.run("COMMIT", (err) => {
+                if (err) {
+                    db.run("ROLLBACK");
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+
+        stmt.finalize();
+        console.log(`'product_details' 테이블에 ${insertedCount}개의 레코드가 추가되었습니다.`);
+    } catch (error) {
+        console.error("제품 상세 정보 추가 중 오류 발생:", error);
+        // 트랜잭션 롤백
+        db.run("ROLLBACK");
+    }
 }
 
 // 데이터베이스 요약 정보 업데이트
 async function updateDatabaseSummary(): Promise<void> {
-  try {
-    // 제품 수 조회
-    const totalProducts = await new Promise<number>((resolve, reject) => {
-      db.get("SELECT COUNT(*) as total FROM products", (err, row: { total: number }) => {
-        if (err) reject(err);
-        else resolve(row.total);
-      });
-    });
+    try {
+        // 제품 수 조회
+        const totalProducts = await new Promise<number>((resolve, reject) => {
+            db.get("SELECT COUNT(*) as total FROM products", (err, row: { total: number }) => {
+                if (err) reject(err);
+                else resolve(row.total);
+            });
+        });
 
-    // 요약 정보 저장
-    const summaryData = {
-      lastUpdated: new Date().toISOString(),
-      newlyAddedCount: totalProducts
-    };
+        // 요약 정보 저장
+        const summaryData = {
+            lastUpdated: new Date().toISOString(),
+            newlyAddedCount: totalProducts
+        };
 
-    const summaryFilePath = path.join(userDataPath, 'db_summary.json');
-    fs.writeFileSync(summaryFilePath, JSON.stringify(summaryData, null, 2));
-    console.log(`데이터베이스 요약 정보가 업데이트되었습니다. 총 제품 수: ${totalProducts}`);
-  } catch (error) {
-    console.error("데이터베이스 요약 정보 업데이트 중 오류 발생:", error);
-  }
+        const summaryFilePath = path.join(userDataPath, 'db_summary.json');
+        fs.writeFileSync(summaryFilePath, JSON.stringify(summaryData, null, 2));
+        console.log(`데이터베이스 요약 정보가 업데이트되었습니다. 총 제품 수: ${totalProducts}`);
+    } catch (error) {
+        console.error("데이터베이스 요약 정보 업데이트 중 오류 발생:", error);
+    }
 }
 
 // 메인 함수
 async function main() {
-  try {
-    console.log("데이터베이스 초기화 및 데이터 로드를 시작합니다...");
-    
-    // 테이블 생성
-    await createProductsTable();
-    await createProductDetailsTable();
-    
-    // 데이터 로드
-    await populateProductsTable();
-    await populateProductDetailsTable();
-    
-    // 요약 정보 업데이트
-    await updateDatabaseSummary();
-    
-    console.log("데이터베이스 초기화 및 데이터 로드가 완료되었습니다.");
-  } catch (error) {
-    console.error("스크립트 실행 중 오류 발생:", error);
-  } finally {
-    // 데이터베이스 연결 종료
-    db.close((err) => {
-      if (err) {
-        console.error("데이터베이스 연결 종료 중 오류 발생:", err);
-      } else {
-        console.log("데이터베이스 연결이 종료되었습니다.");
-      }
-    });
-  }
+
+    try {
+        console.log("데이터베이스 초기화 및 데이터 로드를 시작합니다...");
+
+        // 테이블 생성
+        await createProductsTable();
+        await createProductDetailsTable();
+
+        // 데이터 로드
+        await populateProductsTable();
+        await populateProductDetailsTable();
+
+        // 요약 정보 업데이트
+        await updateDatabaseSummary();
+
+        console.log("데이터베이스 초기화 및 데이터 로드가 완료되었습니다.");
+    } catch (error) {
+        console.error("스크립트 실행 중 오류 발생:", error);
+    } finally {
+        // 데이터베이스 연결 종료
+        db.close((err) => {
+            if (err) {
+                console.error("데이터베이스 연결 종료 중 오류 발생:", err);
+            } else {
+                console.log("데이터베이스 연결이 종료되었습니다.");
+            }
+        });
+    }
 }
 
 // 스크립트 실행
