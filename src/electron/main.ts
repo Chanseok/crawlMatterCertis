@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
 import path from 'path';
 import { ipcMainHandle, isDev } from './util.js';
 import { getStaticData, pollResources } from './resourceManager.js';
-import { getPreoladPath, getUIPath } from './pathResolver.js';
+import { getPreloadPath, getUIPath } from './pathResolver.js';
 import {
     initializeDatabase,
     getProductsFromDb,
@@ -32,16 +32,35 @@ app.on('ready', async () => {
         return;
     }
 
+    // 디버깅을 위해 preload 경로 로깅
+    const preloadPath = getPreloadPath();
+    console.log('Using preload script path:', preloadPath);
+    console.log('File exists check will be in main process logs');
+
     const mainWindow = new BrowserWindow({
+        width: 1200,
+        height: 800,
         webPreferences: {
-            preload: getPreoladPath(),
+            preload: preloadPath,
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: false // preload 스크립트가 제대로 로드되지 않을 때는 sandbox를 비활성화해볼 수 있습니다
         }
     });
 
-    if (isDev()) {
-        mainWindow.loadURL('http://localhost:5123');
+    // getUIPath 함수 반환값에 따라 loadURL 또는 loadFile 호출
+    const uiPath = getUIPath();
+    if (uiPath.startsWith('http')) {
+        console.log('Loading URL:', uiPath);
+        mainWindow.loadURL(uiPath);
     } else {
-        mainWindow.loadFile(getUIPath());
+        console.log('Loading file:', uiPath);
+        mainWindow.loadFile(uiPath);
+    }
+
+    if (isDev()) {
+        // 개발 모드에서는 DevTools를 자동으로 열어 디버깅을 용이하게 함
+        mainWindow.webContents.openDevTools();
     }
 
     pollResources(mainWindow);

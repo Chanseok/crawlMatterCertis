@@ -258,6 +258,7 @@ export async function getProductsFromDb(page: number = 1, limit: number = 20): P
                 return reject(err);
             }
             const total = row.total;
+            console.log(`데이터베이스 전체 레코드 수: ${total}`);
             db.all(query, [limit, offset], (err, rows: any[]) => {
                 if (err) {
                     return reject(err);
@@ -267,6 +268,7 @@ export async function getProductsFromDb(page: number = 1, limit: number = 20): P
                     ...row,
                     applicationCategories: JSON.parse(row.applicationCategories || '[]')
                 }));
+                console.log(`현재 페이지(${page})에서 가져온 레코드 수: ${products.length}, 제한 수: ${limit}, 오프셋: ${offset}`);
                 resolve({ products, total });
             });
         });

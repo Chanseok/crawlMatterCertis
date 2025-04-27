@@ -1,135 +1,132 @@
 /**
  * Development Database Service
  * 
- * This service provides access to the SQLite database in development mode.
- * It's used to test SQLite integration without relying on mock data.
+ * This service provides access to the SQLite database in development mode
+ * by communicating with the Electron main process via IPC.
  */
 
 import { MatterProduct, DatabaseSummary } from "../types";
+import type { MethodReturnMapping } from "../platform/api";
 
-// This interface would be implemented by the actual Electron backend
+// This interface defines the contract for database operations
 export interface DatabaseService {
-  // Basic CRUD operations
   getProducts(page?: number, limit?: number): Promise<{ products: MatterProduct[], total: number }>;
   getProductById(id: string): Promise<MatterProduct | null>;
   searchProducts(query: string, page?: number, limit?: number): Promise<{ products: MatterProduct[], total: number }>;
   getDatabaseSummary(): Promise<DatabaseSummary>;
-  
-  // Update after crawling
   markLastUpdated(count: number): Promise<void>;
 }
 
-// This will be used in development mode. In production mode, we'll use IPC to call Electron's main process
+// This implementation uses the Electron IPC API exposed via preload script
 export const createDevDatabaseService = (): DatabaseService => {
-  // In a real implementation, this would interact directly with SQLite
-  // For now, we'll simulate async DB calls using the mock data
-  
+  if (!window.electron) {
+    console.error("[Dev DB Service] Electron API not found. This is likely because you're running the app in a browser, not in Electron.");
+    // Provide a fallback implementation that returns empty data
+    return {
+      async getProducts() { return { products: [], total: 0 }; },
+      async getProductById() { return null; },
+      async searchProducts() { return { products: [], total: 0 }; },
+      async getDatabaseSummary() { return { totalProducts: 0, lastUpdated: null, newlyAddedCount: 0 }; },
+      async markLastUpdated() {},
+    };
+  }
+
   return {
     async getProducts(page = 1, limit = 20) {
-      console.log('[Dev DB Service] Getting products', { page, limit });
+      console.log('[Dev DB Service] Getting products via Electron IPC', { page, limit });
       
       try {
-        // In development mode, we'll make an API call to our local server
-        // You can change this URL to match your development server setup
-        const url = new URL('/api/products', window.location.origin);
-        url.searchParams.append('page', page.toString());
-        url.searchParams.append('limit', limit.toString());
+        // 명시적으로 반환 타입을 지정하여 타입 안전성 보장
+        const result = await window.electron.invokeMethod('getProducts', { page, limit }) as MethodReturnMapping['getProducts'];
+        console.log('[Dev DB Service] Products received:', result);
         
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch products: ${response.statusText}`);
+        // Convert date strings to Date objects if needed
+        if (result.products) {
+          result.products.forEach((p: any) => {
+            if (p.certificationDate && typeof p.certificationDate === 'string') {
+              p.certificationDate = new Date(p.certificationDate);
+            }
+          });
         }
         
-        const data = await response.json();
-        return {
-          products: data.products,
-          total: data.total
-        };
+        return result;
       } catch (error) {
-        console.error('[Dev DB Service] Error fetching products:', error);
+        console.error('[Dev DB Service] Error fetching products via IPC:', error);
         throw error;
       }
     },
     
     async getProductById(id: string) {
-      console.log('[Dev DB Service] Getting product by ID', id);
+      console.log('[Dev DB Service] Getting product by ID via Electron IPC', id);
       
       try {
-        const url = new URL(`/api/products/${id}`, window.location.origin);
-        const response = await fetch(url);
+        // TypeScript 타입 문제를 우회하기 위해 any 타입으로 일시적 캐스팅 후 올바른 타입으로 재캐스팅
+        const product = await (window.electron.invokeMethod as any)('getProductById', id) as MatterProduct | null;
         
-        if (!response.ok) {
-          if (response.status === 404) {
-            return null;
-          }
-          throw new Error(`Failed to fetch product: ${response.statusText}`);
+        // Convert date strings to Date objects if needed
+        if (product && product.certificationDate && typeof product.certificationDate === 'string') {
+          product.certificationDate = new Date(product.certificationDate);
         }
         
-        return await response.json();
+        return product;
       } catch (error) {
-        console.error('[Dev DB Service] Error fetching product by ID:', error);
+        console.error('[Dev DB Service] Error fetching product by ID via IPC:', error);
         throw error;
       }
     },
     
     async searchProducts(query: string, page = 1, limit = 20) {
-      console.log('[Dev DB Service] Searching products', { query, page, limit });
+      console.log('[Dev DB Service] Searching products via Electron IPC', { query, page, limit });
       
       try {
-        const url = new URL('/api/products/search', window.location.origin);
-        url.searchParams.append('query', query);
-        url.searchParams.append('page', page.toString());
-        url.searchParams.append('limit', limit.toString());
+        // TypeScript 타입 문제를 우회하기 위해 any 타입으로 일시적 캐스팅 후 올바른 타입으로 재캐스팅
+        const result = await (window.electron.invokeMethod as any)('searchProducts', { query, page, limit }) as { products: MatterProduct[]; total: number };
         
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Failed to search products: ${response.statusText}`);
+        // Convert date strings to Date objects if needed
+        if (result.products) {
+          result.products.forEach((p: any) => {
+            if (p.certificationDate && typeof p.certificationDate === 'string') {
+              p.certificationDate = new Date(p.certificationDate);
+            }
+          });
         }
         
-        const data = await response.json();
-        return {
-          products: data.products,
-          total: data.total
-        };
+        return result;
       } catch (error) {
-        console.error('[Dev DB Service] Error searching products:', error);
+        console.error('[Dev DB Service] Error searching products via IPC:', error);
         throw error;
       }
     },
     
     async getDatabaseSummary() {
-      console.log('[Dev DB Service] Getting database summary');
+      console.log('[Dev DB Service] Getting database summary via Electron IPC');
       
       try {
-        const response = await fetch('/api/database/summary');
-        if (!response.ok) {
-          throw new Error(`Failed to fetch database summary: ${response.statusText}`);
+        // 명시적으로 반환 타입을 지정하여 타입 안전성 보장
+        const summary = await window.electron.invokeMethod('getDatabaseSummary') as MethodReturnMapping['getDatabaseSummary'];
+        console.log('[Dev DB Service] Database summary received:', summary);
+        
+        // Convert lastUpdated string to Date object if needed
+        if (summary && summary.lastUpdated && typeof summary.lastUpdated === 'string') {
+          summary.lastUpdated = new Date(summary.lastUpdated);
         }
         
-        return await response.json();
+        return summary;
       } catch (error) {
-        console.error('[Dev DB Service] Error fetching database summary:', error);
+        console.error('[Dev DB Service] Error fetching database summary via IPC:', error);
         throw error;
       }
     },
     
     async markLastUpdated(count: number) {
-      console.log('[Dev DB Service] Marking last updated', { count });
+      console.log('[Dev DB Service] Marking last updated via Electron IPC', { count });
       
       try {
-        const response = await fetch('/api/database/update-summary', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ newlyAddedCount: count }),
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Failed to update database summary: ${response.statusText}`);
-        }
+        // TypeScript 타입 문제를 우회하기 위해 any 타입으로 일시적 캐스팅
+        await (window.electron.invokeMethod as any)('markLastUpdated', count);
+        return;
       } catch (error) {
-        console.error('[Dev DB Service] Error updating database summary:', error);
+        console.error('[Dev DB Service] Error marking last updated via IPC:', error);
         throw error;
       }
     },

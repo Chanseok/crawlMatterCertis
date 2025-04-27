@@ -8,7 +8,7 @@ export interface MatterProduct {
   model: string;
   deviceType: string;
   certificationId: string; // Kept the first instance
-  certificationDate: string;
+  certificationDate: string | Date; // 문자열 또는 Date 객체 모두 허용하도록 수정
   softwareVersion: string;
   hardwareVersion: string;
   vid: string;

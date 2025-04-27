@@ -76,8 +76,11 @@ type MethodParamsMapping = {
     'stopCrawling': void;
     'exportToExcel': { path?: string };
     'getProducts': { search?: string; page?: number; limit?: number };
+    'getProductById': string;
+    'searchProducts': { query: string; page?: number; limit?: number };
     'getDatabaseSummary': void;
     'getStaticData': void;
+    'markLastUpdated': number;
 };
 
 // 메서드 반환값 맵핑
@@ -86,8 +89,11 @@ type MethodReturnMapping = {
     'stopCrawling': { success: boolean };
     'exportToExcel': { success: boolean; path?: string };
     'getProducts': { products: MatterProduct[]; total: number };
+    'getProductById': MatterProduct | null;
+    'searchProducts': { products: MatterProduct[]; total: number };
     'getDatabaseSummary': DatabaseSummary;
     'getStaticData': StaticData;
+    'markLastUpdated': void;
 };
 
 type UnsubscribeFunction = () => void;

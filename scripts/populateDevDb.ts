@@ -1,327 +1,423 @@
 /**
- * Matter Certification Database Population Tool
+ * 개발용 데이터베이스 초기화 스크립트
  * 
- * This script reads JSON data files from the data-for-dev directory
- * and populates a SQLite development database with the data.
+ * 이 스크립트는 개발 모드에서 사용할 SQLite 데이터베이스를 생성하고
+ * data-for-dev 폴더의 JSON 파일에서 데이터를 로드합니다.
  * 
- * Usage:
- *   npm run populate-dev-db -- [options]
- * 
- * Options:
- *   --db-path     Path to SQLite database file (default: ./dev-db.sqlite)
- *   --data-dir    Path to directory containing JSON data files (default: ./data-for-dev)
- *   --reset       Reset the database before importing (removes existing data)
- *   --verbose     Show detailed logs
+ * 실행 방법: npx ts-node scripts/populateDevDb.ts
  */
 
+import sqlite3 from 'sqlite3';
 import fs from 'fs';
 import path from 'path';
-import { Database } from 'better-sqlite3';
-import better_sqlite3 from 'better-sqlite3';
-import { nanoid } from 'nanoid';
+import { fileURLToPath } from 'url';
 
-// Define interfaces based on the data structure
-interface DeviceBasic {
-  url: string;
-  manufacturer: string;
-  model: string;
-  certificateId: string;
-  pageId: number;
-  indexInPage: number;
-  
-  // DeviceBasic에는 없지만 타입 체크를 위해 선택적 필드로 추가
-  id?: string;
-  deviceType?: string;
-  certificationId?: string;
-  certificationDate?: string;
-  softwareVersion?: string;
-  hardwareVersion?: string;
-  vid?: string;
-  pid?: string;
-  familySku?: string;
-  familyVariantSku?: string;
-  firmwareVersion?: string;
-  familyId?: string;
-  tisTrpTested?: string;
-  specificationVersion?: string;
-  transportInterface?: string;
-  primaryDeviceTypeId?: string;
-  applicationCategories?: string[];
-}
+// ES 모듈에서 __dirname 대체
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-interface MatterDeviceDetail {
+// MatterProduct 인터페이스 직접 정의 (types.ts에서 가져오지 않음)
+interface MatterProduct {
   id?: string;
-  manufacturer: string;
-  model: string;
-  deviceType?: string;
-  certificationId?: string;
-  certificationDate?: string;
-  softwareVersion?: string;
-  hardwareVersion?: string;
-  vid?: string;
-  pid?: string;
-  familySku?: string;
-  familyVariantSku?: string;
-  firmwareVersion?: string;
-  certificateId?: string;
-  familyId?: string;
-  tisTrpTested?: string;
-  specificationVersion?: string;
-  transportInterface?: string;
-  primaryDeviceTypeId?: string;
-  applicationCategories?: string[];
   url?: string;
+  pageId?: number;
+  indexInPage?: number;
+  manufacturer?: string;
+  model?: string;
+  deviceType?: string;
+  certificationId?: string;
+  certificationDate?: string;
+  softwareVersion?: string;
+  hardwareVersion?: string;
+  vid?: string;
+  pid?: string;
+  familySku?: string;
+  familyVariantSku?: string;
+  firmwareVersion?: string;
+  familyId?: string;
+  tisTrpTested?: string;
+  specificationVersion?: string;
+  transportInterface?: string;
+  primaryDeviceTypeId?: string;
+  applicationCategories?: string[];
 }
 
-// 공통 타입 정의 - DeviceBasic과 MatterDeviceDetail을 모두 포함할 수 있는 타입
-type MatterDevice = DeviceBasic | MatterDeviceDetail;
+// DatabaseSummary 인터페이스 직접 정의
+interface DatabaseSummary {
+  totalProducts: number;
+  lastUpdated: Date | null;
+  newlyAddedCount: number;
+}
 
-// Parse command line arguments
-function parseArgs() {
-  const args = process.argv.slice(2);
-  const options: {
-    dbPath: string;
-    dataDir: string;
-    reset: boolean;
-    verbose: boolean;
-  } = {
-    dbPath: './dev-db.sqlite',
-    dataDir: './data-for-dev',
-    reset: false,
-    verbose: false,
-  };
+// 개발 환경에서 사용자 디렉토리 경로 - 실제 앱과 동일한 위치에 DB 생성
+const userDataPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.config', 'crawlMatterCertis');
+if (!fs.existsSync(userDataPath)) {
+  fs.mkdirSync(userDataPath, { recursive: true });
+}
+const dbPath = path.join(userDataPath, 'dev-database.sqlite');
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    
-    switch(arg) {
-      case '--db-path':
-        options.dbPath = args[++i];
-        break;
-      case '--data-dir':
-        options.dataDir = args[++i];
-        break;
-      case '--reset':
-        options.reset = true;
-        break;
-      case '--verbose':
-        options.verbose = true;
-        break;
-      case '--help':
-      case '-h':
-        console.log(`
-Matter Certification Database Population Tool
+console.log(`데이터베이스 경로: ${dbPath}`);
 
-Usage:
-  npm run populate-dev-db -- [options]
+// 데이터 파일 경로
+const rootDir = path.resolve(__dirname, '..');
+const allDevicesPath = path.join(rootDir, 'data-for-dev', 'all_matter_devices.json');
+const mergedDevicesPath = path.join(rootDir, 'data-for-dev', 'merged_matter_devices.json');
 
-Options:
-  --db-path     Path to SQLite database file (default: ./dev-db.sqlite)
-  --data-dir    Path to directory containing JSON data files (default: ./data-for-dev)
-  --reset       Reset the database before importing (removes existing data)
-  --verbose     Show detailed logs
-        `);
-        process.exit(0);
+console.log(`데이터 파일 경로: 
+  - all_matter_devices.json: ${allDevicesPath}
+  - merged_matter_devices.json: ${mergedDevicesPath}
+`);
+
+// 데이터베이스 연결
+const db = new sqlite3.Database(dbPath);
+
+// 'products' 테이블 생성
+function createProductsTable(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS products (
+        id TEXT PRIMARY KEY,
+        url TEXT,
+        pageId INTEGER,
+        indexInPage INTEGER,
+        manufacturer TEXT,
+        model TEXT,
+        deviceType TEXT,
+        certificationId TEXT,
+        certificationDate TEXT,
+        softwareVersion TEXT,
+        hardwareVersion TEXT,
+        vid TEXT,
+        pid TEXT,
+        familySku TEXT,
+        familyVariantSku TEXT,
+        firmwareVersion TEXT,
+        familyId TEXT,
+        tisTrpTested TEXT,
+        specificationVersion TEXT,
+        transportInterface TEXT,
+        primaryDeviceTypeId TEXT,
+        applicationCategories TEXT
+      )
+    `, (err) => {
+      if (err) {
+        reject(err);
+      } else {
+        console.log("'products' 테이블이 생성되었습니다.");
+        resolve();
+      }
+    });
+  });
+}
+
+// 'product_details' 테이블 생성
+function createProductDetailsTable(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS product_details (
+        id TEXT PRIMARY KEY,
+        url TEXT,
+        pageId INTEGER,
+        indexInPage INTEGER,
+        manufacturer TEXT,
+        model TEXT,
+        deviceType TEXT,
+        certificationId TEXT,
+        certificationDate TEXT,
+        softwareVersion TEXT,
+        hardwareVersion TEXT,
+        vid TEXT,
+        pid TEXT,
+        familySku TEXT,
+        familyVariantSku TEXT,
+        firmwareVersion TEXT,
+        familyId TEXT,
+        tisTrpTested TEXT,
+        specificationVersion TEXT,
+        transportInterface TEXT,
+        primaryDeviceTypeId TEXT,
+        applicationCategories TEXT
+      )
+    `, (err) => {
+      if (err) {
+        reject(err);
+      } else {
+        console.log("'product_details' 테이블이 생성되었습니다.");
+        resolve();
+      }
+    });
+  });
+}
+
+// 'products' 테이블에 데이터 추가
+async function populateProductsTable(): Promise<void> {
+  try {
+    // 기존 데이터 지우기
+    await new Promise<void>((resolve, reject) => {
+      db.run("DELETE FROM products", (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    const data = fs.readFileSync(allDevicesPath, 'utf-8');
+    const products: MatterProduct[] = JSON.parse(data);
+
+    // 데이터가 없으면 종료
+    if (!products || !Array.isArray(products) || products.length === 0) {
+      console.error("all_matter_devices.json 파일에 유효한 데이터가 없습니다.");
+      return;
     }
-  }
 
-  return options;
-}
+    console.log(`${products.length}개의 제품 데이터를 가져왔습니다.`);
 
-// Initialize database and create required tables
-function initializeDatabase(dbPath: string, reset: boolean): Database {
-  console.log(`Initializing database at ${dbPath}`);
-  
-  // Ensure directory exists
-  const dbDir = path.dirname(dbPath);
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
-  }
+    const stmt = db.prepare(`
+      INSERT INTO products (
+        id, url, pageId, indexInPage, manufacturer, model, deviceType, 
+        certificationId, certificationDate, softwareVersion, hardwareVersion, 
+        vid, pid, familySku, familyVariantSku, firmwareVersion, familyId, 
+        tisTrpTested, specificationVersion, transportInterface, 
+        primaryDeviceTypeId, applicationCategories
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-  const db = better_sqlite3(dbPath);
-  
-  if (reset) {
-    console.log('Resetting database (dropping existing tables)');
-    db.exec('DROP TABLE IF EXISTS matter_products');
-    db.exec('DROP TABLE IF EXISTS app_metadata');
-  }
-  
-  // Create tables if they don't exist
-  db.exec(`CREATE TABLE IF NOT EXISTS matter_products (
-    id TEXT PRIMARY KEY,
-    manufacturer TEXT NOT NULL,
-    model TEXT NOT NULL,
-    deviceType TEXT,
-    certificationId TEXT,
-    certificationDate TEXT,
-    softwareVersion TEXT,
-    hardwareVersion TEXT,
-    vid TEXT,
-    pid TEXT,
-    familySku TEXT,
-    familyVariantSku TEXT,
-    firmwareVersion TEXT,
-    certificateId TEXT,
-    familyId TEXT,
-    tisTrpTested TEXT,
-    specificationVersion TEXT,
-    transportInterface TEXT,
-    primaryDeviceTypeId TEXT,
-    applicationCategories TEXT,
-    url TEXT,
-    createdAt TEXT NOT NULL,
-    updatedAt TEXT NOT NULL
-  )`);
+    // 트랜잭션 시작
+    await new Promise<void>((resolve, reject) => {
+      db.run("BEGIN TRANSACTION", (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
 
-  db.exec(`CREATE TABLE IF NOT EXISTS app_metadata (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updatedAt TEXT NOT NULL
-  )`);
-  
-  return db;
-}
+    let insertedCount = 0;
+    for (const product of products) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          // ID 필드가 없으면 생성
+          if (!product.id) {
+            product.id = `csa-matter-auto-${insertedCount}`;
+          }
 
-// 속성 존재 여부를 안전하게 확인하는 헬퍼 함수
-function safeGet<T, K extends string>(obj: T, key: K): unknown {
-  return key in (obj as Record<string, unknown>) ? (obj as Record<string, unknown>)[key] : null;
-}
-
-// Process JSON files in the data directory
-async function processDataFiles(dataDir: string, db: Database, verbose: boolean) {
-  console.log(`Processing data files from ${dataDir}`);
-  
-  // Get all JSON files from the data directory
-  const files = fs.readdirSync(dataDir)
-    .filter(file => file.endsWith('.json'))
-    .map(file => path.join(dataDir, file));
-  
-  console.log(`Found ${files.length} JSON files`);
-  
-  // Prepare statements
-  const insertProduct = db.prepare(`
-    INSERT OR REPLACE INTO matter_products (
-      id, manufacturer, model, deviceType, certificationId, certificationDate,
-      softwareVersion, hardwareVersion, vid, pid, familySku, familyVariantSku,
-      firmwareVersion, certificateId, familyId, tisTrpTested, specificationVersion,
-      transportInterface, primaryDeviceTypeId, applicationCategories, url, createdAt, updatedAt
-    ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-    )
-  `);
-  
-  // Begin transaction
-  const transaction = db.transaction(() => {
-    let totalProducts = 0;
-    const now = new Date().toISOString();
-    
-    // Process each file
-    for (const file of files) {
-      if (verbose) console.log(`Processing ${file}`);
-      
-      const fileData = fs.readFileSync(file, 'utf8');
-      const devices = JSON.parse(fileData) as MatterDevice[];
-      
-      if (verbose) console.log(`Found ${devices.length} devices in ${file}`);
-      
-      for (const device of devices) {
-        // Generate ID if not present
-        const id = safeGet(device, 'id') as string || `matter-${nanoid(8)}`;
-        
-        // Default device type if not present
-        const deviceType = safeGet(device, 'deviceType') as string || 'Matter Device';
-        
-        // Handle application categories
-        let applicationCategories: string | null = null;
-        if (safeGet(device, 'applicationCategories')) {
-          applicationCategories = JSON.stringify(safeGet(device, 'applicationCategories'));
-        }
-        
-        // 안전하게 속성에 접근
-        const certificationId = safeGet(device, 'certificationId') || safeGet(device, 'certificateId');
-        const certificateId = safeGet(device, 'certificateId') || safeGet(device, 'certificationId');
-        
-        // Insert or update product
-        insertProduct.run(
-          id,
-          device.manufacturer,
-          device.model,
-          deviceType || null,
-          certificationId || null,
-          safeGet(device, 'certificationDate') || null,
-          safeGet(device, 'softwareVersion') || null,
-          safeGet(device, 'hardwareVersion') || null,
-          safeGet(device, 'vid') || null,
-          safeGet(device, 'pid') || null,
-          safeGet(device, 'familySku') || null,
-          safeGet(device, 'familyVariantSku') || null,
-          safeGet(device, 'firmwareVersion') || null,
-          certificateId || null,
-          safeGet(device, 'familyId') || null,
-          safeGet(device, 'tisTrpTested') || null,
-          safeGet(device, 'specificationVersion') || null,
-          safeGet(device, 'transportInterface') || null,
-          safeGet(device, 'primaryDeviceTypeId') || null,
-          applicationCategories,
-          device.url || null,
-          now,
-          now
-        );
-        
-        totalProducts++;
+          stmt.run(
+            product.id,
+            product.url || null,
+            product.pageId || null,
+            product.indexInPage || null,
+            product.manufacturer || null,
+            product.model || null,
+            product.deviceType || null,
+            product.certificationId || null,
+            product.certificationDate || null,
+            product.softwareVersion || null,
+            product.hardwareVersion || null,
+            product.vid || null,
+            product.pid || null,
+            product.familySku || null,
+            product.familyVariantSku || null,
+            product.firmwareVersion || null,
+            product.familyId || null,
+            product.tisTrpTested || null,
+            product.specificationVersion || null,
+            product.transportInterface || null,
+            product.primaryDeviceTypeId || null,
+            JSON.stringify(product.applicationCategories || []), // 배열을 JSON 문자열로 저장
+            function(err) {
+              if (err) reject(err);
+              else {
+                insertedCount++;
+                resolve();
+              }
+            }
+          );
+        });
+      } catch (error) {
+        console.error(`제품 데이터 삽입 중 오류 발생: ${JSON.stringify(product)}`, error);
       }
     }
-    
-    // Update metadata
-    const upsertMetadata = db.prepare(`
-      INSERT OR REPLACE INTO app_metadata (key, value, updatedAt)
-      VALUES (?, ?, ?)
-    `);
-    
-    upsertMetadata.run('totalProducts', totalProducts.toString(), now);
-    upsertMetadata.run('lastUpdated', now, now);
-    
-    return totalProducts;
-  });
-  
-  // Execute transaction
-  const totalProducts = transaction();
-  console.log(`Imported ${totalProducts} products into the database`);
-  
-  return totalProducts;
-}
 
-// Main function
-async function main() {
-  try {
-    const options = parseArgs();
-    
-    // Make paths absolute
-    options.dbPath = path.resolve(options.dbPath);
-    options.dataDir = path.resolve(options.dataDir);
-    
-    console.log('Starting database population...');
-    console.log(`Database path: ${options.dbPath}`);
-    console.log(`Data directory: ${options.dataDir}`);
-    
-    // Initialize database
-    const db = initializeDatabase(options.dbPath, options.reset);
-    
-    // Process data files
-    const totalProducts = await processDataFiles(options.dataDir, db, options.verbose);
-    
-    console.log('Database population completed successfully');
-    console.log(`Total products in database: ${totalProducts}`);
-    
-    // Close database connection
-    db.close();
-    
+    // 트랜잭션 종료
+    await new Promise<void>((resolve, reject) => {
+      db.run("COMMIT", (err) => {
+        if (err) {
+          db.run("ROLLBACK");
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    stmt.finalize();
+    console.log(`'products' 테이블에 ${insertedCount}개의 레코드가 추가되었습니다.`);
   } catch (error) {
-    console.error('Error during database population:');
-    console.error(error);
-    process.exit(1);
+    console.error("제품 데이터 추가 중 오류 발생:", error);
+    // 트랜잭션 롤백
+    db.run("ROLLBACK");
   }
 }
 
-// Run the script
+// 'product_details' 테이블에 데이터 추가
+async function populateProductDetailsTable(): Promise<void> {
+  try {
+    // 기존 데이터 지우기
+    await new Promise<void>((resolve, reject) => {
+      db.run("DELETE FROM product_details", (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    const data = fs.readFileSync(mergedDevicesPath, 'utf-8');
+    const details: MatterProduct[] = JSON.parse(data);
+
+    // 데이터가 없으면 종료
+    if (!details || !Array.isArray(details) || details.length === 0) {
+      console.error("merged_matter_devices.json 파일에 유효한 데이터가 없습니다.");
+      return;
+    }
+
+    console.log(`${details.length}개의 제품 상세 정보를 가져왔습니다.`);
+
+    const stmt = db.prepare(`
+      INSERT INTO product_details (
+        id, url, pageId, indexInPage, manufacturer, model, deviceType, 
+        certificationId, certificationDate, softwareVersion, hardwareVersion, 
+        vid, pid, familySku, familyVariantSku, firmwareVersion, familyId, 
+        tisTrpTested, specificationVersion, transportInterface, 
+        primaryDeviceTypeId, applicationCategories
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    // 트랜잭션 시작
+    await new Promise<void>((resolve, reject) => {
+      db.run("BEGIN TRANSACTION", (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    let insertedCount = 0;
+    for (const detail of details) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          // ID 필드가 없으면 생성
+          if (!detail.id) {
+            detail.id = `csa-matter-detail-${insertedCount}`;
+          }
+
+          stmt.run(
+            detail.id,
+            detail.url || null,
+            detail.pageId || null,
+            detail.indexInPage || null,
+            detail.manufacturer || null,
+            detail.model || null,
+            detail.deviceType || null,
+            detail.certificationId || null,
+            detail.certificationDate || null,
+            detail.softwareVersion || null,
+            detail.hardwareVersion || null,
+            detail.vid || null,
+            detail.pid || null,
+            detail.familySku || null,
+            detail.familyVariantSku || null,
+            detail.firmwareVersion || null,
+            detail.familyId || null,
+            detail.tisTrpTested || null,
+            detail.specificationVersion || null,
+            detail.transportInterface || null,
+            detail.primaryDeviceTypeId || null,
+            JSON.stringify(detail.applicationCategories || []), // 배열을 JSON 문자열로 저장
+            function(err) {
+              if (err) reject(err);
+              else {
+                insertedCount++;
+                resolve();
+              }
+            }
+          );
+        });
+      } catch (error) {
+        console.error(`제품 상세 정보 삽입 중 오류 발생: ${JSON.stringify(detail)}`, error);
+      }
+    }
+
+    // 트랜잭션 종료
+    await new Promise<void>((resolve, reject) => {
+      db.run("COMMIT", (err) => {
+        if (err) {
+          db.run("ROLLBACK");
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    stmt.finalize();
+    console.log(`'product_details' 테이블에 ${insertedCount}개의 레코드가 추가되었습니다.`);
+  } catch (error) {
+    console.error("제품 상세 정보 추가 중 오류 발생:", error);
+    // 트랜잭션 롤백
+    db.run("ROLLBACK");
+  }
+}
+
+// 데이터베이스 요약 정보 업데이트
+async function updateDatabaseSummary(): Promise<void> {
+  try {
+    // 제품 수 조회
+    const totalProducts = await new Promise<number>((resolve, reject) => {
+      db.get("SELECT COUNT(*) as total FROM products", (err, row: { total: number }) => {
+        if (err) reject(err);
+        else resolve(row.total);
+      });
+    });
+
+    // 요약 정보 저장
+    const summaryData = {
+      lastUpdated: new Date().toISOString(),
+      newlyAddedCount: totalProducts
+    };
+
+    const summaryFilePath = path.join(userDataPath, 'db_summary.json');
+    fs.writeFileSync(summaryFilePath, JSON.stringify(summaryData, null, 2));
+    console.log(`데이터베이스 요약 정보가 업데이트되었습니다. 총 제품 수: ${totalProducts}`);
+  } catch (error) {
+    console.error("데이터베이스 요약 정보 업데이트 중 오류 발생:", error);
+  }
+}
+
+// 메인 함수
+async function main() {
+  try {
+    console.log("데이터베이스 초기화 및 데이터 로드를 시작합니다...");
+    
+    // 테이블 생성
+    await createProductsTable();
+    await createProductDetailsTable();
+    
+    // 데이터 로드
+    await populateProductsTable();
+    await populateProductDetailsTable();
+    
+    // 요약 정보 업데이트
+    await updateDatabaseSummary();
+    
+    console.log("데이터베이스 초기화 및 데이터 로드가 완료되었습니다.");
+  } catch (error) {
+    console.error("스크립트 실행 중 오류 발생:", error);
+  } finally {
+    // 데이터베이스 연결 종료
+    db.close((err) => {
+      if (err) {
+        console.error("데이터베이스 연결 종료 중 오류 발생:", err);
+      } else {
+        console.log("데이터베이스 연결이 종료되었습니다.");
+      }
+    });
+  }
+}
+
+// 스크립트 실행
 main();

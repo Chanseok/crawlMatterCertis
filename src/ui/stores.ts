@@ -102,13 +102,14 @@ async function loadInitialData() {
       
     databaseSummaryStore.set(dbSummary);
     
-    // 제품 목록 가져오기
-    const { products, total } = await api.invokeMethod('getProducts', { limit: 100, page: 1 })
+    // 제품 목록 가져오기 - 매개변수 형식을 수정하여 정확히 일치시킴
+    const { products, total } = await api.invokeMethod('getProducts', { page: 1, limit: 100 })
       .catch(err => {
         console.warn('Failed to load products:', err);
         return { products: [], total: 0 };
       });
       
+    console.log('Products loaded from database:', products && products.length);
     productsStore.set(products);
     
     if (products.length > 0) {

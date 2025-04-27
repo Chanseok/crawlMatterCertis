@@ -213,7 +213,11 @@ function App() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.model}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.deviceType}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.certificationId}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.certificationDate}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">
+                          {product.certificationDate instanceof Date 
+                            ? format(product.certificationDate, 'yyyy-MM-dd')
+                            : product.certificationDate}
+                        </td>
                       </tr>
                     ))
                   )}

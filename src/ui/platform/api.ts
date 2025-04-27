@@ -55,8 +55,11 @@ export interface MethodParamsMapping {
   'stopCrawling': void;
   'exportToExcel': { path?: string };
   'getProducts': { search?: string; page?: number; limit?: number };
+  'getProductById': string;
+  'searchProducts': { query: string; page?: number; limit?: number };
   'getDatabaseSummary': void;
   'getStaticData': void;
+  'markLastUpdated': number;
 }
 
 // 메소드 반환 맵핑 인터페이스
@@ -65,14 +68,17 @@ export interface MethodReturnMapping {
   'stopCrawling': { success: boolean };
   'exportToExcel': { success: boolean; path?: string };
   'getProducts': { products: MatterProduct[]; total: number };
+  'getProductById': MatterProduct | null;
+  'searchProducts': { products: MatterProduct[]; total: number };
   'getDatabaseSummary': DatabaseSummary;
   'getStaticData': any;
+  'markLastUpdated': void;
 }
 
 // 현재 활성화된 플랫폼 API
 let currentPlatformAPI: IPlatformAPI;
-// 현재 앱 모드에 따라 API를 선택할지 여부
-let useMockApiInDevelopment = true;
+// 개발 모드에서 실제 데이터베이스를 사용하기 위해 false로 설정
+let useMockApiInDevelopment = false; // 수정: true에서 false로 변경
 // 현재 앱 모드 (기본값: 개발 모드)
 let currentAppMode: AppMode = 'development';
 
@@ -209,6 +215,7 @@ class ElectronApiAdapter implements IPlatformAPI {
     params?: MethodParamsMapping[K]
   ): Promise<R> {
     try {
+      console.log(`[ElectronAPI] Invoking method: ${String(methodName)}`, params);
       // 기본 호출 메서드를 사용
       return await window.electron.invokeMethod(methodName, params) as Promise<R>;
     } catch (error) {
@@ -241,31 +248,69 @@ class TauriApiAdapter implements IPlatformAPI {
 
 // 플랫폼 감지 및 적절한 API 어댑터 초기화
 function detectPlatformAndInitApi(): IPlatformAPI {
-  // 개발 모드에서 Mock API 사용
-  if (useMockApiInDevelopment && currentAppMode === 'development') {
-    console.log('[API] Using Mock API in development mode');
-    return new MockApiAdapter();
-  }
+  console.log('[API] Detecting platform and initializing API...');
+  console.log('[API] Current app mode:', currentAppMode);
+  console.log('[API] useMockApiInDevelopment:', useMockApiInDevelopment);
+  console.log('[API] window.electron exists:', !!window.electron);
   
-  // 실사용 모드나 Mock API를 사용하지 않는 경우
+  // window.electron이 존재하는지 확인하고, 존재하면 반드시 ElectronApiAdapter를 사용
   if (window.electron) {
-    console.log('[API] Using Electron API');
+    console.log('[API] Electron API detected. Using ElectronApiAdapter regardless of app mode.');
     return new ElectronApiAdapter();
   }
   
-  // 미래의 Tauri 지원
-  // if (window.tauri) {
-  //   return new TauriApiAdapter();
-  // }
+  // window.electron이 없는 경우에만 아래 로직 실행
+  console.warn('[API] No window.electron found. Trying to recover...');
   
-  // 플랫폼이 감지되지 않았다면 Mock API로 폴백
-  console.warn('[API] No platform API detected, falling back to Mock API');
+  // IPC/Electron API가 없는 경우 처리
+  if (useMockApiInDevelopment && currentAppMode === 'development') {
+    console.log('[API] Development mode with mock data. Using MockApiAdapter as fallback.');
+    return new MockApiAdapter();
+  }
+  
+  // 최후의 수단으로 경고를 표시하고 MockApiAdapter 사용
+  console.error('[API] Failed to initialize ElectronApiAdapter. window.electron is undefined.');
+  console.warn('[API] Using MockApiAdapter as last resort. Application functionality will be limited.');
   return new MockApiAdapter();
 }
 
 // API 인스턴스 초기화 및 공개
 export function initPlatformApi(): IPlatformAPI {
-  currentPlatformAPI = detectPlatformAndInitApi();
+  // window.electron이 초기화될 때까지 기다리는 로직 추가
+  if (typeof window !== 'undefined') {
+    // DOMContentLoaded 이벤트를 사용하여 DOM이 완전히 로드된 후 API 초기화
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        // DOMContentLoaded 이후에도 window.electron이 없는 경우가 있을 수 있으므로
+        // 약간의 지연을 줌
+        setTimeout(() => {
+          console.log('[API] Delayed initialization after DOMContentLoaded');
+          console.log('[API] window.electron exists after delay:', !!window.electron);
+          currentPlatformAPI = detectPlatformAndInitApi();
+        }, 100);
+      });
+      
+      // 임시로 MockApiAdapter를 반환하고, 실제 API는 이벤트 후에 초기화됨
+      console.log('[API] Returning temporary MockApiAdapter while waiting for DOMContentLoaded');
+      currentPlatformAPI = new MockApiAdapter();
+    } else {
+      // 이미 DOM이 로드된 경우 약간의 지연 후 초기화
+      setTimeout(() => {
+        console.log('[API] Delayed initialization as DOM is already loaded');
+        console.log('[API] window.electron exists after delay:', !!window.electron);
+        currentPlatformAPI = detectPlatformAndInitApi();
+      }, 100);
+      
+      // 임시로 MockApiAdapter를 반환
+      console.log('[API] Returning temporary MockApiAdapter while waiting for delayed initialization');
+      currentPlatformAPI = new MockApiAdapter();
+    }
+  } else {
+    // window 객체가 없는 환경 (예: 서버 사이드)
+    console.warn('[API] No window object available. Using MockApiAdapter.');
+    currentPlatformAPI = new MockApiAdapter();
+  }
+  
   return currentPlatformAPI;
 }
 
@@ -273,7 +318,20 @@ export function initPlatformApi(): IPlatformAPI {
 export function getPlatformApi(): IPlatformAPI {
   if (!currentPlatformAPI) {
     currentPlatformAPI = initPlatformApi();
+    
+    // 설정된 지연 후에 API가 제대로 초기화되었는지 확인
+    setTimeout(() => {
+      console.log('[API] Checking if API was properly initialized');
+      console.log('[API] window.electron exists after getPlatformApi delay:', !!window.electron);
+      
+      // window.electron이 존재하는데 MockApiAdapter를 사용 중이면 API 재초기화
+      if (window.electron && currentPlatformAPI instanceof MockApiAdapter) {
+        console.log('[API] Found window.electron but using MockApiAdapter. Reinitializing...');
+        currentPlatformAPI = detectPlatformAndInitApi();
+      }
+    }, 500);
   }
+  
   return currentPlatformAPI;
 }
 
