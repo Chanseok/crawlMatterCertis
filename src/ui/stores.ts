@@ -10,8 +10,15 @@ export const crawlingStatusStore = atom<CrawlingStatus>('idle');
 
 // 크롤링 진행 상태 관리
 export const crawlingProgressStore = map<CrawlingProgress>({
-  current: 0,
-  total: 0,
+  status: 'idle',
+  currentPage: 0,
+  totalPages: 0,
+  processedItems: 0,
+  totalItems: 0,
+  startTime: Date.now(),
+  estimatedEndTime: 0,
+  newItems: 0,
+  updatedItems: 0,
   percentage: 0,
   currentStep: '',
   elapsedTime: 0
@@ -32,6 +39,7 @@ export const searchQueryStore = atom<string>('');
 // 데이터베이스 요약정보 관리
 export const databaseSummaryStore = map<DatabaseSummary>({
   totalProducts: 0,
+  productCount: 0, // productCount 속성 추가
   lastUpdated: null,
   newlyAddedCount: 0
 });
@@ -112,6 +120,7 @@ async function loadInitialData() {
         console.warn('Failed to load database summary:', err);
         return {
           totalProducts: 0,
+          productCount: 0,
           lastUpdated: null,
           newlyAddedCount: 0
         };

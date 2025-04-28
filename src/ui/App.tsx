@@ -115,20 +115,22 @@ function App() {
               {crawlingStatus === 'running' ? '크롤링 중지' : '크롤링 시작'}
             </button>
 
-            {crawlingStatus === 'running' && (
+            {crawlingStatus === 'running' && progress && (
               <div className="mt-4">
                 <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
-                  <span>{progress.currentStep}</span>
-                  <span>{progress.percentage.toFixed(1)}%</span>
+                  <span>{progress.currentStep ?? '상태 로딩 중...'}</span>
+                  {/* percentage가 undefined일 경우 0으로 처리 */}
+                  <span>{(progress.percentage ?? 0).toFixed(1)}%</span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div
                     className="bg-blue-500 h-2 rounded-full"
-                    style={{ width: `${progress.percentage}%` }}
+                    style={{ width: `${progress.percentage ?? 0}%` }}
                   ></div>
                 </div>
                 <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  <span>진행: {progress.current}/{progress.total}</span>
+                  {/* current -> processedItems, total -> totalItems 로 변경 */}
+                  <span>진행: {progress.processedItems ?? 0}/{progress.totalItems ?? 0}</span>
                   {progress.remainingTime !== undefined && (
                     <span>예상 남은 시간: {Math.floor(progress.remainingTime / 60)}분 {Math.floor(progress.remainingTime % 60)}초</span>
                   )}

@@ -212,6 +212,7 @@ export async function getDatabaseSummaryFromDb(): Promise<DatabaseSummary> {
             const summaryData = await readSummary();
             resolve({
                 totalProducts: row.total,
+                productCount: row.total, // 'productCount'를 'totalProducts'와 동일한 값으로 추가
                 lastUpdated: summaryData.lastUpdated ? new Date(summaryData.lastUpdated) : null,
                 newlyAddedCount: summaryData.newlyAddedCount
             });

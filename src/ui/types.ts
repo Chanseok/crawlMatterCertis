@@ -38,7 +38,7 @@ export interface ProductDetail  {
 export type AppMode = 'development' | 'production';
 
 // 크롤링 상태 타입
-export type CrawlingStatus = 'idle' | 'running' | 'paused' | 'completed' | 'error';
+export type CrawlingStatus = 'idle' | 'running' | 'paused' | 'completed' | 'error' | 'initializing' | 'stopped';
 
 // 로그 항목 타입
 export interface LogEntry {
@@ -49,17 +49,25 @@ export interface LogEntry {
 
 // 크롤링 진행 상태 타입
 export interface CrawlingProgress {
-  current: number;
-  total: number;
-  percentage: number;
-  currentStep: string;
+  status: CrawlingStatus;
+  currentPage: number;
+  totalPages: number;
+  processedItems: number;
+  totalItems: number;
+  startTime: number;
+  estimatedEndTime: number;
+  newItems: number;
+  updatedItems: number;
+  percentage?: number;
+  currentStep?: string;
   remainingTime?: number; // 예상 남은 시간 (초)
-  elapsedTime: number; // 경과 시간 (초)
+  elapsedTime?: number; // 경과 시간 (초)
 }
 
 // 데이터베이스 요약 정보 타입
 export interface DatabaseSummary {
   totalProducts: number;
+  productCount: number; // 총 제품 수에 대한 별칭(alias) - 호환성을 위해 유지
   lastUpdated: Date | null;
   newlyAddedCount: number; // 마지막 크롤링에서 새로 추가된 항목 수
 }

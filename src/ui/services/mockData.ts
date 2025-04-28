@@ -102,17 +102,26 @@ export const allMockProducts = [...mockProducts, ...generateMoreMockProducts(30)
 // Mock 데이터베이스 요약 정보
 export const mockDatabaseSummary: DatabaseSummary = {
   totalProducts: allMockProducts.length,
+  productCount: allMockProducts.length, // Add missing productCount property
   lastUpdated: new Date(Date.now() - 86400000), // 어제
   newlyAddedCount: 5
 };
 
-// 초기 크롤링 진행 상황
+// 초기 크롤링 진행 상황 (CrawlingProgress 타입에 맞게 수정)
 export const initialCrawlingProgress: CrawlingProgress = {
-  current: 0,
-  total: 0,
+  status: 'idle',
+  currentPage: 0,
+  totalPages: 0,
+  processedItems: 0, // Use processedItems instead of current
+  totalItems: 0,     // Use totalItems instead of total
+  startTime: 0,
+  estimatedEndTime: 0,
+  newItems: 0,
+  updatedItems: 0,
   percentage: 0,
   currentStep: '',
-  elapsedTime: 0
+  elapsedTime: 0,
+  remainingTime: undefined
 };
 
 // Mock 크롤링 시작 시뮬레이션
@@ -127,11 +136,12 @@ export const simulateCrawling = (
     clearInterval(crawlingInterval);
   }
 
-  let current = 0;
-  const total = 100;
+  let processedItems = 0; // Use processedItems locally
+  const totalItems = 100; // Use totalItems locally
   let elapsedTime = 0;
   const steps = ['준비 중...', '페이지 분석 중...', '제품 목록 수집 중...', '상세 정보 수집 중...', '데이터 저장 중...'];
   let currentStepIndex = 0;
+  const startTime = Date.now(); // Record start time
 
   // 에러 발생 시뮬레이션 (20% 확률)
   const simulateError = Math.random() < 0.2;
@@ -139,38 +149,55 @@ export const simulateCrawling = (
 
   crawlingInterval = window.setInterval(() => {
     // 진행 상황 업데이트
-    current += 1;
-    elapsedTime += 0.5;
+    processedItems += 1; // Update processedItems
+    elapsedTime = (Date.now() - startTime) / 1000; // Calculate elapsed time in seconds
 
     // 단계 변경 로직
-    if (current === 10) currentStepIndex = 1;
-    if (current === 30) currentStepIndex = 2;
-    if (current === 60) currentStepIndex = 3;
-    if (current === 90) currentStepIndex = 4;
+    if (processedItems === 10) currentStepIndex = 1;
+    if (processedItems === 30) currentStepIndex = 2;
+    if (processedItems === 60) currentStepIndex = 3;
+    if (processedItems === 90) currentStepIndex = 4;
+
+    const percentage = (processedItems / totalItems) * 100;
+    const remainingTime = elapsedTime > 0 && processedItems > 0
+      ? ((totalItems - processedItems) / processedItems) * elapsedTime
+      : undefined;
+    const estimatedEndTime = remainingTime !== undefined ? Date.now() + remainingTime * 1000 : 0;
 
     const progress: CrawlingProgress = {
-      current,
-      total,
-      percentage: (current / total) * 100,
+      status: 'running',
+      currentPage: Math.ceil(processedItems / 10), // Example logic
+      totalPages: Math.ceil(totalItems / 10), // Example logic
+      processedItems, // Use processedItems
+      totalItems,     // Use totalItems
+      startTime,
+      estimatedEndTime,
+      newItems: Math.floor(Math.random() * 5), // Example
+      updatedItems: Math.floor(Math.random() * 2), // Example
+      percentage: percentage,
       currentStep: steps[currentStepIndex],
       elapsedTime,
-      remainingTime: ((total - current) / current) * elapsedTime
+      remainingTime: remainingTime
     };
 
     onProgress(progress);
 
     // 에러 시뮬레이션
-    if (current === errorAfter && onError) {
+    if (processedItems === errorAfter && onError) {
       clearInterval(crawlingInterval!);
       crawlingInterval = null;
+      // Update status on error
+      onProgress({ ...progress, status: 'error' });
       onError('크롤링 중 오류가 발생했습니다.', '네트워크 연결 문제 또는 사이트 구조 변경으로 인한 오류일 수 있습니다.');
       return;
     }
 
     // 완료 처리
-    if (current >= total) {
+    if (processedItems >= totalItems) {
       clearInterval(crawlingInterval!);
       crawlingInterval = null;
+      // Update status on complete
+      onProgress({ ...progress, status: 'completed', percentage: 100 });
       onComplete(true, allMockProducts.length);
     }
   }, 500);
@@ -180,6 +207,8 @@ export const simulateCrawling = (
     if (crawlingInterval !== null) {
       clearInterval(crawlingInterval);
       crawlingInterval = null;
+      // Optionally update status to 'stopped' or 'paused' here
+      // Example: onProgress({ ...initialCrawlingProgress, status: 'stopped' });
     }
   };
 };

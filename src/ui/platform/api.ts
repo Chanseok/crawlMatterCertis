@@ -244,12 +244,25 @@ class ElectronApiAdapter implements IPlatformAPI {
     params?: MethodParamsMapping[K]
   ): Promise<R> {
     try {
-      // console.log(`[ElectronAPI] Invoking method: ${String(methodName)}`, params);
+      console.log(`[ElectronAPI] Invoking method: ${String(methodName)}`, params);
       
       // 안전장치: 함수 존재 여부 확인
       if (window?.electron?.invokeMethod && typeof window.electron.invokeMethod === 'function') {
+        // startCrawling 메서드 호출 시 매개변수가 undefined이 아닌지 확인
+        if (methodName === 'startCrawling' && !params) {
+          console.warn(`[API] startCrawling called with undefined params. Using default mode 'development'.`);
+          // 기본값 제공 - 타입 단언을 사용하여 타입 시스템과 호환되게 함
+          return await window.electron.invokeMethod(
+            methodName, 
+            { mode: 'development' } as unknown as MethodParamsMapping[K]
+          ) as Promise<R>;
+        }
+        
+        // null이나 undefined인 경우 빈 객체로 대체 (분해 할당 오류 방지)
+        const safeParams = params || ({} as unknown as MethodParamsMapping[K]);
+        
         // 기본 호출 메서드를 사용
-        return await window.electron.invokeMethod(methodName, params) as Promise<R>;
+        return await window.electron.invokeMethod(methodName, safeParams) as Promise<R>;
       } else {
         console.warn(`[API] window.electron.invokeMethod is not available. Using mock for: ${String(methodName)}`);
         // Mock 어댑터의 메서드 사용
@@ -257,6 +270,7 @@ class ElectronApiAdapter implements IPlatformAPI {
       }
     } catch (error) {
       console.error(`Error invoking ${String(methodName)}:`, error);
+      console.error(`Parameters:`, params ? JSON.stringify(params) : 'undefined');
       
       // 오류 발생시 Mock 어댑터의 메서드 사용 (자동 fallback)
       console.warn(`[API] Falling back to mock implementation for: ${String(methodName)}`);

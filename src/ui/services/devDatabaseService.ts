@@ -26,7 +26,7 @@ export const createDevDatabaseService = (): DatabaseService => {
       async getProducts() { return { products: [], total: 0 }; },
       async getProductById() { return null; },
       async searchProducts() { return { products: [], total: 0 }; },
-      async getDatabaseSummary() { return { totalProducts: 0, lastUpdated: null, newlyAddedCount: 0 }; },
+      async getDatabaseSummary() { return { totalProducts: 0, productCount: 0, lastUpdated: null, newlyAddedCount: 0 }; },
       async markLastUpdated() {},
     };
   }
