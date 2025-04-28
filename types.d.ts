@@ -52,6 +52,17 @@ type CrawlingProgress = {
     elapsedTime: number;
 };
 
+// 크롤링 상태 요약 정보 타입
+type CrawlingStatusSummary = {
+    dbLastUpdated: Date | null;
+    dbProductCount: number;
+    siteTotalPages: number;
+    siteProductCount: number;
+    diff: number;
+    needCrawling: boolean;
+    crawlingRange: { startPage: number; endPage: number };
+};
+
 // 데이터베이스 요약 정보 타입
 type DatabaseSummary = {
     totalProducts: number;
@@ -90,6 +101,7 @@ type MethodParamsMapping = {
     'getDatabaseSummary': void;
     'getStaticData': void;
     'markLastUpdated': number;
+    'checkCrawlingStatus': void;
 };
 
 // 메서드 반환값 맵핑
@@ -103,6 +115,7 @@ type MethodReturnMapping = {
     'getDatabaseSummary': DatabaseSummary;
     'getStaticData': StaticData;
     'markLastUpdated': void;
+    'checkCrawlingStatus': { success: boolean; status?: CrawlingStatusSummary; error?: string };
 };
 
 type UnsubscribeFunction = () => void;

@@ -11,7 +11,7 @@ import {
     getDatabaseSummaryFromDb,
     markLastUpdatedInDb
 } from './database.js';
-import { startCrawling, stopCrawling, crawlerEvents } from './crawler.js';
+import { startCrawling, stopCrawling, crawlerEvents, checkCrawlingStatus } from './crawler.js';
 import type { AppMode } from '../ui/types.js';
 
 // IPC 채널 상수 정의
@@ -24,7 +24,8 @@ const IPC_CHANNELS = {
     MARK_LAST_UPDATED: 'markLastUpdated',
     START_CRAWLING: 'startCrawling',
     STOP_CRAWLING: 'stopCrawling',
-    EXPORT_TO_EXCEL: 'exportToExcel'
+    EXPORT_TO_EXCEL: 'exportToExcel',
+    CHECK_CRAWLING_STATUS: 'checkCrawlingStatus'
 };
 
 app.on('ready', async () => {
@@ -169,6 +170,17 @@ app.on('ready', async () => {
             return { success: true, path };
         } catch (error) {
             console.error('[IPC] Error exporting to Excel:', error);
+            return { success: false, error: String(error) };
+        }
+    });
+
+    ipcMain.handle(IPC_CHANNELS.CHECK_CRAWLING_STATUS, async (event) => {
+        console.log('[IPC] checkCrawlingStatus called');
+        try {
+            const status = checkCrawlingStatus();
+            return { success: true, status };
+        } catch (error) {
+            console.error('[IPC] Error checking crawling status:', error);
             return { success: false, error: String(error) };
         }
     });

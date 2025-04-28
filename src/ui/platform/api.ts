@@ -60,6 +60,7 @@ export interface MethodParamsMapping {
   'getDatabaseSummary': void;
   'getStaticData': void;
   'markLastUpdated': number;
+  'checkCrawlingStatus': void;
 }
 
 // 메소드 반환 맵핑 인터페이스
@@ -73,6 +74,7 @@ export interface MethodReturnMapping {
   'getDatabaseSummary': DatabaseSummary;
   'getStaticData': any;
   'markLastUpdated': void;
+  'checkCrawlingStatus': { success: boolean; status?: any; error?: string };
 }
 
 // 현재 활성화된 플랫폼 API
@@ -171,6 +173,21 @@ class MockApiAdapter implements IPlatformAPI {
           totalStorage: 1000
         } as any;
         
+      case 'checkCrawlingStatus':
+        // 상태 체크 시뮬레이션
+        return {
+          success: true,
+          status: {
+            dbLastUpdated: mockDatabaseSummary.lastUpdated,
+            dbProductCount: mockDatabaseSummary.productCount,
+            siteTotalPages: 10,
+            siteProductCount: 120, // 12 products per page * 10 pages
+            diff: 120 - mockDatabaseSummary.productCount,
+            needCrawling: 120 > mockDatabaseSummary.productCount,
+            crawlingRange: { startPage: 1, endPage: 10 }
+          }
+        } as any;
+        
       default:
         throw new Error(`Method ${String(methodName)} is not implemented in mock API`);
     }
@@ -248,7 +265,7 @@ class ElectronApiAdapter implements IPlatformAPI {
       
       // 안전장치: 함수 존재 여부 확인
       if (window?.electron?.invokeMethod && typeof window.electron.invokeMethod === 'function') {
-        // startCrawling 메서드 호출 시 매개변수가 undefined이 아닌지 확인
+        // 특별 처리가 필요한 메서드들
         if (methodName === 'startCrawling' && !params) {
           console.warn(`[API] startCrawling called with undefined params. Using default mode 'development'.`);
           // 기본값 제공 - 타입 단언을 사용하여 타입 시스템과 호환되게 함
@@ -256,6 +273,12 @@ class ElectronApiAdapter implements IPlatformAPI {
             methodName, 
             { mode: 'development' } as unknown as MethodParamsMapping[K]
           ) as Promise<R>;
+        }
+        
+        // checkCrawlingStatus 특별 처리 (타입 안전성 확보)
+        if (methodName === 'checkCrawlingStatus') {
+          console.log('[API] Invoking checkCrawlingStatus with explicit type handling');
+          return await window.electron.invokeMethod('checkCrawlingStatus') as unknown as Promise<R>;
         }
         
         // null이나 undefined인 경우 빈 객체로 대체 (분해 할당 오류 방지)
@@ -305,10 +328,10 @@ function detectPlatformAndInitApi(): IPlatformAPI {
   console.log('[API] Detecting platform and initializing API...');
   console.log('[API] Current app mode:', currentAppMode);
   console.log('[API] useMockApiInDevelopment:', useMockApiInDevelopment);
-  console.log('[API] window.electron exists:', !!window.electron);
+  console.log('[API] window.electron exists:', typeof window !== 'undefined' && 'electron' in window);
   
-  // window.electron이 존재하는지 확인하고, 존재하면 반드시 ElectronApiAdapter를 사용
-  if (window.electron) {
+  // window.electron이 존재하는지 안전하게 확인하고, 존재하면 반드시 ElectronApiAdapter를 사용
+  if (typeof window !== 'undefined' && 'electron' in window && window.electron) {
     console.log('[API] Electron API detected. Using ElectronApiAdapter regardless of app mode.');
     return new ElectronApiAdapter();
   }

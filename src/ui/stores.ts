@@ -44,6 +44,21 @@ export const databaseSummaryStore = map<DatabaseSummary>({
   newlyAddedCount: 0
 });
 
+// 크롤링 상태 요약 정보 관리
+export interface CrawlingStatusSummary {
+  dbLastUpdated: Date | null;
+  dbProductCount: number;
+  siteTotalPages: number;
+  siteProductCount: number;
+  diff: number;
+  needCrawling: boolean;
+  crawlingRange: { startPage: number; endPage: number };
+}
+
+// map의 타입은 object만 허용하므로 null 대신 빈 객체 사용
+export const crawlingStatusSummaryStore = map<CrawlingStatusSummary>({} as CrawlingStatusSummary);
+export const lastCrawlingStatusSummaryStore = map<CrawlingStatusSummary>({} as CrawlingStatusSummary);
+
 // API 참조
 let api = getPlatformApi();
 
@@ -259,4 +274,35 @@ export function toggleAppMode(): void {
   initializeApiSubscriptions();
   
   addLog(`앱 모드가 ${newMode === 'development' ? '개발' : '실사용'} 모드로 변경되었습니다.`, 'info');
+}
+
+// 크롤링 상태 체크 함수
+export async function checkCrawlingStatus(): Promise<void> {
+  try {
+    addLog('상태 체크를 시작합니다...', 'info');
+    // 이전 상태 저장
+    const prev = crawlingStatusSummaryStore.get();
+    if (prev) lastCrawlingStatusSummaryStore.set(prev);
+    const { success, status, error } = await api.invokeMethod<'checkCrawlingStatus', { success: boolean; status?: CrawlingStatusSummary; error?: string }>('checkCrawlingStatus');
+    if (success && status) {
+      crawlingStatusSummaryStore.set(status);
+      // 변경점 비교 및 로그/알림
+      if (prev) {
+        const changed: string[] = [];
+        for (const key of Object.keys(status)) {
+          if (JSON.stringify((status as any)[key]) !== JSON.stringify((prev as any)[key])) {
+            changed.push(key);
+          }
+        }
+        if (changed.length > 0) {
+          addLog(`상태 요약 정보 중 변경된 항목: ${changed.join(', ')}`, 'info');
+        }
+      }
+      addLog(`DB 제품수: ${status.dbProductCount}, 사이트 제품수: ${status.siteProductCount}, 차이: ${status.diff}, 크롤링 필요: ${status.needCrawling ? '예' : '아니오'}`, 'info');
+    } else {
+      addLog(`상태 체크 실패: ${error}`, 'error');
+    }
+  } catch (error) {
+    addLog(`상태 체크 중 오류: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
 }

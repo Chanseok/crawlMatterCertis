@@ -14,7 +14,11 @@ import {
   addLog,
   initializeApiSubscriptions,
   exportToExcel,
-  searchProducts
+  searchProducts,
+  checkCrawlingStatus,
+  crawlingStatusSummaryStore,
+  lastCrawlingStatusSummaryStore,
+  CrawlingStatusSummary
 } from './stores'
 import { LogEntry } from './types'
 import { format } from 'date-fns'
@@ -27,6 +31,8 @@ function App() {
   const logs = useStore(logsStore);
   const products = useStore(productsStore);
   const searchQuery = useStore(searchQueryStore);
+  const statusSummary = useStore(crawlingStatusSummaryStore);
+  const lastStatusSummary = useStore(lastCrawlingStatusSummaryStore);
 
   // API 초기화
   useEffect(() => {
@@ -55,6 +61,24 @@ function App() {
   // 데이터 내보내기 핸들러
   const handleExport = () => {
     exportToExcel();
+  };
+
+  // 크롤링 상태 체크 핸들러 - stores.ts의 구현 사용
+  const handleCheckStatus = () => {
+    checkCrawlingStatus();
+  };
+
+  // 변경된 상태 값 감지
+  const isValueChanged = (key: keyof CrawlingStatusSummary): boolean => {
+    if (!statusSummary || !lastStatusSummary) return false;
+    
+    if (key === 'dbLastUpdated') {
+      const current = statusSummary.dbLastUpdated ? new Date(statusSummary.dbLastUpdated).getTime() : null;
+      const last = lastStatusSummary.dbLastUpdated ? new Date(lastStatusSummary.dbLastUpdated).getTime() : null;
+      return current !== last;
+    }
+    
+    return JSON.stringify(statusSummary[key]) !== JSON.stringify(lastStatusSummary[key]);
   };
 
   // 로그 메시지 렌더링 함수
@@ -105,6 +129,13 @@ function App() {
             <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">크롤링 제어</h2>
 
             <button
+              onClick={handleCheckStatus}
+              className="w-full py-2 px-4 rounded-md text-white font-medium bg-gray-500 hover:bg-gray-600 mb-2"
+            >
+              상태 체크
+            </button>
+
+            <button
               onClick={handleCrawlToggle}
               className={`w-full py-2 px-4 rounded-md text-white font-medium ${crawlingStatus === 'running'
                   ? 'bg-red-500 hover:bg-red-600'
@@ -148,6 +179,92 @@ function App() {
               </button>
             </div>
           </div>
+
+          {/* 상태 요약 패널 */}
+          {statusSummary && Object.keys(statusSummary).length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">크롤링 상태 요약</h2>
+              
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 dark:text-gray-400">마지막 DB 업데이트:</span>
+                  <span className={`font-medium ${isValueChanged('dbLastUpdated') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                    {statusSummary.dbLastUpdated 
+                      ? format(new Date(statusSummary.dbLastUpdated), 'yyyy-MM-dd HH:mm') 
+                      : '없음'}
+                  </span>
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 dark:text-gray-400">DB 제품 수:</span>
+                  <span className={`font-medium ${isValueChanged('dbProductCount') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                    {statusSummary.dbProductCount.toLocaleString()}개
+                  </span>
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 dark:text-gray-400">사이트 페이지 수:</span>
+                  <span className={`font-medium ${isValueChanged('siteTotalPages') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                    {statusSummary.siteTotalPages.toLocaleString()}페이지
+                  </span>
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 dark:text-gray-400">사이트 제품 수:</span>
+                  <span className={`font-medium ${isValueChanged('siteProductCount') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                    {statusSummary.siteProductCount.toLocaleString()}개
+                  </span>
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 dark:text-gray-400">차이:</span>
+                  <span className={`font-medium ${isValueChanged('diff') ? 'text-yellow-600 dark:text-yellow-400' : statusSummary.diff > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                    {statusSummary.diff > 0 ? '+' : ''}{statusSummary.diff.toLocaleString()}개
+                  </span>
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 dark:text-gray-400">크롤링 필요:</span>
+                  <span className={`font-medium ${isValueChanged('needCrawling') ? 'text-yellow-600 dark:text-yellow-400' : statusSummary.needCrawling ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                    {statusSummary.needCrawling ? '예' : '아니오'}
+                  </span>
+                </div>
+                
+                {statusSummary.crawlingRange && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600 dark:text-gray-400">크롤링 범위:</span>
+                    <span className={`font-medium ${isValueChanged('crawlingRange') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                      {statusSummary.crawlingRange.startPage} ~ {statusSummary.crawlingRange.endPage} 페이지
+                    </span>
+                  </div>
+                )}
+                
+                {/* 그래프로 표현 */}
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                  <div className="mb-2 flex justify-between text-xs">
+                    <span className="text-gray-500 dark:text-gray-400">DB</span>
+                    <span className="text-gray-500 dark:text-gray-400">사이트</span>
+                  </div>
+                  <div className="relative h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div 
+                      className="absolute top-0 left-0 h-full bg-blue-500" 
+                      style={{ width: `${Math.min(100, (statusSummary.dbProductCount / statusSummary.siteProductCount) * 100)}%` }}
+                    ></div>
+                    {statusSummary.diff > 0 && (
+                      <div 
+                        className="absolute top-0 right-0 h-full bg-red-400 opacity-70"
+                        style={{ width: `${Math.min(100, (statusSummary.diff / statusSummary.siteProductCount) * 100)}%` }}
+                      ></div>
+                    )}
+                  </div>
+                  <div className="flex justify-between mt-1 text-xs">
+                    <span className="text-gray-500 dark:text-gray-400">{statusSummary.dbProductCount.toLocaleString()}</span>
+                    <span className="text-gray-500 dark:text-gray-400">{statusSummary.siteProductCount.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 로그 패널 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">

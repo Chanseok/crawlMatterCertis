@@ -21,6 +21,22 @@ export const crawlerEvents = new EventEmitter();
 let isCrawling = false;
 let shouldStopCrawling = false;
 
+// 네트워크 호출 캐시(세션 단위)
+let cachedTotalPages: number | null = null;
+let cachedTotalPagesFetchedAt: number | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5분 캐시
+
+async function getTotalPagesCached(force = false): Promise<number> {
+    const now = Date.now();
+    if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < CACHE_TTL_MS)) {
+        return cachedTotalPages;
+    }
+    const totalPages = await getTotalPages();
+    cachedTotalPages = totalPages;
+    cachedTotalPagesFetchedAt = now;
+    return totalPages;
+}
+
 /**
  * 총 페이지 수를 가져오는 함수
  * @returns 총 페이지 수
@@ -52,6 +68,7 @@ async function getTotalPages(): Promise<number> {
         }
         console.log(`[Crawler] Found ${totalPages} total pages`);
 
+        
     } catch (error: unknown) {
         console.error('[Crawler] Error getting total pages:', error);
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -70,7 +87,7 @@ async function getTotalPages(): Promise<number> {
 async function determineCrawlingRange(): Promise<{ startPage: number; endPage: number }> {
     // DB 요약 정보 가져오기
     const dbSummary = await getDatabaseSummaryFromDb();
-    const totalPages = await getTotalPages();
+    const totalPages = await getTotalPagesCached();
 
     if (dbSummary.productCount === 0) {
         // DB가 비어있으면 전체 페이지 크롤링
@@ -221,7 +238,7 @@ export async function startCrawling(): Promise<boolean> {
         };
         crawlerEvents.emit('crawlingProgress', crawlingProgress);
 
-        const totalPages = await getTotalPages();
+        const totalPages = await getTotalPagesCached();
         const { startPage, endPage } = await determineCrawlingRange();
         const pageNumbers = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
 
@@ -354,6 +371,27 @@ export function stopCrawling(): boolean {
     console.log('[Crawler] Stopping crawling');
     shouldStopCrawling = true;
     return true;
+}
+
+/**
+ * 크롤링 상태 체크(요약 정보) 함수
+ * - 네트워크 호출 최소화, 1회만 호출
+ */
+export async function checkCrawlingStatus() {
+    const dbSummary = await getDatabaseSummaryFromDb();
+    const totalPages = await getTotalPagesCached(true); // 강제 갱신
+    // 사이트의 총 제품 수 추정 (마지막 페이지에서 실제 개수 구하는 로직은 필요시 추가)
+    const siteProductCount = totalPages * 12;
+    const { startPage, endPage } = await determineCrawlingRange();
+    return {
+        dbLastUpdated: dbSummary.lastUpdated,
+        dbProductCount: dbSummary.productCount,
+        siteTotalPages: totalPages,
+        siteProductCount,
+        diff: siteProductCount - dbSummary.productCount,
+        needCrawling: siteProductCount > dbSummary.productCount,
+        crawlingRange: { startPage, endPage }
+    };
 }
 
 /**
