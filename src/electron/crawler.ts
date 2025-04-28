@@ -7,6 +7,8 @@ import { chromium } from 'playwright-chromium';
 import { getDatabaseSummaryFromDb } from './database.js';
 import type { CrawlingProgress } from '../ui/types.js';
 import { EventEmitter } from 'events';
+import fs from 'fs';
+import path from 'path';
 
 // 크롤링 URL 상수
 const BASE_URL = 'https://csa-iot.org/csa-iot_products/';
@@ -117,11 +119,24 @@ async function crawlProductsFromPage(pageNumber: number, totalPages: number) {
                 const manufacturerEl = article.querySelector('p.entry-company.notranslate');
                 const modelEl = article.querySelector('h3.entry-title');
                 const certificateIdEl = article.querySelector('span.entry-cert-id');
+                const certificateIdPEl = article.querySelector('p.entry-certificate-id');
+                // certificateId: p.entry-certificate-id에서 prefix 제거 후 추출
+                let certificateId: string | undefined = undefined;
+                if (certificateIdPEl && certificateIdPEl.textContent) {
+                    const text = certificateIdPEl.textContent.trim();
+                    if (text.startsWith('Certificate ID: ')) {
+                        certificateId = text.replace('Certificate ID: ', '').trim();
+                    } else {
+                        certificateId = text;
+                    }
+                } else if (certificateIdEl && certificateIdEl.textContent) {
+                    certificateId = certificateIdEl.textContent.trim();
+                }
                 return {
                     url: link && link.href ? link.href : '',
                     manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
                     model: modelEl ? modelEl.textContent?.trim() : undefined,
-                    certificateId: certificateIdEl ? certificateIdEl.textContent?.trim() : undefined,
+                    certificateId,
                     pageId,
                     indexInPage: idx,
                 };
@@ -166,12 +181,29 @@ async function promisePool<T>(
  * 크롤링 작업을 시작하는 함수 (병렬 버전)
  * @returns 크롤링 작업 시작 성공 여부
  */
-export async function startCrawling(): Promise<boolean> {
-    if (isCrawling) {
-        console.log('[Crawler] Crawling is already in progress');
-        return false;
-    }
+interface CrawlResult {
+    pageNumber: number;
+    products: Product[] | null;
+    error?: string;
+}
 
+async function crawlProductsWithTimeout(pageNumber: number, totalPages: number, timeoutMs = 20000): Promise<CrawlResult> {
+    try {
+        const timeoutPromise = new Promise<null>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout')), timeoutMs)
+        );
+        const products = await Promise.race([
+            crawlProductsFromPage(pageNumber, totalPages),
+            timeoutPromise
+        ]);
+        return { pageNumber, products: products as Product[] };
+    } catch (err) {
+        return { pageNumber, products: null, error: err instanceof Error ? err.message : String(err) };
+    }
+}
+
+export async function startCrawling(): Promise<boolean> {
+    if (isCrawling) return false;
     isCrawling = true;
     shouldStopCrawling = false;
 
@@ -187,27 +219,29 @@ export async function startCrawling(): Promise<boolean> {
             newItems: 0,
             updatedItems: 0
         };
-
         crawlerEvents.emit('crawlingProgress', crawlingProgress);
 
-        // 크롤링 범위 결정 및 totalPages 1회만 호출
         const totalPages = await getTotalPages();
         const { startPage, endPage } = await determineCrawlingRange();
         const pageNumbers = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
 
-        crawlingProgress.status = 'running';
-        crawlingProgress.totalPages = pageNumbers.length;
-        crawlerEvents.emit('crawlingProgress', { ...crawlingProgress });
+        const productsResults: Product[] = [];
+        let failedPages: number[] = [];
+        const failedPageErrors: Record<number, string[]> = {};
 
-        console.log(`[Crawler] Starting parallel crawling from page ${startPage} to ${endPage}`);
-
-        // 병렬 크롤링 (최대 8개 동시 실행)
+        // 1차 병렬 크롤링
         await promisePool(
             pageNumbers,
             async (pageNumber) => {
-                if (shouldStopCrawling) return 0;
-                const products = await crawlProductsFromPage(pageNumber, totalPages);
-                crawlingProgress.processedItems += products.length;
+                if (shouldStopCrawling) return null;
+                const result = await crawlProductsWithTimeout(pageNumber, totalPages);
+                if (result.products) {
+                    productsResults.push(...result.products);
+                } else {
+                    failedPages.push(pageNumber);
+                    failedPageErrors[pageNumber] = [result.error || 'Unknown error'];
+                }
+                crawlingProgress.processedItems += result.products ? result.products.length : 0;
                 crawlingProgress.currentPage++;
                 crawlingProgress.estimatedEndTime = estimateEndTime(
                     crawlingProgress.startTime,
@@ -215,19 +249,86 @@ export async function startCrawling(): Promise<boolean> {
                     crawlingProgress.totalPages
                 );
                 crawlerEvents.emit('crawlingProgress', { ...crawlingProgress });
-                return products.length;
+                return result;
             },
-            8 // 동시 실행 개수
+            8
         );
+
+        // 2~5차 재시도
+        for (let attempt = 2; attempt <= 5 && failedPages.length > 0; attempt++) {
+            const retryPages = [...failedPages];
+            failedPages = [];
+            await promisePool(
+                retryPages,
+                async (pageNumber) => {
+                    if (shouldStopCrawling) return null;
+                    const result = await crawlProductsWithTimeout(pageNumber, totalPages);
+                    if (result.products) {
+                        productsResults.push(...result.products);
+                    } else {
+                        failedPages.push(pageNumber);
+                        (failedPageErrors[pageNumber] = failedPageErrors[pageNumber] || []).push(result.error || 'Unknown error');
+                    }
+                    crawlingProgress.processedItems += result.products ? result.products.length : 0;
+                    crawlingProgress.currentPage++;
+                    crawlingProgress.estimatedEndTime = estimateEndTime(
+                        crawlingProgress.startTime,
+                        crawlingProgress.currentPage,
+                        crawlingProgress.totalPages
+                    );
+                    crawlerEvents.emit('crawlingProgress', { ...crawlingProgress });
+                    return result;
+                },
+                4 // 재시도는 동시성 낮춤
+            );
+        }
+
+        // 최종 실패 페이지 보고서 생성
+        let failedReport: { pageNumber: number; errors: string[] }[] = [];
+        if (failedPages.length > 0) {
+            failedReport = failedPages.map(pageNumber => ({
+                pageNumber,
+                errors: failedPageErrors[pageNumber]
+            }));
+            crawlerEvents.emit('crawlingFailedPages', failedReport);
+        }
+
+        // 크롤링 완료 후 productsResults를 사용자에게 보고
+        crawlerEvents.emit('crawlingComplete', {
+            success: true,
+            count: productsResults.length,
+            products: productsResults,
+            failedReport
+        });
+
+        // === [추가] 크롤링 완료 시점에 products를 dist-output 폴더에 저장 ===
+        try {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            const h = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+            const filename = `products_${y}${m}${d}_${h}${min}${s}.json`;
+            const outputDir = path.resolve(process.cwd(), 'dist-output');
+            if (!fs.existsSync(outputDir)) {
+                fs.mkdirSync(outputDir, { recursive: true });
+            }
+            const filePath = path.join(outputDir, filename);
+            fs.writeFileSync(filePath, JSON.stringify(productsResults, null, 2), 'utf-8');
+            console.log(`[Crawler] Products saved to ${filePath}`);
+        } catch (err) {
+            console.error('[Crawler] Failed to save products json:', err);
+        }
+        // === [추가 끝] ===
 
         crawlingProgress.status = 'completed';
         crawlingProgress.estimatedEndTime = 0;
         crawlerEvents.emit('crawlingProgress', { ...crawlingProgress });
-        crawlerEvents.emit('crawlingComplete', { success: true, count: crawlingProgress.processedItems });
 
-        console.log('[Crawler] Crawling completed successfully');
         return true;
-    } catch (error: unknown) {
+    } catch (error) {
         console.error('[Crawler] Error during crawling:', error);
         const errorMessage = error instanceof Error ? error.message : String(error);
         crawlerEvents.emit('crawlingError', {
