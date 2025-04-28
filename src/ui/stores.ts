@@ -1,6 +1,7 @@
 import { atom, map } from 'nanostores';
 import { AppMode, CrawlingStatus, LogEntry, CrawlingProgress, DatabaseSummary, ProductDetail } from './types';
 import { getPlatformApi, updateApiForAppMode } from './platform/api';
+import type { ConcurrentCrawlingTask } from './types';
 
 // 앱 모드 상태 관리
 export const appModeStore = atom<AppMode>('development');
@@ -59,6 +60,9 @@ export interface CrawlingStatusSummary {
 export const crawlingStatusSummaryStore = map<CrawlingStatusSummary>({} as CrawlingStatusSummary);
 export const lastCrawlingStatusSummaryStore = map<CrawlingStatusSummary>({} as CrawlingStatusSummary);
 
+// 동시 처리 작업 상태 관리 (예: 각 페이지별 크롤링 상태)
+export const concurrentTasksStore = atom<ConcurrentCrawlingTask[]>([]);
+
 // API 참조
 let api = getPlatformApi();
 
@@ -112,6 +116,30 @@ export function initializeApiSubscriptions() {
     productsStore.set(products);
   });
   unsubscribeFunctions.push(unsubProducts);
+
+  // 동시 작업 상태 실시간 구독
+  const unsubConcurrentTasks = api.subscribeToEvent('crawlingTaskStatus', (tasks) => {
+    concurrentTasksStore.set(tasks);
+  });
+  unsubscribeFunctions.push(unsubConcurrentTasks);
+
+  // 크롤링 중단 시점까지의 내역을 로그로 남김
+  const unsubStopped = api.subscribeToEvent('crawlingStopped', (tasks) => {
+    concurrentTasksStore.set(tasks);
+    addLog('크롤링이 중단되었습니다. 각 페이지별 상태:', 'warning');
+    if (Array.isArray(tasks)) {
+      tasks.forEach(task => {
+        if (task.status === 'success') {
+          addLog(`페이지 ${task.pageNumber}: 성공`, 'success');
+        } else if (task.status === 'error') {
+          addLog(`페이지 ${task.pageNumber}: 실패 (${task.error})`, 'error');
+        } else if (task.status === 'stopped') {
+          addLog(`페이지 ${task.pageNumber}: 중단됨`, 'warning');
+        }
+      });
+    }
+  });
+  unsubscribeFunctions.push(unsubStopped);
 
   // 초기 데이터 로드
   loadInitialData();

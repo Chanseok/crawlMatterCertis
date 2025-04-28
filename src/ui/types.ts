@@ -71,3 +71,27 @@ export interface DatabaseSummary {
   lastUpdated: Date | null;
   newlyAddedCount: number; // 마지막 크롤링에서 새로 추가된 항목 수
 }
+
+// 동시 처리 작업 상태 타입
+export type ConcurrentTaskStatus = 'pending' | 'running' | 'success' | 'error' | 'stopped';
+
+export interface ConcurrentCrawlingTask {
+  pageNumber: number;
+  status: ConcurrentTaskStatus;
+  startedAt?: number;
+  finishedAt?: number;
+  error?: string;
+}
+
+// EventPayloadMapping을 이 파일에서 정의 및 export
+export interface EventPayloadMapping {
+  statistics: any;
+  crawlingProgress: CrawlingProgress;
+  crawlingComplete: { success: boolean; count: number };
+  crawlingError: { message: string; details?: string };
+  dbSummary: DatabaseSummary;
+  getStaticData: any;
+  products: MatterProduct[];
+  crawlingTaskStatus: ConcurrentCrawlingTask[];
+  crawlingStopped: ConcurrentCrawlingTask[];
+}

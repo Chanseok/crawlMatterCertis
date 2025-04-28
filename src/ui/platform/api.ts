@@ -3,7 +3,8 @@
  * 이 파일은 Electron, Tauri 등 다양한 백엔드 통신을 추상화합니다.
  */
 
-import { MatterProduct, CrawlingProgress, AppMode, DatabaseSummary } from '../types';
+import type { EventPayloadMapping } from '../types';
+import { MatterProduct, AppMode, DatabaseSummary } from '../types';
 
 // 통계 데이터 인터페이스
 export interface Statistics {
@@ -15,17 +16,6 @@ export interface Statistics {
 
 // 이벤트 구독 해제 함수 타입
 export type UnsubscribeFunction = () => void;
-
-// 이벤트 페이로드 맵핑 인터페이스
-export interface EventPayloadMapping {
-  'statistics': Statistics;
-  'crawlingProgress': CrawlingProgress;
-  'crawlingComplete': { success: boolean; count: number };
-  'crawlingError': { message: string; details?: string };
-  'dbSummary': DatabaseSummary;
-  'getStaticData': any;
-  'products': MatterProduct[];
-}
 
 // 플랫폼 API 인터페이스
 export interface IPlatformAPI {
@@ -159,15 +149,11 @@ class ElectronApiAdapter implements IPlatformAPI {
     callback: (data: EventPayloadMapping[K]) => void
   ): UnsubscribeFunction {
     try {
-      // 안전장치: 함수 존재 여부 확인
-      if (window?.electron?.subscribeToEvent && typeof window.electron.subscribeToEvent === 'function') {
-        // 기본 구독 메서드를 사용
-        return window.electron.subscribeToEvent(eventName, callback);
-      } else {
-        console.warn(`[API] window.electron.subscribeToEvent is not available. Using fallback implementation for: ${String(eventName)}`);
-        // 대체 구현 사용
-        return this.mockAdapter.subscribeToEvent(eventName, callback);
-      }
+      // window.electron.subscribeToEvent의 타입을 명시적으로 맞춤
+      return (window.electron.subscribeToEvent as <T extends keyof EventPayloadMapping>(
+        eventName: T,
+        callback: (data: EventPayloadMapping[T]) => void
+      ) => UnsubscribeFunction)(eventName, callback);
     } catch (error) {
       console.error(`Error subscribing to ${String(eventName)}:`, error);
       // 오류 발생시 대체 구현 사용

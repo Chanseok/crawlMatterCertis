@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { useEffect } from 'react'
 import './App.css'
+import { ConcurrentTasksVisualizer } from './Charts';
 import {
   appModeStore,
   crawlingStatusStore,
@@ -177,6 +178,12 @@ function App() {
               >
                 데이터 내보내기 (Excel)
               </button>
+            </div>
+
+            {/* 컨트롤 패널 아래에 동시 작업 현황 시각화 */}
+            <div className="mt-6">
+              <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">동시 처리 현황</h3>
+              <ConcurrentTasksVisualizer />
             </div>
           </div>
 
