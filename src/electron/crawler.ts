@@ -230,7 +230,7 @@ async function crawlProductsFromPage(pageNumber: number, totalPages: number): Pr
  * @returns 상세 제품 정보
  */
 async function crawlProductDetail(product: Product): Promise<MatterProduct> {
-    console.log(`[Crawler] # ${product.pageId} - ${product.indexInPage} Crawling product detail from ${product.url}`);
+    // console.log(`[Crawler] # ${product.pageId} - ${product.indexInPage} Crawling product detail from ${product.url}`);
 
     // 서버 과부하 방지를 위한 무작위 지연 시간 적용
     const delayTime = getRandomDelay(MIN_REQUEST_DELAY_MS, MAX_REQUEST_DELAY_MS);
@@ -611,7 +611,7 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
             return result;
         }, product);
 
-        console.log(`[Crawler] Extracted product detail for ${product.model || product.url}`);
+        // console.log(`[Crawler] Extracted product detail for ${product.model || product.url}`);
         return detailProduct;
     } catch (error: unknown) {
         console.error(`[Crawler] Error crawling product detail for ${product.url}:`, error);
@@ -763,6 +763,7 @@ async function processProductDetailCrawl(
         
         // 실패한 제품 기록
         failedProducts.push(product.url);
+        debugLog(`pageId: ${product.pageId} product url: ${product.url}`);
         if (!failedProductErrors[product.url]) {
             failedProductErrors[product.url] = [];
         }
@@ -1029,7 +1030,8 @@ export async function startCrawling(): Promise<boolean> {
         );
 
         // 중복 제거 및 정렬 로직 추가 (matterProducts)
-        debugLog(`[Crawler] 중복 제거 전 상세 제품 정보 수: ${matterProducts.length}`);
+        debugLog(`[Crawler] 중복 제거 전 수집에 성공한 상세 제품 정보 수: ${matterProducts.length}`);
+        debugLog(`[Crawler] 중복 제거 전 수집에 실패한 상세 제품 정보 수: ${failedProducts.length}`);
         
         // 중복 제거를 위한 Map 생성 (pageId-indexInPage 조합을 키로 사용)
         const uniqueMatterProductsMap = new Map<string, MatterProduct>();
