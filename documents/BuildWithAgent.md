@@ -396,3 +396,99 @@ Matter 인증 정보를 자동으로 수집하기 위한 크롤링 기능을 Pla
    - 특히 ESM에서는 확장자 처리가 중요함을 인지
 
 이러한 개선을 통해 더 안정적이고 유지보수하기 좋은 코드베이스를 구축할 수 있었으며, 향후 발생할 수 있는 타입 관련 문제들을 사전에 방지할 수 있게 되었습니다.
+
+## 2025-04-29: CommonJS와 ESM 모듈 간 TypeScript 타입 호환성 해결
+
+### 발생한 문제 및 근본 원인
+
+프로젝트 실행 시 TypeScript 컴파일러에서 다음과 같은 오류가 지속적으로 발생했습니다:
+
+```
+src/electron/preload.cts:7:8 - error TS1541: Type-only import of an ECMAScript module from a CommonJS module must have a 'resolution-mode' attribute.
+```
+
+이 문제의 근본 원인은 **TypeScript 모듈 시스템의 혼합 사용**에서 비롯되었습니다:
+
+1. **CommonJS와 ESM 모듈 간 타입 공유의 복잡성**
+   - `preload.cts` (CommonJS TypeScript)에서 `types.js` (ESM)의 타입을 가져올 때 발생
+   - TypeScript 5.0 이상에서 더 엄격해진 모듈 간 타입 가져오기 규칙
+
+2. **모듈 형식에 따른 확장자 차이**
+   - `.ts` - 일반 TypeScript 파일 (모듈 시스템은 tsconfig에 따라 결정)
+   - `.cts` - CommonJS 모듈로 취급되는 TypeScript 파일
+   - `.mts` - ESM으로 취급되는 TypeScript 파일
+   - `.d.ts` - 타입 선언 파일
+
+3. **import 속성(import attributes) 구문의 정확한 사용법 오류**
+   - 구문 오류: `with { resolution-mode: "require" }` (잘못된 형식)
+   - 올바른 구문: `with { "resolution-mode": "require" }` (속성 이름에 따옴표 필요)
+
+### 시도한 해결책과 결론
+
+#### 1. 초기 시도: import 속성 구문 추가
+
+최초 접근법은 import 속성 구문을 사용하는 것이었습니다:
+
+```typescript
+// 시도 1: 구문 오류 - 하이픈 사용
+import type { ... } from '../../types.js' with { resolution-mode: "require" };
+
+// 시도 2: 구문 오류 - 속성 이름에 따옴표 누락
+import type { ... } from '../../types.js' with { resolutionMode: "require" };
+```
+
+두 시도 모두 구문 오류나 TypeScript 컴파일러와의 호환성 문제로 실패했습니다.
+
+#### 2. 최종 해결책: 올바른 import 속성 구문
+
+TypeScript 5.0+ 버전의 정확한 구문을 사용한 최종 해결책:
+
+```typescript
+import type { 
+    EventPayloadMapping, 
+    MethodParamsMapping,
+    MethodReturnMapping,
+    IElectronAPI
+} from '../../types.js' with { "resolution-mode": "require" };
+```
+
+**핵심 포인트**:
+- 속성 이름(`"resolution-mode"`)은 따옴표로 감싸야 함
+- 값(`"require"`)도 문자열 리터럴로 표현
+- `.js` 확장자는 명시적으로 포함해야 함
+
+### 기술적 배경: TypeScript의 Import Attributes
+
+이 문제는 ECMAScript의 Import Attributes 명세에 기반합니다:
+
+1. **Import Attributes란?**
+   - JavaScript/TypeScript에 새롭게 추가된 기능
+   - `import x from "y" with { type: "json" }` 구문으로 모듈 가져오기에 메타데이터를 추가할 수 있음
+   - 이전에는 Import Assertions(`import x from "y" assert { type: "json" }`)로 불렸음
+
+2. **`resolution-mode` 속성의 의미**
+   - CommonJS 모듈에서 ESM 모듈의 타입만 가져올 때 어떻게 해석할지 지정
+   - `"require"`: Node.js의 CommonJS `require()` 메커니즘으로 해석
+   - `"import"`: ES 모듈 `import` 메커니즘으로 해석
+
+### 배운 교훈 및 모범 사례
+
+1. **TypeScript 버전에 주의**
+   - TypeScript 5.0 이상에서는 모듈 간 타입 가져오기에 더 엄격한 규칙이 적용됨
+   - 공식 문서에서 해당 버전의 변경사항을 항상 체크해야 함
+
+2. **일관된 모듈 시스템 선택**
+   - 가능하다면 프로젝트 전체에서 하나의 모듈 시스템(CommonJS 또는 ESM)만 사용
+   - 혼합 사용이 불가피하다면 명확한 규칙과 가이드라인 수립 필요
+
+3. **파일 확장자와 모듈 형식의 관계 이해**
+   - `.ts`/`.js` - 기본 파일 (tsconfig의 모듈 설정 따름)
+   - `.cts`/`.cjs` - CommonJS 모듈
+   - `.mts`/`.mjs` - ES 모듈
+   - import 시에는 결과물인 JS 파일의 확장자(`.js`, `.cjs`, `.mjs`)를 사용
+
+4. **특수 구문 사용 시 정확한 명세 참조**
+   - Import Attributes처럼 새로운 ECMAScript 기능은 명세를 정확히 참조
+   - 속성 이름에 따옴표를 붙이는 등의 세부 구문에 주의
+
+이 경험을 통해 TypeScript의 모듈 시스템과 ECMAScript 명세의 최신 기능에 대한 이해를 크게 향상시킬 수 있었습니다. 특히 Electron 프로젝트처럼 Node.js 환경과 브라우저 환경이 혼합된 애플리케이션에서는 이런 모듈 시스템 간의 호환성 문제에 더욱 주의해야 함을 배웠습니다.

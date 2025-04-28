@@ -4,7 +4,7 @@ import type {
     MethodParamsMapping,
     MethodReturnMapping,
     IElectronAPI
-} from '../../types';
+} from '../../types.js' with { "resolution-mode": "require" };
 
 // 구독 기반 이벤트 처리를 위한 유틸리티 함수
 function createSubscriptionHandler<K extends keyof EventPayloadMapping>(channel: K) {

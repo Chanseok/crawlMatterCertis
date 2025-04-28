@@ -6,7 +6,7 @@ import {
   ConcurrentCrawlingTask,
   ConcurrentTaskStatus,
   EventPayloadMapping
-} from '../../types';
+} from '../../types.js';
 
 // UI 전용 타입 정의
 // 크롤링 상태 타입 (UI 전용)
