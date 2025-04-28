@@ -70,28 +70,30 @@ async function determineCrawlingRange(): Promise<{ startPage: number; endPage: n
     const dbSummary = await getDatabaseSummaryFromDb();
     const totalPages = await getTotalPages();
 
-    // 최신 제품 페이지가 사이트의 첫 페이지이고, 가장 오래된 제품이 마지막 페이지
-    // DB의 pageId는 0부터 시작하며, 웹사이트의 페이지 번호는 1부터 시작함
-    // DB의 pageId 0은 웹사이트의 가장 마지막 페이지와 매핑됨
-
     if (dbSummary.productCount === 0) {
         // DB가 비어있으면 전체 페이지 크롤링
         console.log('[Crawler] Database is empty. Need to crawl all pages.');
         return { startPage: 1, endPage: totalPages };
     }
 
-    // DB에 데이터가 있으므로 최신 데이터만 크롤링 (첫 페이지부터)
-    // 나중에는 중복 체크 로직을 통해 크롤링 중단점을 결정할 예정
-    console.log('[Crawler] Database has existing records. Starting from page 1 to check for new records.');
-    return { startPage: 1, endPage: totalPages };
+    // 이미 수집된 페이지 수 계산 (각 페이지 별로 12개 제품, 마지막 페이지는 12개 이내의 정보를 가질 수 있으므로 제외)
+    const collectedPages = Math.floor(dbSummary.productCount / 12);
+    // 최신 페이지가 1번, 가장 오래된 페이지가 totalPages번
+    // endPage: 아직 수집하지 않은 최신 페이지까지
+    const endPage = Math.max(1, totalPages - collectedPages);
+    const startPage = 1;
+
+    console.log(`[Crawler] Database has ${dbSummary.productCount} products. Will crawl from page ${startPage} to ${endPage}.`);
+    return { startPage, endPage };
 }
 
 /**
  * 특정 페이지의 제품 정보 목록을 크롤링하는 함수
  * @param pageNumber 크롤링할 페이지 번호
+ * @param totalPages 전체 페이지 수 (getTotalPages() 결과를 전달)
  * @returns 수집된 제품 정보 배열
  */
-async function crawlProductsFromPage(pageNumber: number) {
+async function crawlProductsFromPage(pageNumber: number, totalPages: number) {
     console.log(`[Crawler] Crawling page ${pageNumber}`);
 
     const pageUrl = `${MATTER_FILTER_URL}&paged=${pageNumber}`;
@@ -102,14 +104,32 @@ async function crawlProductsFromPage(pageNumber: number) {
         const page = await context.newPage();
 
         // 페이지 로드
-        await page.goto(pageUrl, { waitUntil: 'networkidle' });
+        await page.goto(pageUrl, { waitUntil: 'domcontentloaded'});
 
-        // 제품 목록 추출 로직 (임시 구현 - 향후 확장 예정)
-        const productCards = await page.locator('.product-card').all();
-        console.log(`[Crawler] Found ${productCards.length} products on page ${pageNumber}`);
+        const pageId = totalPages - pageNumber;
 
-        // 현재는 수집된 제품 수만 반환 (향후 실제 데이터 추출 구현 예정)
-        return productCards.length;
+        // 제품 정보 추출
+        const products: Product[] = await page.evaluate((pageId) => {
+            const articles = Array.from(document.querySelectorAll('div.post-feed article'));
+            // 아래(0) ~ 위(11) 순서로 indexInPage 부여
+            return articles.reverse().map((article, idx) => {
+                const link = article.querySelector('a');
+                const manufacturerEl = article.querySelector('p.entry-company.notranslate');
+                const modelEl = article.querySelector('h3.entry-title');
+                const certificateIdEl = article.querySelector('span.entry-cert-id');
+                return {
+                    url: link && link.href ? link.href : '',
+                    manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
+                    model: modelEl ? modelEl.textContent?.trim() : undefined,
+                    certificateId: certificateIdEl ? certificateIdEl.textContent?.trim() : undefined,
+                    pageId,
+                    indexInPage: idx,
+                };
+            });
+        }, pageId);
+
+        console.log(`[Crawler] Extracted ${products.length} products on page ${pageNumber}`);
+        return products;
     } catch (error: unknown) {
         console.error(`[Crawler] Error crawling page ${pageNumber}:`, error);
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -120,11 +140,33 @@ async function crawlProductsFromPage(pageNumber: number) {
 }
 
 /**
- * 크롤링 작업을 시작하는 함수
+ * 병렬 크롤링을 위한 Promise Pool 유틸리티
+ */
+async function promisePool<T>(
+    items: number[],
+    worker: (item: number) => Promise<T>,
+    concurrency: number
+): Promise<T[]> {
+    const results: T[] = [];
+    let index = 0;
+
+    async function next(): Promise<void> {
+        if (index >= items.length) return;
+        const current = index++;
+        results[current] = await worker(items[current]);
+        await next();
+    }
+
+    const workers = Array.from({ length: concurrency }, () => next());
+    await Promise.all(workers);
+    return results;
+}
+
+/**
+ * 크롤링 작업을 시작하는 함수 (병렬 버전)
  * @returns 크롤링 작업 시작 성공 여부
  */
 export async function startCrawling(): Promise<boolean> {
-    // 이미 크롤링 중이면 중복 실행 방지
     if (isCrawling) {
         console.log('[Crawler] Crawling is already in progress');
         return false;
@@ -134,7 +176,6 @@ export async function startCrawling(): Promise<boolean> {
     shouldStopCrawling = false;
 
     try {
-        // 크롤링 시작 이벤트 발생
         const crawlingProgress: CrawlingProgress = {
             status: 'initializing',
             currentPage: 0,
@@ -149,48 +190,36 @@ export async function startCrawling(): Promise<boolean> {
 
         crawlerEvents.emit('crawlingProgress', crawlingProgress);
 
-        // 크롤링 범위 결정
+        // 크롤링 범위 결정 및 totalPages 1회만 호출
+        const totalPages = await getTotalPages();
         const { startPage, endPage } = await determineCrawlingRange();
+        const pageNumbers = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
 
-        // 크롤링 진행 상태 업데이트
         crawlingProgress.status = 'running';
-        crawlingProgress.totalPages = endPage - startPage + 1;
+        crawlingProgress.totalPages = pageNumbers.length;
         crawlerEvents.emit('crawlingProgress', { ...crawlingProgress });
 
-        console.log(`[Crawler] Starting crawling from page ${startPage} to ${endPage}`);
+        console.log(`[Crawler] Starting parallel crawling from page ${startPage} to ${endPage}`);
 
-        // 각 페이지 순회하며 제품 정보 수집
-        for (let currentPage = startPage; currentPage <= endPage; currentPage++) {
-            // 중지 요청 확인
-            if (shouldStopCrawling) {
-                console.log('[Crawler] Crawling stopped by user request');
-                crawlingProgress.status = 'stopped';
+        // 병렬 크롤링 (최대 8개 동시 실행)
+        await promisePool(
+            pageNumbers,
+            async (pageNumber) => {
+                if (shouldStopCrawling) return 0;
+                const products = await crawlProductsFromPage(pageNumber, totalPages);
+                crawlingProgress.processedItems += products.length;
+                crawlingProgress.currentPage++;
+                crawlingProgress.estimatedEndTime = estimateEndTime(
+                    crawlingProgress.startTime,
+                    crawlingProgress.currentPage,
+                    crawlingProgress.totalPages
+                );
                 crawlerEvents.emit('crawlingProgress', { ...crawlingProgress });
-                isCrawling = false;
-                return false;
-            }
+                return products.length;
+            },
+            8 // 동시 실행 개수
+        );
 
-            crawlingProgress.currentPage = currentPage - startPage + 1;
-            crawlerEvents.emit('crawlingProgress', { ...crawlingProgress });
-
-            // 현재 페이지 크롤링
-            const productsCount = await crawlProductsFromPage(currentPage);
-
-            // 진행 상태 업데이트
-            crawlingProgress.processedItems += productsCount;
-            crawlingProgress.estimatedEndTime = estimateEndTime(
-                crawlingProgress.startTime,
-                crawlingProgress.currentPage,
-                crawlingProgress.totalPages
-            );
-
-            crawlerEvents.emit('crawlingProgress', { ...crawlingProgress });
-
-            // 다음 페이지 크롤링 전 짧은 대기 (서버 부하 방지)
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-
-        // 크롤링 완료
         crawlingProgress.status = 'completed';
         crawlingProgress.estimatedEndTime = 0;
         crawlerEvents.emit('crawlingProgress', { ...crawlingProgress });
