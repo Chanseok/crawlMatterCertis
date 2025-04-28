@@ -6,6 +6,7 @@
 import { chromium } from 'playwright-chromium';
 import { getDatabaseSummaryFromDb } from './database.js';
 import type { CrawlingProgress } from '../ui/types.js';
+import type { Product } from '../../types.js'; // Product 타입 import 추가
 import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';

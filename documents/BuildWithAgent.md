@@ -299,4 +299,100 @@ Matter 인증 정보를 자동으로 수집하기 위한 크롤링 기능을 Pla
 - UI/UX 개선은 실제 사용자 관점에서 상태 요약, 진행률, 로그 등 실시간 피드백을 강화하는 것이 중요하다.
 - 실수와 문제 해결 과정을 BuildWithAgent.md에 기록해두면, 이후 유사한 문제 발생 시 빠르게 대응할 수 있다.
 
----
+## 2025-04-28: ESM 모듈 해결 오류 및 TypeScript 타입 시스템 개선
+
+### 문제 발견 및 근본 원인 분석
+
+프로젝트 코드베이스를 점검하는 과정에서 TypeScript 관련 여러 오류가 발견되었으며, 가장 핵심적인 문제는 다음과 같았습니다:
+
+- **상대 경로 import 시 파일 확장자 명시 오류**
+  ```
+  Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'.
+  ```
+  - 원인: TypeScript의 ESM 모듈 시스템에서는 상대 경로로 파일을 import할 때 명시적인 파일 확장자(.js)를 요구함
+  - 발생 위치: `/src/electron/crawler.ts`에서 `../ui/types` 파일을 import할 때 확장자 누락
+
+- **타입 단언 과다 사용 및 타입 불일치 문제**
+  - 여러 파일에서 `as any`, `as unknown as Type` 등의 타입 단언이 과도하게 사용됨
+  - 타입 정의가 여러 곳에 중복되어 일관성 부족
+
+- **isolatedModules 모드에서 타입 재내보내기(re-export) 구문 오류**
+  - `export { Type }` 문법이 `isolatedModules: true` 설정과 충돌하는 문제
+
+### 개선 방안 및 적용 내용
+
+#### 1. 모듈 경로 개선
+
+- **명시적 파일 확장자 추가**
+  - 모든 상대 경로 import에 `.js` 확장자 추가 (TypeScript 소스 파일을 가져올 때도 결과적으로는 JS 파일이 로드되므로)
+  ```typescript
+  // 수정 전
+  import type { CrawlingProgress } from '../ui/types';
+  
+  // 수정 후
+  import type { CrawlingProgress } from '../ui/types.js';
+  ```
+
+- **tsconfig.json 설정 일관성 확인**
+  - src/electron 폴더의 별도 tsconfig.json에서 `module: "NodeNext"` 사용 중
+  - 이는 Node.js의 ESM 해석 규칙을 따라야 함을 의미
+
+#### 2. 타입 시스템 통합 및 일관성 향상
+
+- **types.d.ts를 모듈로 전환**
+  - 기존 글로벌 타입 정의(ambient declaration)를 모듈 형태로 변경
+  - 모든 타입에 export 키워드 추가하여 명시적 가져오기/내보내기 가능하도록 개선
+  
+- **타입 단언 최소화**
+  - `as unknown as Type` 같은 위험한 타입 단언을 제거하고 타입 안전한 접근 방식 적용
+  - 특히 IPC 통신 부분에서 안전한 타입 처리 강화
+
+- **타입 재내보내기 방식 개선**
+  - `isolatedModules: true` 설정에 맞게 타입 재내보내기 방식을 수정
+  ```typescript
+  // 수정 전
+  export { AppMode, DatabaseSummary, ... };
+  
+  // 수정 후 
+  export type { AppMode, DatabaseSummary, ... };
+  ```
+
+#### 3. 모듈 시스템 호환성 강화
+
+- **NodeNext 모듈 해석에 맞는 파일 확장자 전략 수립**
+  - TypeScript 소스 코드: `.ts`
+  - 타입 정의 파일: `.d.ts`
+  - Import 구문에서 참조: `.js` (런타임에는 컴파일된 JS 파일이 로드되므로)
+
+- **타입 및 값 구분 명확화**
+  - `type` 키워드로 타입 가져오기/내보내기 구분
+  - 타입과 값을 혼합하여 사용하는 패턴 제거
+
+### 근본적인 개선 효과
+
+이번 개선을 통해 프로젝트는 다음과 같은 이점을 얻었습니다:
+
+1. **타입 안전성 강화**: 명시적 타입 정의와 일관된 import/export 패턴을 통해 타입 오류 가능성 감소
+2. **모듈 시스템 호환성 확보**: NodeNext 모듈 해석 방식과 ESM 표준에 맞는 코드베이스로 전환
+3. **유지보수성 향상**: 중앙화된 타입 정의와 일관된 사용 패턴으로 코드 이해 및 수정이 용이해짐
+4. **IDE 지원 개선**: 자동 완성, 네비게이션, 타입 검사 등 IDE 기능이 더 정확하게 작동
+
+### 교훈 및 모범 사례
+
+1. **모듈 해석 전략 이해의 중요성**
+   - `moduleResolution` 설정(node, node16, bundler 등)에 따라 import 문법과 동작 방식이 크게 달라짐
+   - 프로젝트 초기에 일관된 모듈 전략 수립 필요
+
+2. **타입 정의 중앙화**
+   - 가능한 한 타입을 한 곳에서 관리하고, 여러 파일에서 재정의하지 않음
+   - `types.d.ts` 같은 중앙 타입 저장소를 활용
+
+3. **타입 단언 최소화**
+   - `as any` 같은 타입 단언은 타입 시스템의 이점을 무력화시키므로 최소화
+   - 불가피한 경우에만 제한적으로 사용하고 주석으로 이유 명시
+
+4. **일관된 확장자 전략**
+   - `.ts`, `.js`, `.d.ts` 등의 확장자를 프로젝트 규칙에 맞게 일관되게 사용
+   - 특히 ESM에서는 확장자 처리가 중요함을 인지
+
+이러한 개선을 통해 더 안정적이고 유지보수하기 좋은 코드베이스를 구축할 수 있었으며, 향후 발생할 수 있는 타입 관련 문제들을 사전에 방지할 수 있게 되었습니다.

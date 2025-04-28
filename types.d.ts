@@ -1,5 +1,8 @@
+// Types for Matter Certification Collection Application
+// 이 파일을 모듈로 만들기 위해 export 키워드를 추가합니다.
+
 // Statistics 타입 정의 업데이트
-type Statistics = {
+export type Statistics = {
     timestamp: number;
     cpuUsage: number;
     memoryUsage: number;
@@ -8,7 +11,7 @@ type Statistics = {
 };
 
 // Matter 제품 정보 타입
-type MatterProduct = {
+export type MatterProduct = {
     url: string;
     pageId?: number;
     indexInPage?: number;
@@ -33,7 +36,7 @@ type MatterProduct = {
     applicationCategories?: string[];
 };
 
-type Product = {
+export type Product = {
     url: string;
     manufacturer?: string;
     model?: string;
@@ -43,7 +46,7 @@ type Product = {
 };
 
 // 크롤링 진행 상태 타입
-type CrawlingProgress = {
+export type CrawlingProgress = {
     current: number;
     total: number;
     percentage: number;
@@ -53,7 +56,7 @@ type CrawlingProgress = {
 };
 
 // 크롤링 상태 요약 정보 타입
-type CrawlingStatusSummary = {
+export type CrawlingStatusSummary = {
     dbLastUpdated: Date | null;
     dbProductCount: number;
     siteTotalPages: number;
@@ -64,23 +67,35 @@ type CrawlingStatusSummary = {
 };
 
 // 데이터베이스 요약 정보 타입
-type DatabaseSummary = {
+export type DatabaseSummary = {
     totalProducts: number;
+    productCount: number;
     lastUpdated: Date | null;
     newlyAddedCount: number;
 };
 
 // 앱 모드 타입
-type AppMode = 'development' | 'production';
+export type AppMode = 'development' | 'production';
 
-type StaticData = {
+export type StaticData = {
     totalStorage: number;
     cpuModel: string;
     totalMemoryGB: number;
 };
 
+// 동시 처리 작업 상태 타입
+export type ConcurrentTaskStatus = 'pending' | 'running' | 'success' | 'error' | 'stopped';
+
+export type ConcurrentCrawlingTask = {
+    pageNumber: number;
+    status: ConcurrentTaskStatus;
+    startedAt?: number;
+    finishedAt?: number;
+    error?: string;
+};
+
 // 이벤트 페이로드 맵핑 확장
-type EventPayloadMapping = {
+export type EventPayloadMapping = {
     statistics: Statistics;
     getStaticData: StaticData;
     crawlingProgress: CrawlingProgress;
@@ -88,10 +103,12 @@ type EventPayloadMapping = {
     crawlingError: { message: string; details?: string };
     dbSummary: DatabaseSummary;
     products: MatterProduct[];
+    crawlingTaskStatus: ConcurrentCrawlingTask[];
+    crawlingStopped: ConcurrentCrawlingTask[];
 };
 
 // 메서드 매개변수 맵핑
-type MethodParamsMapping = {
+export type MethodParamsMapping = {
     'startCrawling': { mode: AppMode };
     'stopCrawling': void;
     'exportToExcel': { path?: string };
@@ -105,7 +122,7 @@ type MethodParamsMapping = {
 };
 
 // 메서드 반환값 맵핑
-type MethodReturnMapping = {
+export type MethodReturnMapping = {
     'startCrawling': { success: boolean };
     'stopCrawling': { success: boolean };
     'exportToExcel': { success: boolean; path?: string };
@@ -118,10 +135,10 @@ type MethodReturnMapping = {
     'checkCrawlingStatus': { success: boolean; status?: CrawlingStatusSummary; error?: string };
 };
 
-type UnsubscribeFunction = () => void;
+export type UnsubscribeFunction = () => void;
 
 // 플랫폼 독립적인 API 인터페이스
-interface IPlatformAPI {
+export interface IPlatformAPI {
     // 구독 기반 API
     subscribeToEvent<K extends keyof EventPayloadMapping>(
         eventName: K, 
@@ -136,7 +153,7 @@ interface IPlatformAPI {
 }
 
 // 구현체는 실제 구현에서 각 플랫폼별 API로 연결됩니다
-interface IElectronAPI extends IPlatformAPI {
+export interface IElectronAPI extends IPlatformAPI {
     // 구독 메서드
     subscribeStatistics: (callback: (statistics: Statistics) => void) => UnsubscribeFunction;
     subscribeCrawlingProgress: (callback: (progress: CrawlingProgress) => void) => UnsubscribeFunction;
@@ -151,17 +168,19 @@ interface IElectronAPI extends IPlatformAPI {
     stopCrawling: () => Promise<MethodReturnMapping['stopCrawling']>;
     exportToExcel: (params: MethodParamsMapping['exportToExcel']) => Promise<MethodReturnMapping['exportToExcel']>;
     getProducts: (params: MethodParamsMapping['getProducts']) => Promise<MethodReturnMapping['getProducts']>;
+    getProductById: (id: MethodParamsMapping['getProductById']) => Promise<MethodReturnMapping['getProductById']>;
     getDatabaseSummary: () => Promise<MethodReturnMapping['getDatabaseSummary']>;
+    checkCrawlingStatus: () => Promise<MethodReturnMapping['checkCrawlingStatus']>;
+    searchProducts: (params: MethodParamsMapping['searchProducts']) => Promise<MethodReturnMapping['searchProducts']>;
+    markLastUpdated: (timestamp: MethodParamsMapping['markLastUpdated']) => Promise<MethodReturnMapping['markLastUpdated']>;
 }
 
-// 미래의 Tauri 구현을 위한 인터페이스 (주석 처리)
-// interface ITauriAPI extends IPlatformAPI {
-//     // Tauri 특화 메서드가 필요한 경우 여기에 추가
-// }
-
-interface Window {
-    electron: IElectronAPI;
-    // 미래에 Tauri로 전환 시 다음과 같이 확장 가능
-    // tauri?: ITauriAPI;
-    // platformAPI: IPlatformAPI; // 플랫폼 독립적 접근을 위한 참조
+// Window 인터페이스 확장은 글로벌로 유지
+declare global {
+    interface Window {
+        electron: IElectronAPI;
+    }
 }
+
+// 모듈로서 이 파일을 다루도록 빈 export 추가
+export {};

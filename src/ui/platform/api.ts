@@ -149,11 +149,16 @@ class ElectronApiAdapter implements IPlatformAPI {
     callback: (data: EventPayloadMapping[K]) => void
   ): UnsubscribeFunction {
     try {
-      // window.electron.subscribeToEvent의 타입을 명시적으로 맞춤
-      return (window.electron.subscribeToEvent as <T extends keyof EventPayloadMapping>(
-        eventName: T,
-        callback: (data: EventPayloadMapping[T]) => void
-      ) => UnsubscribeFunction)(eventName, callback);
+      // 안전장치: 함수 존재 여부 확인
+      if (window?.electron?.subscribeToEvent && typeof window.electron.subscribeToEvent === 'function') {
+        // 타입 단언 제거 - window.electron.subscribeToEvent는 이미 types.d.ts에서
+        // 올바른 타입으로 정의되어 있으므로 타입 안전함
+        return window.electron.subscribeToEvent(eventName, callback);
+      } else {
+        console.warn(`[API] window.electron.subscribeToEvent is not available. Using fallback implementation for: ${String(eventName)}`);
+        // 대체 구현 사용
+        return this.mockAdapter.subscribeToEvent(eventName, callback);
+      }
     } catch (error) {
       console.error(`Error subscribing to ${String(eventName)}:`, error);
       // 오류 발생시 대체 구현 사용
@@ -173,24 +178,22 @@ class ElectronApiAdapter implements IPlatformAPI {
         // 특별 처리가 필요한 메서드들
         if (methodName === 'startCrawling' && !params) {
           console.warn(`[API] startCrawling called with undefined params. Using default mode 'development'.`);
-          // 기본값 제공 - 타입 단언을 사용하여 타입 시스템과 호환되게 함
-          return await window.electron.invokeMethod(
-            methodName, 
-            { mode: 'development' } as unknown as MethodParamsMapping[K]
-          ) as Promise<R>;
+          // 타입 안전성 확보를 위한 개선된 방식
+          return window.electron.invokeMethod('startCrawling', { mode: 'development' }) as Promise<R>;
         }
         
         // checkCrawlingStatus 특별 처리 (타입 안전성 확보)
         if (methodName === 'checkCrawlingStatus') {
           console.log('[API] Invoking checkCrawlingStatus with explicit type handling');
-          return await window.electron.invokeMethod('checkCrawlingStatus') as unknown as Promise<R>;
+          // 타입 단언 제거, 타입이 이미 IElectronAPI 정의와 일치함
+          return window.electron.invokeMethod('checkCrawlingStatus');
         }
         
         // null이나 undefined인 경우 빈 객체로 대체 (분해 할당 오류 방지)
-        const safeParams = params || ({} as unknown as MethodParamsMapping[K]);
+        const safeParams = params ?? ({} as MethodParamsMapping[K]);
         
-        // 기본 호출 메서드를 사용
-        return await window.electron.invokeMethod(methodName, safeParams) as Promise<R>;
+        // 타입 단언 제거, 반환 타입은 이미 일치함
+        return window.electron.invokeMethod(methodName, safeParams);
       } else {
         console.warn(`[API] window.electron.invokeMethod is not available. Using fallback implementation for: ${String(methodName)}`);
         // 대체 구현 사용

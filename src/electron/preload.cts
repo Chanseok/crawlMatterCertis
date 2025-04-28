@@ -1,34 +1,45 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { 
+    EventPayloadMapping, 
+    MethodParamsMapping,
+    MethodReturnMapping,
+    IElectronAPI
+} from '../../types';
 
 // 구독 기반 이벤트 처리를 위한 유틸리티 함수
-function createSubscriptionHandler(channel: string) {
-    return (callback: (data: any) => void) => {
+function createSubscriptionHandler<K extends keyof EventPayloadMapping>(channel: K) {
+    return (callback: (data: EventPayloadMapping[K]) => void) => {
         // 이벤트 리스너 등록
-        const subscription = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
-        ipcRenderer.on(channel, subscription);
+        const subscription = (_event: Electron.IpcRendererEvent, data: EventPayloadMapping[K]) => callback(data);
+        ipcRenderer.on(channel as string, subscription);
         
         // 구독 해제 함수 반환
         return () => {
-            ipcRenderer.removeListener(channel, subscription);
+            ipcRenderer.removeListener(channel as string, subscription);
         };
     };
 }
 
 // 메서드 호출을 위한 유틸리티 함수
-function createMethodHandler(channel: string) {
-    return (params?: any) => {
-        return ipcRenderer.invoke(channel, params);
+function createMethodHandler<K extends keyof MethodParamsMapping>(
+    channel: K
+) {
+    return (params?: MethodParamsMapping[K]) => {
+        return ipcRenderer.invoke(channel as string, params) as Promise<MethodReturnMapping[K]>;
     };
 }
 
 // API 객체 정의
-const electronAPI = {
+const electronAPI: IElectronAPI = {
     // 구독 기반 API
-    subscribeToEvent: (eventName: string, callback: (data: any) => void) => {
-        const subscription = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
-        ipcRenderer.on(eventName, subscription);
+    subscribeToEvent: <K extends keyof EventPayloadMapping>(
+        eventName: K,
+        callback: (data: EventPayloadMapping[K]) => void
+    ) => {
+        const subscription = (_event: Electron.IpcRendererEvent, data: EventPayloadMapping[K]) => callback(data);
+        ipcRenderer.on(eventName as string, subscription);
         return () => {
-            ipcRenderer.removeListener(eventName, subscription);
+            ipcRenderer.removeListener(eventName as string, subscription);
         };
     },
     
@@ -41,9 +52,12 @@ const electronAPI = {
     subscribeProducts: createSubscriptionHandler('products'),
     
     // 메서드 호출 API
-    invokeMethod: (methodName: string, params?: any) => {
-        console.log(`[Preload] Invoking method: ${methodName}`, params);
-        return ipcRenderer.invoke(methodName, params);
+    invokeMethod: <K extends keyof MethodParamsMapping, R = MethodReturnMapping[K]>(
+        methodName: K,
+        params?: MethodParamsMapping[K]
+    ) => {
+        console.log(`[Preload] Invoking method: ${String(methodName)}`, params);
+        return ipcRenderer.invoke(methodName as string, params) as Promise<R>;
     },
     
     // 특화된 메서드 호출 (직관적인 API 제공)
