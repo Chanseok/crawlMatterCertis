@@ -19,7 +19,7 @@ export type MatterProduct = {
     manufacturer?: string;
     model?: string;
     deviceType?: string;
-    certificationId?: string;
+    certificateId?: string;
     certificationDate?: string | Date;
     softwareVersion?: string;
     hardwareVersion?: string;
