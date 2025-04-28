@@ -6,15 +6,17 @@
 import { chromium } from 'playwright-chromium';
 import { getDatabaseSummaryFromDb } from './database.js';
 import type { CrawlingProgress } from '../ui/types.js';
-import type { Product } from '../../types.js'; // Product 타입 import 추가
+import type { Product } from '../../types.js'; 
 import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
-import { debugLog } from './util.js'; // debugLog 유틸리티 함수 import
+import { debugLog } from './util.js'; 
 
 // 크롤링 URL 상수
 const BASE_URL = 'https://csa-iot.org/csa-iot_products/';
 const MATTER_FILTER_URL = 'https://csa-iot.org/csa-iot_products/?p_keywords=&p_type%5B%5D=14&p_program_type%5B%5D=1049&p_certificate=&p_family=&p_firmware_ver=';
+const PAGE_TIMEOUT_MS = 20000; // 타임아웃 상수화
+const PRODUCTS_PER_PAGE = 12; // 페이지당 제품 수 상수화
 
 // 크롤링 이벤트 이미터
 export const crawlerEvents = new EventEmitter();
@@ -28,6 +30,32 @@ let cachedTotalPages: number | null = null;
 let cachedTotalPagesFetchedAt: number | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5분 캐시
 
+// 동시 작업 상태 타입 정의 (프론트와 동일하게)
+type ConcurrentTaskStatus = 'pending' | 'running' | 'success' | 'error' | 'stopped';
+interface ConcurrentCrawlingTask {
+    pageNumber: number;
+    status: ConcurrentTaskStatus;
+    error?: string;
+}
+
+// 크롤링 결과 타입 정의
+interface CrawlResult {
+    pageNumber: number;
+    products: Product[] | null;
+    error?: string;
+}
+
+interface FailedPageReport {
+    pageNumber: number;
+    errors: string[];
+}
+
+// 각 페이지별 작업 상태 관리용
+let concurrentTaskStates: Record<number, ConcurrentCrawlingTask> = {};
+
+/**
+ * 캐시된 페이지 정보 반환 또는 최신화
+ */
 async function getTotalPagesCached(force = false): Promise<number> {
     const now = Date.now();
     if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < CACHE_TTL_MS)) {
@@ -41,7 +69,6 @@ async function getTotalPagesCached(force = false): Promise<number> {
 
 /**
  * 총 페이지 수를 가져오는 함수
- * @returns 총 페이지 수
  */
 async function getTotalPages(): Promise<number> {
     const browser: import('playwright-chromium').Browser = await chromium.launch({ headless: true });
@@ -52,11 +79,9 @@ async function getTotalPages(): Promise<number> {
         const page = await context.newPage();
 
         console.log(`[Crawler] Navigating to ${MATTER_FILTER_URL}`);
-        // 페이지 로드
         await page.goto(MATTER_FILTER_URL, { waitUntil: 'domcontentloaded' });
 
         // 페이지네이션 정보 추출
-        // div.pagination-wrapper > nav > div > a:nth-child(7) > span 에서 마지막 페이지 번호 확인
         const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
         if (pageElements.length > 0) {
             const pageNumbers = await Promise.all(
@@ -69,8 +94,6 @@ async function getTotalPages(): Promise<number> {
             totalPages = Math.max(...pageNumbers.filter(n => !isNaN(n)));
         }
         console.log(`[Crawler] Found ${totalPages} total pages`);
-
-        
     } catch (error: unknown) {
         console.error('[Crawler] Error getting total pages:', error);
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -84,23 +107,18 @@ async function getTotalPages(): Promise<number> {
 
 /**
  * 크롤링해야 할 페이지 범위를 결정하는 함수
- * 현재 DB에 저장된 정보와 비교하여 필요한 페이지 범위를 반환
  */
 async function determineCrawlingRange(): Promise<{ startPage: number; endPage: number }> {
-    // DB 요약 정보 가져오기
     const dbSummary = await getDatabaseSummaryFromDb();
     const totalPages = await getTotalPagesCached();
 
     if (dbSummary.productCount === 0) {
-        // DB가 비어있으면 전체 페이지 크롤링
         console.log('[Crawler] Database is empty. Need to crawl all pages.');
         return { startPage: 1, endPage: totalPages };
     }
 
-    // 이미 수집된 페이지 수 계산 (각 페이지 별로 12개 제품, 마지막 페이지는 12개 이내의 정보를 가질 수 있으므로 제외)
-    const collectedPages = Math.floor(dbSummary.productCount / 12);
-    // 최신 페이지가 1번, 가장 오래된 페이지가 totalPages번
-    // endPage: 아직 수집하지 않은 최신 페이지까지
+    // 이미 수집된 페이지 수 계산
+    const collectedPages = Math.floor(dbSummary.productCount / PRODUCTS_PER_PAGE);
     const endPage = Math.max(1, totalPages - collectedPages);
     const startPage = 1;
 
@@ -110,11 +128,8 @@ async function determineCrawlingRange(): Promise<{ startPage: number; endPage: n
 
 /**
  * 특정 페이지의 제품 정보 목록을 크롤링하는 함수
- * @param pageNumber 크롤링할 페이지 번호
- * @param totalPages 전체 페이지 수 (getTotalPages() 결과를 전달)
- * @returns 수집된 제품 정보 배열
  */
-async function crawlProductsFromPage(pageNumber: number, totalPages: number) {
+async function crawlProductsFromPage(pageNumber: number, totalPages: number): Promise<Product[]> {
     console.log(`[Crawler] Crawling page ${pageNumber}`);
 
     const pageUrl = `${MATTER_FILTER_URL}&paged=${pageNumber}`;
@@ -124,9 +139,7 @@ async function crawlProductsFromPage(pageNumber: number, totalPages: number) {
         const context = await browser.newContext();
         const page = await context.newPage();
 
-        // 페이지 로드
         await page.goto(pageUrl, { waitUntil: 'domcontentloaded'});
-
         const pageId = totalPages - pageNumber;
 
         // 제품 정보 추출
@@ -189,7 +202,6 @@ async function promisePool<T>(
         if (index >= items.length) return;
         const current = index++;
         if (shouldStopCrawling || abortController.signal.aborted) {
-            // 중단된 경우 즉시 resolve
             return;
         }
         results[current] = await worker(items[current], abortController.signal);
@@ -201,27 +213,116 @@ async function promisePool<T>(
     return results;
 }
 
-// 동시 작업 상태 타입 정의 (프론트와 동일하게)
-type ConcurrentTaskStatus = 'pending' | 'running' | 'success' | 'error' | 'stopped';
-interface ConcurrentCrawlingTask {
-    pageNumber: number;
-    status: ConcurrentTaskStatus;
-    error?: string;
+/**
+ * 단일 페이지 크롤링 작업을 처리하는 함수
+ */
+async function processPageCrawl(
+    pageNumber: number, 
+    totalPages: number, 
+    productsResults: Product[], 
+    failedPages: number[], 
+    failedPageErrors: Record<number, string[]>, 
+    signal: AbortSignal,
+    attempt: number = 1
+): Promise<CrawlResult | null> {
+    if (shouldStopCrawling || signal.aborted) {
+        updateTaskStatus(pageNumber, 'stopped');
+        return null;
+    }
+
+    updateTaskStatus(pageNumber, 'running');
+    
+    try {
+        // 타임아웃/중단 지원 로직
+        const products = await Promise.race([
+            // 크롤링 로직
+            crawlPageWithTimeout(pageNumber, totalPages, productsResults),
+            // 타임아웃 처리
+            new Promise<null>((_, reject) => 
+                setTimeout(() => reject(new Error('Timeout')), PAGE_TIMEOUT_MS)
+            ),
+            // 중단 처리
+            new Promise<null>((_, reject) => {
+                signal.addEventListener('abort', () => reject(new Error('Aborted')));
+            })
+        ]);
+        
+        updateTaskStatus(pageNumber, 'success');
+        return { pageNumber, products };
+    } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const status = shouldStopCrawling ? 'stopped' : 'error';
+        updateTaskStatus(pageNumber, status, errorMsg);
+        
+        // 실패한 페이지 기록
+        failedPages.push(pageNumber);
+        if (!failedPageErrors[pageNumber]) {
+            failedPageErrors[pageNumber] = [];
+        }
+        
+        const attemptPrefix = attempt > 1 ? `Attempt ${attempt}: ` : '';
+        failedPageErrors[pageNumber].push(`${attemptPrefix}${errorMsg}`);
+        
+        return { pageNumber, products: null, error: errorMsg };
+    }
 }
 
-// 각 페이지별 작업 상태 관리용
-let concurrentTaskStates: Record<number, ConcurrentCrawlingTask> = {};
+/**
+ * 크롤링 시 페이지 상태 업데이트 및 이벤트 발생
+ */
+function updateTaskStatus(pageNumber: number, status: ConcurrentTaskStatus, error?: string): void {
+    concurrentTaskStates[pageNumber] = { pageNumber, status, error };
+    crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
+}
+
+/**
+ * 타임아웃 처리가 있는 페이지 크롤링 함수
+ */
+async function crawlPageWithTimeout(
+    pageNumber: number,
+    totalPages: number,
+    productsResults: Product[]
+): Promise<Product[]> {
+    const products = await crawlProductsFromPage(pageNumber, totalPages);
+    if (products && products.length > 0) {
+        productsResults.push(...products);
+    }
+    return products;
+}
+
+/**
+ * 크롤링 결과를 JSON 파일로 저장
+ */
+function saveProductsToFile(products: Product[]): string {
+    try {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        const h = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const s = String(now.getSeconds()).padStart(2, '0');
+        const filename = `products_${y}${m}${d}_${h}${min}${s}.json`;
+        const outputDir = path.resolve(process.cwd(), 'dist-output');
+        
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+        
+        const filePath = path.join(outputDir, filename);
+        fs.writeFileSync(filePath, JSON.stringify(products, null, 2), 'utf-8');
+        console.log(`[Crawler] Products saved to ${filePath}`);
+        return filePath;
+    } catch (err) {
+        console.error('[Crawler] Failed to save products json:', err);
+        throw err;
+    }
+}
 
 /**
  * 크롤링 작업을 시작하는 함수 (병렬 버전)
  * @returns 크롤링 작업 시작 성공 여부
  */
-interface CrawlResult {
-    pageNumber: number;
-    products: Product[] | null;
-    error?: string;
-}
-
 export async function startCrawling(): Promise<boolean> {
     if (isCrawling) return false;
     isCrawling = true;
@@ -230,19 +331,8 @@ export async function startCrawling(): Promise<boolean> {
     const abortController = new AbortController();
 
     try {
-        const crawlingProgress: CrawlingProgress = {
-            status: 'initializing',
-            currentPage: 0,
-            totalPages: 0,
-            processedItems: 0,
-            totalItems: 0,
-            startTime: Date.now(),
-            estimatedEndTime: 0,
-            newItems: 0,
-            updatedItems: 0
-        };
-        crawlerEvents.emit('crawlingProgress', crawlingProgress);
-
+        // 진행 상태 초기화
+        const crawlingProgress = initializeCrawlingProgress();
         const totalPages = await getTotalPagesCached();
         const { startPage, endPage } = await determineCrawlingRange();
         const pageNumbers = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
@@ -252,189 +342,158 @@ export async function startCrawling(): Promise<boolean> {
         let failedPages: number[] = [];
         const failedPageErrors: Record<number, string[]> = {};
 
-        // 동시 작업 상태 초기화 및 emit
-        for (const pageNumber of pageNumbers) {
-            concurrentTaskStates[pageNumber] = { pageNumber, status: 'pending' };
-        }
-        crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
+        // 작업 상태 초기화
+        initializeTaskStates(pageNumbers);
 
+        // 1차 병렬 크롤링 실행
         debugLog(`Starting crawling from page ${pageNumbers[0]} to ${pageNumbers[pageNumbers.length - 1]}`);
-        // 1차 병렬 크롤링
-        await promisePool(
-            pageNumbers,
-            async (pageNumber, signal) => {
-                if (shouldStopCrawling || signal.aborted) {
-                    concurrentTaskStates[pageNumber] = { pageNumber, status: 'stopped' };
-                    crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
-                    return null;
-                }
-                concurrentTaskStates[pageNumber] = { pageNumber, status: 'running' };
-                crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
-                try {
-                    // 타임아웃/중단 지원
-                    const timeoutPromise = new Promise<null>((_, reject) =>
-                        setTimeout(() => reject(new Error('Timeout')), 20000)
-                    );
-                    const crawlPromise = (async () => {
-                        // crawlProductsFromPage 함수 사용하여 제품 정보 추출
-                        const products = await crawlProductsFromPage(pageNumber, totalPages);
-                        // 성공적으로 추출된 제품 정보를 결과 배열에 추가
-                        if (products && products.length > 0) {
-                            productsResults.push(...products);
-                        }
-                        return products;
-                    })();
-                    
-                    const products = await Promise.race([
-                        crawlPromise,
-                        timeoutPromise,
-                        new Promise((_, reject) => {
-                            signal.addEventListener('abort', () => reject(new Error('Aborted')));
-                        })
-                    ]);
-                    
-                    concurrentTaskStates[pageNumber] = { pageNumber, status: 'success' };
-                    crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
-                    return { pageNumber, products };
-                } catch (err) {
-                    const errorMsg = err instanceof Error ? err.message : String(err);
-                    concurrentTaskStates[pageNumber] = { pageNumber, status: shouldStopCrawling ? 'stopped' : 'error', error: errorMsg };
-                    crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
-                    
-                    // 실패한 페이지 기록
-                    failedPages.push(pageNumber);
-                    if (!failedPageErrors[pageNumber]) {
-                        failedPageErrors[pageNumber] = [];
-                    }
-                    failedPageErrors[pageNumber].push(errorMsg);
-                    
-                    return { pageNumber, products: null, error: errorMsg };
-                }
-            },
-            8,
-            abortController
-        );
+        await executeParallelCrawling(pageNumbers, totalPages, productsResults, failedPages, failedPageErrors, abortController, 8);
 
-        // 2~5차 재시도
-        for (let attempt = 2; attempt <= 5 && failedPages.length > 0; attempt++) {
-            const retryPages = [...failedPages];
-            failedPages = [];
-            await promisePool(
-                retryPages,
-                async (pageNumber, signal) => {
-                    if (shouldStopCrawling || signal.aborted) {
-                        concurrentTaskStates[pageNumber] = { pageNumber, status: 'stopped' };
-                        crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
-                        return null;
-                    }
-                    concurrentTaskStates[pageNumber] = { pageNumber, status: 'running' };
-                    crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
-                    try {
-                        const timeoutPromise = new Promise<null>((_, reject) =>
-                            setTimeout(() => reject(new Error('Timeout')), 20000)
-                        );
-                        const crawlPromise = (async () => {
-                            // crawlProductsFromPage 함수 사용하여 제품 정보 재시도 추출
-                            const products = await crawlProductsFromPage(pageNumber, totalPages);
-                            // 성공적으로 추출된 제품 정보를 결과 배열에 추가
-                            if (products && products.length > 0) {
-                                productsResults.push(...products);
-                            }
-                            return products;
-                        })();
-                        
-                        const products = await Promise.race([
-                            crawlPromise,
-                            timeoutPromise,
-                            new Promise((_, reject) => {
-                                signal.addEventListener('abort', () => reject(new Error('Aborted')));
-                            })
-                        ]);
-                        
-                        concurrentTaskStates[pageNumber] = { pageNumber, status: 'success' };
-                        crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
-                        return { pageNumber, products };
-                    } catch (err) {
-                        const errorMsg = err instanceof Error ? err.message : String(err);
-                        concurrentTaskStates[pageNumber] = { pageNumber, status: shouldStopCrawling ? 'stopped' : 'error', error: errorMsg };
-                        crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
-                        
-                        // 실패한 페이지 기록
-                        failedPages.push(pageNumber);
-                        if (!failedPageErrors[pageNumber]) {
-                            failedPageErrors[pageNumber] = [];
-                        }
-                        failedPageErrors[pageNumber].push(`Attempt ${attempt}: ${errorMsg}`);
-                        
-                        return { pageNumber, products: null, error: errorMsg };
-                    }
-                },
-                4, // 재시도는 동시성 4로 실행
-                abortController
-            );
-        }
+        // 실패한 페이지 재시도 (최대 4번)
+        await retryFailedPages(failedPages, totalPages, productsResults, failedPageErrors, abortController);
 
-        // 최종 실패 페이지 보고서 생성
-        let failedReport: { pageNumber: number; errors: string[] }[] = [];
-        if (failedPages.length > 0) {
-            failedReport = failedPages.map(pageNumber => ({
-                pageNumber,
-                errors: failedPageErrors[pageNumber]
-            }));
-            crawlerEvents.emit('crawlingFailedPages', failedReport);
-        }
+        // 결과 처리 및 보고
+        handleCrawlingResults(productsResults, failedPages, failedPageErrors, crawlingProgress);
 
-        // 크롤링 완료 후 productsResults를 사용자에게 보고
-        crawlerEvents.emit('crawlingComplete', {
-            success: true,
-            count: productsResults.length,
-            products: productsResults,
-            failedReport
-        });
-
-        // === [추가] 크롤링 완료 시점에 products를 dist-output 폴더에 저장 ===
-        try {
-            const now = new Date();
-            const y = now.getFullYear();
-            const m = String(now.getMonth() + 1).padStart(2, '0');
-            const d = String(now.getDate()).padStart(2, '0');
-            const h = String(now.getHours()).padStart(2, '0');
-            const min = String(now.getMinutes()).padStart(2, '0');
-            const s = String(now.getSeconds()).padStart(2, '0');
-            const filename = `products_${y}${m}${d}_${h}${min}${s}.json`;
-            const outputDir = path.resolve(process.cwd(), 'dist-output');
-            if (!fs.existsSync(outputDir)) {
-                fs.mkdirSync(outputDir, { recursive: true });
-            }
-            const filePath = path.join(outputDir, filename);
-            fs.writeFileSync(filePath, JSON.stringify(productsResults, null, 2), 'utf-8');
-            console.log(`[Crawler] Products saved to ${filePath}`);
-        } catch (err) {
-            console.error('[Crawler] Failed to save products json:', err);
-        }
-        // === [추가 끝] ===
-
-        crawlingProgress.status = 'completed';
-        crawlingProgress.estimatedEndTime = 0;
-        crawlerEvents.emit('crawlingProgress', { ...crawlingProgress });
-
-        // 중단 시 crawlingStopped 이벤트로 전체 상태 보고
+        // 중단 여부 처리
         if (shouldStopCrawling || abortController.signal.aborted) {
             crawlerEvents.emit('crawlingStopped', Object.values(concurrentTaskStates));
         }
 
         return true;
     } catch (error) {
-        console.error('[Crawler] Error during crawling:', error);
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        crawlerEvents.emit('crawlingError', {
-            message: 'Crawling failed',
-            details: errorMessage
-        });
+        handleCrawlingError(error);
         return false;
     } finally {
         isCrawling = false;
     }
+}
+
+/**
+ * 크롤링 진행 상태 초기화
+ */
+function initializeCrawlingProgress(): CrawlingProgress {
+    const crawlingProgress: CrawlingProgress = {
+        status: 'initializing',
+        currentPage: 0,
+        totalPages: 0,
+        processedItems: 0,
+        totalItems: 0,
+        startTime: Date.now(),
+        estimatedEndTime: 0,
+        newItems: 0,
+        updatedItems: 0
+    };
+    crawlerEvents.emit('crawlingProgress', crawlingProgress);
+    return crawlingProgress;
+}
+
+/**
+ * 작업 상태 초기화
+ */
+function initializeTaskStates(pageNumbers: number[]): void {
+    for (const pageNumber of pageNumbers) {
+        concurrentTaskStates[pageNumber] = { pageNumber, status: 'pending' };
+    }
+    crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
+}
+
+/**
+ * 병렬 크롤링 실행
+ */
+async function executeParallelCrawling(
+    pageNumbers: number[],
+    totalPages: number,
+    productsResults: Product[],
+    failedPages: number[],
+    failedPageErrors: Record<number, string[]>,
+    abortController: AbortController,
+    concurrency: number
+): Promise<void> {
+    await promisePool(
+        pageNumbers,
+        async (pageNumber, signal) => processPageCrawl(
+            pageNumber, totalPages, productsResults, failedPages, failedPageErrors, signal
+        ),
+        concurrency,
+        abortController
+    );
+}
+
+/**
+ * 실패한 페이지 재시도
+ */
+async function retryFailedPages(
+    failedPages: number[],
+    totalPages: number,
+    productsResults: Product[],
+    failedPageErrors: Record<number, string[]>,
+    abortController: AbortController
+): Promise<void> {
+    for (let attempt = 2; attempt <= 5 && failedPages.length > 0; attempt++) {
+        const retryPages = [...failedPages];
+        failedPages = [];
+        await promisePool(
+            retryPages,
+            async (pageNumber, signal) => processPageCrawl(
+                pageNumber, totalPages, productsResults, failedPages, failedPageErrors, signal, attempt
+            ),
+            4, // 재시도는 동시성 4로 실행
+            abortController
+        );
+    }
+}
+
+/**
+ * 크롤링 결과 처리 및 보고
+ */
+function handleCrawlingResults(
+    productsResults: Product[],
+    failedPages: number[],
+    failedPageErrors: Record<number, string[]>,
+    crawlingProgress: CrawlingProgress
+): void {
+    // 실패 보고서 생성
+    let failedReport: FailedPageReport[] = [];
+    if (failedPages.length > 0) {
+        failedReport = failedPages.map(pageNumber => ({
+            pageNumber,
+            errors: failedPageErrors[pageNumber]
+        }));
+        crawlerEvents.emit('crawlingFailedPages', failedReport);
+    }
+
+    // 크롤링 결과 보고
+    crawlerEvents.emit('crawlingComplete', {
+        success: true,
+        count: productsResults.length,
+        products: productsResults,
+        failedReport
+    });
+
+    // 결과 파일 저장
+    try {
+        saveProductsToFile(productsResults);
+    } catch (err) {
+        console.error('[Crawler] Failed to save products json:', err);
+    }
+
+    // 진행 상태 업데이트
+    crawlingProgress.status = 'completed';
+    crawlingProgress.estimatedEndTime = 0;
+    crawlerEvents.emit('crawlingProgress', { ...crawlingProgress });
+}
+
+/**
+ * 크롤링 오류 처리
+ */
+function handleCrawlingError(error: unknown): void {
+    console.error('[Crawler] Error during crawling:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    crawlerEvents.emit('crawlingError', {
+        message: 'Crawling failed',
+        details: errorMessage
+    });
 }
 
 /**
@@ -454,25 +513,20 @@ export function stopCrawling(): boolean {
 
 /**
  * 크롤링 상태 체크(요약 정보) 함수
- * - 네트워크 호출 최소화, 1회만 호출
- * - Date 객체 등 직렬화 문제 방지를 위해 안전한 형태로 변환
  */
 export async function checkCrawlingStatus() {
     try {
         const dbSummary = await getDatabaseSummaryFromDb();
         const totalPages = await getTotalPagesCached(true); // 강제 갱신
-        // 사이트의 총 제품 수 추정 (마지막 페이지에서 실제 개수 구하는 로직은 필요시 추가)
-        const siteProductCount = totalPages * 12;
+        const siteProductCount = totalPages * PRODUCTS_PER_PAGE;
         const { startPage, endPage } = await determineCrawlingRange();
         
         // 직렬화 문제가 있는 객체들을 안전하게 변환
         const safeDbSummary = {
             ...dbSummary,
-            // Date 객체를 ISO 문자열로 확실하게 변환
             lastUpdated: dbSummary.lastUpdated ? dbSummary.lastUpdated.toISOString() : null
         };
         
-        // 직렬화 가능한 객체만 포함하는 새로운 객체 반환
         return {
             dbLastUpdated: safeDbSummary.lastUpdated,
             dbProductCount: safeDbSummary.productCount,
@@ -484,7 +538,6 @@ export async function checkCrawlingStatus() {
         };
     } catch (error) {
         console.error("[Crawler] Error in checkCrawlingStatus:", error);
-        // 오류 발생 시에도 직렬화 가능한 객체 반환
         return {
             error: error instanceof Error ? error.message : String(error),
             dbLastUpdated: null,
