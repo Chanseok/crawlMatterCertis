@@ -376,22 +376,47 @@ export function stopCrawling(): boolean {
 /**
  * 크롤링 상태 체크(요약 정보) 함수
  * - 네트워크 호출 최소화, 1회만 호출
+ * - Date 객체 등 직렬화 문제 방지를 위해 안전한 형태로 변환
  */
 export async function checkCrawlingStatus() {
-    const dbSummary = await getDatabaseSummaryFromDb();
-    const totalPages = await getTotalPagesCached(true); // 강제 갱신
-    // 사이트의 총 제품 수 추정 (마지막 페이지에서 실제 개수 구하는 로직은 필요시 추가)
-    const siteProductCount = totalPages * 12;
-    const { startPage, endPage } = await determineCrawlingRange();
-    return {
-        dbLastUpdated: dbSummary.lastUpdated,
-        dbProductCount: dbSummary.productCount,
-        siteTotalPages: totalPages,
-        siteProductCount,
-        diff: siteProductCount - dbSummary.productCount,
-        needCrawling: siteProductCount > dbSummary.productCount,
-        crawlingRange: { startPage, endPage }
-    };
+    try {
+        const dbSummary = await getDatabaseSummaryFromDb();
+        const totalPages = await getTotalPagesCached(true); // 강제 갱신
+        // 사이트의 총 제품 수 추정 (마지막 페이지에서 실제 개수 구하는 로직은 필요시 추가)
+        const siteProductCount = totalPages * 12;
+        const { startPage, endPage } = await determineCrawlingRange();
+        
+        // 직렬화 문제가 있는 객체들을 안전하게 변환
+        const safeDbSummary = {
+            ...dbSummary,
+            // Date 객체를 ISO 문자열로 확실하게 변환
+            lastUpdated: dbSummary.lastUpdated ? dbSummary.lastUpdated.toISOString() : null
+        };
+        
+        // 직렬화 가능한 객체만 포함하는 새로운 객체 반환
+        return {
+            dbLastUpdated: safeDbSummary.lastUpdated,
+            dbProductCount: safeDbSummary.productCount,
+            siteTotalPages: totalPages,
+            siteProductCount,
+            diff: siteProductCount - dbSummary.productCount,
+            needCrawling: siteProductCount > dbSummary.productCount,
+            crawlingRange: { startPage, endPage }
+        };
+    } catch (error) {
+        console.error("[Crawler] Error in checkCrawlingStatus:", error);
+        // 오류 발생 시에도 직렬화 가능한 객체 반환
+        return {
+            error: error instanceof Error ? error.message : String(error),
+            dbLastUpdated: null,
+            dbProductCount: 0,
+            siteTotalPages: 0,
+            siteProductCount: 0,
+            diff: 0,
+            needCrawling: false,
+            crawlingRange: { startPage: 1, endPage: 1 }
+        };
+    }
 }
 
 /**

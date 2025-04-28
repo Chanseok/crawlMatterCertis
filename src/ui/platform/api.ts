@@ -4,13 +4,6 @@
  */
 
 import { MatterProduct, CrawlingProgress, AppMode, DatabaseSummary } from '../types';
-import { 
-  allMockProducts, 
-  mockDatabaseSummary, 
-  simulateCrawling, 
-  simulateSearch, 
-  simulateExportToExcel 
-} from '../services/mockData';
 
 // 통계 데이터 인터페이스
 export interface Statistics {
@@ -79,15 +72,14 @@ export interface MethodReturnMapping {
 
 // 현재 활성화된 플랫폼 API
 let currentPlatformAPI: IPlatformAPI;
-// 개발 모드에서 실제 데이터베이스를 사용하기 위해 false로 설정
-let useMockApiInDevelopment = false; // 수정: true에서 false로 변경
+// 실제 API를 사용하도록 설정
+let useMockApiInDevelopment = false;
 // 현재 앱 모드 (기본값: 개발 모드)
 let currentAppMode: AppMode = 'development';
 
-// Mock API 어댑터 (개발 모드에서 사용)
+// 기본 API 어댑터 클래스
 class MockApiAdapter implements IPlatformAPI {
   private eventHandlers: Map<string, Set<(data: any) => void>> = new Map();
-  private crawlingStopper: (() => void) | null = null;
 
   subscribeToEvent<K extends keyof EventPayloadMapping>(
     eventName: K,
@@ -98,19 +90,6 @@ class MockApiAdapter implements IPlatformAPI {
     }
     
     this.eventHandlers.get(eventName)!.add(callback);
-    
-    // 구독 즉시 초기 데이터 전송 (products, dbSummary 등)
-    if (eventName === 'products') {
-      setTimeout(() => {
-        this.emitEvent('products', allMockProducts.slice(0, 20));
-      }, 0);
-    }
-    
-    if (eventName === 'dbSummary') {
-      setTimeout(() => {
-        this.emitEvent('dbSummary', mockDatabaseSummary);
-      }, 0);
-    }
     
     return () => {
       const handlers = this.eventHandlers.get(eventName);
@@ -129,72 +108,12 @@ class MockApiAdapter implements IPlatformAPI {
     // 약간의 지연 시간을 두어 실제 API 호출처럼 느껴지게 함
     await new Promise(resolve => setTimeout(resolve, 300));
     
-    switch (methodName) {
-      case 'startCrawling':
-        if (this.crawlingStopper) {
-          return { success: false } as any;
-        }
-        
-        this.crawlingStopper = simulateCrawling(
-          (progress) => this.emitEvent('crawlingProgress', progress),
-          (success, count) => this.emitEvent('crawlingComplete', { success, count }),
-          (message, details) => this.emitEvent('crawlingError', { message, details })
-        );
-        
-        return { success: true } as any;
-        
-      case 'stopCrawling':
-        if (this.crawlingStopper) {
-          this.crawlingStopper();
-          this.crawlingStopper = null;
-          return { success: true } as any;
-        }
-        return { success: false } as any;
-        
-      case 'getProducts':
-        const searchParams = params as MethodParamsMapping['getProducts'] || {};
-        const result = simulateSearch(
-          searchParams.search || '', 
-          searchParams.page || 1, 
-          searchParams.limit || 20
-        );
-        return result as any;
-        
-      case 'getDatabaseSummary':
-        return mockDatabaseSummary as any;
-        
-      case 'exportToExcel':
-        return simulateExportToExcel() as any;
-        
-      case 'getStaticData':
-        return {
-          cpuModel: 'Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz',
-          totalMemoryGB: 32,
-          totalStorage: 1000
-        } as any;
-        
-      case 'checkCrawlingStatus':
-        // 상태 체크 시뮬레이션
-        return {
-          success: true,
-          status: {
-            dbLastUpdated: mockDatabaseSummary.lastUpdated,
-            dbProductCount: mockDatabaseSummary.productCount,
-            siteTotalPages: 10,
-            siteProductCount: 120, // 12 products per page * 10 pages
-            diff: 120 - mockDatabaseSummary.productCount,
-            needCrawling: 120 > mockDatabaseSummary.productCount,
-            crawlingRange: { startPage: 1, endPage: 10 }
-          }
-        } as any;
-        
-      default:
-        throw new Error(`Method ${String(methodName)} is not implemented in mock API`);
-    }
+    // 기본 빈 응답을 반환
+    return {} as any;
   }
 
   // 이벤트 발생 메서드 (내부용)
-  private emitEvent<K extends keyof EventPayloadMapping>(
+  protected emitEvent<K extends keyof EventPayloadMapping>(
     eventName: K, 
     data: EventPayloadMapping[K]
   ): void {
@@ -216,7 +135,7 @@ class ElectronApiAdapter implements IPlatformAPI {
   private mockAdapter: MockApiAdapter;
 
   constructor() {
-    // 안전장치로 Mock 어댑터 생성
+    // 안전장치로 기본 어댑터 생성
     this.mockAdapter = new MockApiAdapter();
     
     // window.electron 객체 체크
@@ -245,13 +164,13 @@ class ElectronApiAdapter implements IPlatformAPI {
         // 기본 구독 메서드를 사용
         return window.electron.subscribeToEvent(eventName, callback);
       } else {
-        console.warn(`[API] window.electron.subscribeToEvent is not available. Using mock for: ${String(eventName)}`);
-        // Mock 어댑터의 메서드 사용
+        console.warn(`[API] window.electron.subscribeToEvent is not available. Using fallback implementation for: ${String(eventName)}`);
+        // 대체 구현 사용
         return this.mockAdapter.subscribeToEvent(eventName, callback);
       }
     } catch (error) {
       console.error(`Error subscribing to ${String(eventName)}:`, error);
-      // 오류 발생시 Mock 어댑터의 메서드 사용
+      // 오류 발생시 대체 구현 사용
       return this.mockAdapter.subscribeToEvent(eventName, callback);
     }
   }
@@ -287,41 +206,20 @@ class ElectronApiAdapter implements IPlatformAPI {
         // 기본 호출 메서드를 사용
         return await window.electron.invokeMethod(methodName, safeParams) as Promise<R>;
       } else {
-        console.warn(`[API] window.electron.invokeMethod is not available. Using mock for: ${String(methodName)}`);
-        // Mock 어댑터의 메서드 사용
+        console.warn(`[API] window.electron.invokeMethod is not available. Using fallback implementation for: ${String(methodName)}`);
+        // 대체 구현 사용
         return await this.mockAdapter.invokeMethod(methodName, params);
       }
     } catch (error) {
       console.error(`Error invoking ${String(methodName)}:`, error);
       console.error(`Parameters:`, params ? JSON.stringify(params) : 'undefined');
       
-      // 오류 발생시 Mock 어댑터의 메서드 사용 (자동 fallback)
-      console.warn(`[API] Falling back to mock implementation for: ${String(methodName)}`);
+      // 오류 발생시 대체 구현 사용 (자동 fallback)
+      console.warn(`[API] Falling back to fallback implementation for: ${String(methodName)}`);
       return await this.mockAdapter.invokeMethod(methodName, params);
     }
   }
 }
-
-// 미래의 Tauri API 어댑터 (주석 처리)
-/*
-class TauriApiAdapter implements IPlatformAPI {
-  subscribeToEvent<K extends keyof EventPayloadMapping>(
-    eventName: K,
-    callback: (data: EventPayloadMapping[K]) => void
-  ): UnsubscribeFunction {
-    // Tauri 특화 구현은 추후 추가
-    return () => {};
-  }
-
-  async invokeMethod<K extends keyof MethodParamsMapping, R = MethodReturnMapping[K]>(
-    methodName: K,
-    params?: MethodParamsMapping[K]
-  ): Promise<R> {
-    // Tauri 특화 구현은 추후 추가
-    throw new Error(`Method ${String(methodName)} is not implemented yet for Tauri`);
-  }
-}
-*/
 
 // 플랫폼 감지 및 적절한 API 어댑터 초기화
 function detectPlatformAndInitApi(): IPlatformAPI {
@@ -341,13 +239,13 @@ function detectPlatformAndInitApi(): IPlatformAPI {
   
   // IPC/Electron API가 없는 경우 처리
   if (useMockApiInDevelopment && currentAppMode === 'development') {
-    console.log('[API] Development mode with mock data. Using MockApiAdapter as fallback.');
+    console.log('[API] Development mode. Using basic implementation as fallback.');
     return new MockApiAdapter();
   }
   
-  // 최후의 수단으로 경고를 표시하고 MockApiAdapter 사용
+  // 최후의 수단으로 경고를 표시하고 기본 어댑터 사용
   console.error('[API] Failed to initialize ElectronApiAdapter. window.electron is undefined.');
-  console.warn('[API] Using MockApiAdapter as last resort. Application functionality will be limited.');
+  console.warn('[API] Using basic implementation as last resort. Application functionality will be limited.');
   return new MockApiAdapter();
 }
 
@@ -387,10 +285,6 @@ export function initPlatformApi(): void { // 반환 타입을 void로 변경
         initialize();
       }, 500); // 지연 시간 증가
     }
-
-    // // 앱 시작 시 즉시 첫 시도 - 이것만으로 충분할 수 있음
-    // console.log('[API] Attempting immediate initialization on app start');
-    // initialize();
   } else {
     // window 객체가 없는 환경 (예: 서버 사이드)
     console.warn('[API] No window object available. Using MockApiAdapter.');
@@ -408,13 +302,13 @@ export function getPlatformApi(): IPlatformAPI {
       console.log('[API] window.electron is available. Creating ElectronApiAdapter directly.');
       currentPlatformAPI = new ElectronApiAdapter();
     } else {
-      console.warn('[API] window.electron not available. Using MockApiAdapter temporarily.');
+      console.warn('[API] window.electron not available. Using basic implementation temporarily.');
       currentPlatformAPI = new MockApiAdapter();
       
       // API가 나중에 초기화될 수 있음을 대비해 지연된 체크 추가
       setTimeout(() => {
         if (window.electron && currentPlatformAPI instanceof MockApiAdapter) {
-          console.log('[API] window.electron now available. Replacing MockApiAdapter with ElectronApiAdapter.');
+          console.log('[API] window.electron now available. Replacing basic implementation with ElectronApiAdapter.');
           currentPlatformAPI = new ElectronApiAdapter();
           
           if (import.meta.env.DEV) {

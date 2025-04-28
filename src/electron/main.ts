@@ -177,7 +177,7 @@ app.on('ready', async () => {
     ipcMain.handle(IPC_CHANNELS.CHECK_CRAWLING_STATUS, async (event) => {
         console.log('[IPC] checkCrawlingStatus called');
         try {
-            const status = checkCrawlingStatus();
+            const status = await checkCrawlingStatus(); // await 추가하여 Promise가 resolve되도록 수정
             return { success: true, status };
         } catch (error) {
             console.error('[IPC] Error checking crawling status:', error);
