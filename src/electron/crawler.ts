@@ -15,8 +15,16 @@ import { debugLog } from './util.js';
 // 크롤링 URL 상수
 const BASE_URL = 'https://csa-iot.org/csa-iot_products/';
 const MATTER_FILTER_URL = 'https://csa-iot.org/csa-iot_products/?p_keywords=&p_type%5B%5D=14&p_program_type%5B%5D=1049&p_certificate=&p_family=&p_firmware_ver=';
-const PAGE_TIMEOUT_MS = 20000; // 타임아웃 상수화
-const PRODUCTS_PER_PAGE = 12; // 페이지당 제품 수 상수화
+
+// 크롤링 설정 상수
+const PAGE_TIMEOUT_MS = 20000; // 페이지 타임아웃
+const PRODUCTS_PER_PAGE = 12;  // 페이지당 제품 수
+const INITIAL_CONCURRENCY = 16; // 초기 병렬 크롤링 동시성 수준
+const RETRY_CONCURRENCY = 6;   // 재시도 시 병렬 크롤링 동시성 수준
+const MIN_REQUEST_DELAY_MS = 300; // 요청 간 최소 지연 시간(ms)
+const MAX_REQUEST_DELAY_MS = 1200; // 요청 간 최대 지연 시간(ms)
+const RETRY_START = 2;          // 재시도 시작 횟수 (첫 시도가 1)
+const RETRY_MAX = 10;           // 최대 재시도 횟수 (총 9회 재시도)
 
 // 크롤링 이벤트 이미터
 export const crawlerEvents = new EventEmitter();
@@ -131,6 +139,11 @@ async function determineCrawlingRange(): Promise<{ startPage: number; endPage: n
  */
 async function crawlProductsFromPage(pageNumber: number, totalPages: number): Promise<Product[]> {
     console.log(`[Crawler] Crawling page ${pageNumber}`);
+
+    // 서버 과부하 방지를 위한 무작위 지연 시간 적용
+    const delayTime = getRandomDelay(MIN_REQUEST_DELAY_MS, MAX_REQUEST_DELAY_MS);
+    console.log(`[Crawler] Applying random delay of ${delayTime}ms before requesting page ${pageNumber}`);
+    await delay(delayTime);
 
     const pageUrl = `${MATTER_FILTER_URL}&paged=${pageNumber}`;
     const browser: import('playwright-chromium').Browser = await chromium.launch({ headless: true });
@@ -283,10 +296,27 @@ async function crawlPageWithTimeout(
     totalPages: number,
     productsResults: Product[]
 ): Promise<Product[]> {
-    const products = await crawlProductsFromPage(pageNumber, totalPages);
-    if (products && products.length > 0) {
-        productsResults.push(...products);
+    // pageId 계산 (totalPages와 pageNumber로부터)
+    const pageId = totalPages - pageNumber;
+    
+    // 이미 동일한 pageId를 가진 제품이 있는지 확인 (간단한 O(1) 검사)
+    const hasDuplicatePage = productsResults.some(product => product.pageId === pageId);
+    
+    if (hasDuplicatePage) {
+        // 이미 해당 페이지의 제품들이 수집되었음
+        console.log(`[Crawler] Skipping duplicate page ${pageNumber} (pageId: ${pageId})`);
+        return []; // 빈 배열 반환 (이미 처리된 페이지)
     }
+    
+    // 중복이 아니라면 페이지 크롤링 진행
+    const products = await crawlProductsFromPage(pageNumber, totalPages);
+    
+    if (products && products.length > 0) {
+        // 크롤링된 제품 정보를 결과 배열에 추가
+        productsResults.push(...products);
+        console.log(`[Crawler] Added ${products.length} products from page ${pageNumber} (pageId: ${pageId})`);
+    }
+    
     return products;
 }
 
@@ -347,9 +377,9 @@ export async function startCrawling(): Promise<boolean> {
 
         // 1차 병렬 크롤링 실행
         debugLog(`Starting crawling from page ${pageNumbers[0]} to ${pageNumbers[pageNumbers.length - 1]}`);
-        await executeParallelCrawling(pageNumbers, totalPages, productsResults, failedPages, failedPageErrors, abortController, 8);
+        await executeParallelCrawling(pageNumbers, totalPages, productsResults, failedPages, failedPageErrors, abortController, INITIAL_CONCURRENCY);
 
-        // 실패한 페이지 재시도 (최대 4번)
+        // 실패한 페이지 재시도 (최대 RETRY_MAX번)
         await retryFailedPages(failedPages, totalPages, productsResults, failedPageErrors, abortController);
 
         // 결과 처리 및 보고
@@ -430,7 +460,7 @@ async function retryFailedPages(
     failedPageErrors: Record<number, string[]>,
     abortController: AbortController
 ): Promise<void> {
-    for (let attempt = 2; attempt <= 5 && failedPages.length > 0; attempt++) {
+    for (let attempt = RETRY_START; attempt <= RETRY_MAX && failedPages.length > 0; attempt++) {
         const retryPages = [...failedPages];
         failedPages = [];
         await promisePool(
@@ -438,7 +468,7 @@ async function retryFailedPages(
             async (pageNumber, signal) => processPageCrawl(
                 pageNumber, totalPages, productsResults, failedPages, failedPageErrors, signal, attempt
             ),
-            4, // 재시도는 동시성 4로 실행
+            RETRY_CONCURRENCY,
             abortController
         );
     }
@@ -563,4 +593,18 @@ function estimateEndTime(startTime: number, currentPage: number, totalPages: num
     const estimatedTimeRemaining = avgTimePerPage * remainingPages;
 
     return Date.now() + estimatedTimeRemaining;
+}
+
+/**
+ * 지정된 범위 내에서 랜덤한 지연 시간(ms)을 생성하는 함수
+ */
+function getRandomDelay(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/**
+ * 특정 시간만큼 지연시키는 Promise를 반환하는 함수
+ */
+function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }

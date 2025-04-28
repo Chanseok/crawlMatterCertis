@@ -48,6 +48,9 @@ const electronAPI: IElectronAPI = {
     subscribeCrawlingProgress: createSubscriptionHandler('crawlingProgress'),
     subscribeCrawlingComplete: createSubscriptionHandler('crawlingComplete'),
     subscribeCrawlingError: createSubscriptionHandler('crawlingError'),
+    subscribeCrawlingTaskStatus: createSubscriptionHandler('crawlingTaskStatus'),
+    subscribeCrawlingStopped: createSubscriptionHandler('crawlingStopped'),
+    subscribeCrawlingFailedPages: createSubscriptionHandler('crawlingFailedPages'),
     subscribeDbSummary: createSubscriptionHandler('dbSummary'),
     subscribeProducts: createSubscriptionHandler('products'),
     

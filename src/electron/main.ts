@@ -195,6 +195,21 @@ function setupCrawlerEvents(mainWindow: BrowserWindow): void {
         mainWindow.webContents.send('crawlingProgress', progress);
     });
     
+    // 페이지별 병렬 작업 상태 이벤트 (추가)
+    crawlerEvents.on('crawlingTaskStatus', (taskStatus) => {
+        mainWindow.webContents.send('crawlingTaskStatus', taskStatus);
+    });
+    
+    // 크롤링 중단 이벤트 (추가)
+    crawlerEvents.on('crawlingStopped', (taskStatus) => {
+        mainWindow.webContents.send('crawlingStopped', taskStatus);
+    });
+    
+    // 크롤링 실패한 페이지 이벤트 (추가)
+    crawlerEvents.on('crawlingFailedPages', (failedPages) => {
+        mainWindow.webContents.send('crawlingFailedPages', failedPages);
+    });
+    
     // 크롤링 완료 이벤트
     crawlerEvents.on('crawlingComplete', (data) => {
         mainWindow.webContents.send('crawlingComplete', data);

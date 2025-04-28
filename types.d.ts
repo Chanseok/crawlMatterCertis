@@ -105,6 +105,7 @@ export type EventPayloadMapping = {
     products: MatterProduct[];
     crawlingTaskStatus: ConcurrentCrawlingTask[];
     crawlingStopped: ConcurrentCrawlingTask[];
+    crawlingFailedPages: { pageNumber: number; errors: string[] }[];
 };
 
 // 메서드 매개변수 맵핑
@@ -159,6 +160,9 @@ export interface IElectronAPI extends IPlatformAPI {
     subscribeCrawlingProgress: (callback: (progress: CrawlingProgress) => void) => UnsubscribeFunction;
     subscribeCrawlingComplete: (callback: (data: EventPayloadMapping['crawlingComplete']) => void) => UnsubscribeFunction;
     subscribeCrawlingError: (callback: (data: EventPayloadMapping['crawlingError']) => void) => UnsubscribeFunction;
+    subscribeCrawlingTaskStatus: (callback: (tasks: ConcurrentCrawlingTask[]) => void) => UnsubscribeFunction;
+    subscribeCrawlingStopped: (callback: (tasks: ConcurrentCrawlingTask[]) => void) => UnsubscribeFunction;
+    subscribeCrawlingFailedPages: (callback: (failedPages: EventPayloadMapping['crawlingFailedPages']) => void) => UnsubscribeFunction;
     subscribeDbSummary: (callback: (data: DatabaseSummary) => void) => UnsubscribeFunction;
     subscribeProducts: (callback: (products: MatterProduct[]) => void) => UnsubscribeFunction;
     
