@@ -6,18 +6,18 @@
 import { chromium } from 'playwright-chromium';
 import { getDatabaseSummaryFromDb } from './database.js';
 import type { CrawlingProgress } from '../ui/types.js';
-import type { Product, MatterProduct } from '../../types.js'; 
+import type { Product, MatterProduct } from '../../types.js';
 import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
-import { debugLog } from './util.js'; 
+import { debugLog } from './util.js';
 
 // 크롤링 URL 상수
 const BASE_URL = 'https://csa-iot.org/csa-iot_products/';
 const MATTER_FILTER_URL = 'https://csa-iot.org/csa-iot_products/?p_keywords=&p_type%5B%5D=14&p_program_type%5B%5D=1049&p_certificate=&p_family=&p_firmware_ver=';
 
 // 크롤링 설정 상수
-const PAGE_TIMEOUT_MS = 20000; // 페이지 타임아웃
+const PAGE_TIMEOUT_MS = 10000; // 페이지 타임아웃
 const PRODUCT_DETAIL_TIMEOUT_MS = 15000; // 제품 상세 페이지 타임아웃
 const PRODUCTS_PER_PAGE = 12;  // 페이지당 제품 수
 const INITIAL_CONCURRENCY = 9; // 초기 병렬 크롤링 동시성 수준
@@ -172,7 +172,7 @@ async function crawlProductsFromPage(pageNumber: number, totalPages: number): Pr
         const context = await browser.newContext();
         const page = await context.newPage();
 
-        await page.goto(pageUrl, { waitUntil: 'domcontentloaded'});
+        await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
         const pageId = totalPages - pageNumber;
 
         // 제품 정보 추출
@@ -207,8 +207,8 @@ async function crawlProductsFromPage(pageNumber: number, totalPages: number): Pr
                 };
             });
         }, pageId);
-        
-        if(products.length ==0){
+
+        if (products.length == 0) {
             debugLog(`[Extracted ${products.length} products on page ${pageNumber}`);
             throw new Error(`Failed to crawl page ${pageNumber}: `);
         }
@@ -258,16 +258,16 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                 const el = document.querySelector(selector);
                 return el ? el.textContent?.trim() || '' : '';
             };
-            
+
             // Extract product title
             const productTitle = getText('h1.entry-title') || getText('h1') || 'Unknown Product';
             result.model = result.model || productTitle;
-            
+
             // 인증 정보 테이블에서 데이터 추출 (기존 방식)
             const extractFromTable = () => {
                 const infoTable = document.querySelector('.product-certificates-table');
                 if (!infoTable) return {};
-                
+
                 const details: Record<string, string> = {};
                 const rows = infoTable.querySelectorAll('tr');
                 rows.forEach(row => {
@@ -275,7 +275,7 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                     if (cells.length >= 2) {
                         const key = cells[0].textContent?.trim().toLowerCase() || '';
                         const value = cells[1].textContent?.trim() || '';
-                        
+
                         if (value) {
                             if (key.includes('certification id')) {
                                 details.certificationId = value;
@@ -313,23 +313,23 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                 });
                 return details;
             };
-            
+
             // 제품 상세 정보를 span.label, span.value 구조에서 추출하는 함수
             const extractDetailValues = () => {
                 const details: Record<string, string> = {};
-                
+
                 // 모든 세부 항목을 가져옴
                 const detailItems = document.querySelectorAll('.entry-product-details div ul li');
-                
+
                 // 각 항목을 순회하면서 label과 value 추출
                 for (const item of detailItems) {
                     const label = item.querySelector('span.label');
                     const value = item.querySelector('span.value');
-                    
+
                     if (label && value) {
                         const labelText = label.textContent?.trim().toLowerCase() || '';
                         const valueText = value.textContent?.trim() || '';
-                        
+
                         if (valueText) {
                             // 레이블에 따라 해당 키에 값 할당
                             if (labelText === 'manufacturer' || labelText.includes('company')) {
@@ -374,30 +374,30 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                             else if (labelText === 'primary device type id' || labelText.includes('primary device')) {
                                 details.primaryDeviceTypeId = valueText;
                             }
-                            else if (labelText === 'device type' || labelText.includes('product type') || 
-                                    labelText.includes('category')) {
+                            else if (labelText === 'device type' || labelText.includes('product type') ||
+                                labelText.includes('category')) {
                                 details.deviceType = valueText;
                             }
                         }
                     }
                 }
-                
+
                 return details;
             };
-            
+
             // 두 가지 방식으로 정보 추출
             const tableDetails = extractFromTable();
             const structuredDetails = extractDetailValues();
-            
+
             // 두 정보를 병합 (구조화된 방식이 우선)
             const details = { ...tableDetails, ...structuredDetails };
-            
+
             // 필드별 데이터 확인 및 폴백 처리 (기존 데이터가 없는 경우)
-            
+
             // Extract manufacturer (fallback methods)
             let manufacturer = details.manufacturer || result.manufacturer || '';
             const knownManufacturers = ['Govee', 'Philips', 'Samsung', 'Apple', 'Google', 'Amazon', 'Aqara', 'LG', 'IKEA', 'Belkin', 'Eve', 'Nanoleaf', 'GE', 'Cync', 'Tapo', 'TP-Link', 'Signify', 'Haier', 'WiZ'];
-            
+
             // 이미 제조사를 찾았다면 다음 단계를 건너뜀
             if (!manufacturer) {
                 // Try to find manufacturer in the title first
@@ -408,7 +408,7 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                     }
                 }
             }
-            
+
             // If not found in title, look for it in company info
             if (!manufacturer) {
                 const companyInfo = getText('.company-info') || getText('.manufacturer');
@@ -416,7 +416,7 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                     manufacturer = companyInfo;
                 }
             }
-            
+
             // If still not found, check for it in product details using text parsing
             if (!manufacturer) {
                 const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
@@ -431,14 +431,14 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                     }
                 }
             }
-            
+
             // Default if still not found
             manufacturer = manufacturer || 'Unknown';
             result.manufacturer = manufacturer;
-            
+
             // Extract device type (fallback method)
             let deviceType = details.deviceType || 'Matter Device';
-            
+
             // 디바이스 타입 추출 (alternatives)
             if (deviceType === 'Matter Device') {
                 const deviceTypeEl = document.querySelector('.category-link');
@@ -446,16 +446,16 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                     deviceType = deviceTypeEl.textContent.trim();
                 }
             }
-            
+
             // If no specific device type found, try to identify from common types
             if (deviceType === 'Matter Device') {
                 const deviceTypes = [
-                    'Light Bulb', 'Smart Switch', 'Door Lock', 'Thermostat', 
-                    'Motion Sensor', 'Smart Plug', 'Hub', 'Gateway', 'Camera', 
-                    'Smoke Detector', 'Outlet', 'Light', 'Door', 'Window', 
+                    'Light Bulb', 'Smart Switch', 'Door Lock', 'Thermostat',
+                    'Motion Sensor', 'Smart Plug', 'Hub', 'Gateway', 'Camera',
+                    'Smoke Detector', 'Outlet', 'Light', 'Door', 'Window',
                     'Sensor', 'Speaker', 'Display'
                 ];
-                
+
                 const allText = document.body.textContent || '';
                 for (const type of deviceTypes) {
                     if (allText.includes(type) || productTitle.includes(type)) {
@@ -465,21 +465,21 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                 }
             }
             result.deviceType = deviceType;
-            
+
             // Extract certification ID (fallback method)
             let certificationId = details.certificationId || result.certificateId || '';
             if (!certificationId) {
                 const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
                 for (const li of detailsList) {
                     const text = li.textContent || '';
-                    if (text.toLowerCase().includes('certification') || text.toLowerCase().includes('certificate') || 
+                    if (text.toLowerCase().includes('certification') || text.toLowerCase().includes('certificate') ||
                         text.toLowerCase().includes('cert id')) {
                         const match = text.match(/([A-Za-z0-9-]+\d+[-][A-Za-z0-9]+)/);
                         if (match) {
                             certificationId = match[1];
                             break;
                         }
-                        
+
                         // Alternative: try to get anything after a colon
                         const parts = text.split(':');
                         if (parts.length > 1 && parts[1].trim()) {
@@ -491,7 +491,7 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
             }
             result.certificationId = certificationId;
             result.certificateId = certificationId;
-            
+
             // Extract certification date (fallback method)
             let certificationDate = details.certificationDate || '';
             if (!certificationDate) {
@@ -505,7 +505,7 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                             certificationDate = dateMatch[0];
                             break;
                         }
-                        
+
                         // Alternative: try to get anything after a colon
                         const parts = text.split(':');
                         if (parts.length > 1 && parts[1].trim()) {
@@ -515,17 +515,17 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                     }
                 }
             }
-            
+
             // Default to today if no date found
             if (!certificationDate) {
                 certificationDate = new Date().toISOString().split('T')[0];
             }
             result.certificationDate = certificationDate;
-            
+
             // Extract software and hardware versions (fallback method)
             let softwareVersion = details.firmwareVersion || details.softwareVersion || '';
             let hardwareVersion = details.hardwareVersion || '';
-            
+
             if (!softwareVersion || !hardwareVersion) {
                 const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
                 for (const li of detailsList) {
@@ -547,11 +547,11 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
             result.softwareVersion = softwareVersion;
             result.hardwareVersion = hardwareVersion;
             result.firmwareVersion = details.firmwareVersion || softwareVersion;
-            
+
             // VID/PID 추출 (fallback method)
             let vid = details.vid || '';
             let pid = details.pid || '';
-            
+
             if (!vid || !pid) {
                 const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
                 for (const li of detailsList) {
@@ -572,7 +572,7 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
             }
             result.vid = vid;
             result.pid = pid;
-            
+
             // 추가 정보 할당
             result.familySku = details.familySku || '';
             result.familyVariantSku = details.familyVariantSku || '';
@@ -581,7 +581,7 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
             result.specificationVersion = details.specificationVersion || '';
             result.transportInterface = details.transportInterface || '';
             result.primaryDeviceTypeId = details.primaryDeviceTypeId || '';
-            
+
             // 애플리케이션 카테고리 추출
             const appCategories: string[] = [];
             const appCategoriesSection = Array.from(document.querySelectorAll('h3')).find(
@@ -599,7 +599,7 @@ async function crawlProductDetail(product: Product): Promise<MatterProduct> {
                     }
                 }
             }
-            
+
             // 애플리케이션 카테고리가 없으면 deviceType을 사용
             if (appCategories.length === 0 && deviceType !== 'Matter Device') {
                 appCategories.push(deviceType);
@@ -635,7 +635,7 @@ async function promisePool<T, U>(
     const results: U[] = [];
     let nextIndex = 0;
     const total = items.length;
-    
+
     // 각 작업자는 독립적으로 작업을 처리하는 함수
     async function runWorker(): Promise<void> {
         // 처리할 항목이 남아있는 동안 계속 작업 수행
@@ -643,7 +643,7 @@ async function promisePool<T, U>(
             if (shouldStopCrawling || abortController.signal.aborted) {
                 break;
             }
-            
+
             const currentIndex = nextIndex++;
             try {
                 // debugLog(`Worker processing item ${currentIndex}/${total}`);
@@ -660,10 +660,10 @@ async function promisePool<T, U>(
         { length: Math.min(concurrency, total) },
         () => runWorker()
     );
-    
+
     // 모든 작업자가 작업을 마칠 때까지 대기
     await Promise.all(workers);
-    
+
     return results;
 }
 
@@ -671,11 +671,11 @@ async function promisePool<T, U>(
  * 단일 페이지 크롤링 작업을 처리하는 함수
  */
 async function processPageCrawl(
-    pageNumber: number, 
-    totalPages: number, 
-    productsResults: Product[], 
-    failedPages: number[], 
-    failedPageErrors: Record<number, string[]>, 
+    pageNumber: number,
+    totalPages: number,
+    productsResults: Product[],
+    failedPages: number[],
+    failedPageErrors: Record<number, string[]>,
     signal: AbortSignal,
     attempt: number = 1
 ): Promise<CrawlResult | null> {
@@ -685,14 +685,14 @@ async function processPageCrawl(
     }
 
     updateTaskStatus(pageNumber, 'running');
-    
+
     try {
         // 타임아웃/중단 지원 로직
         const products = await Promise.race([
             // 크롤링 로직
             crawlPageWithTimeout(pageNumber, totalPages, productsResults),
             // 타임아웃 처리
-            new Promise<null>((_, reject) => 
+            new Promise<null>((_, reject) =>
                 setTimeout(() => reject(new Error('Timeout')), PAGE_TIMEOUT_MS)
             ),
             // 중단 처리
@@ -700,23 +700,23 @@ async function processPageCrawl(
                 signal.addEventListener('abort', () => reject(new Error('Aborted')));
             })
         ]);
-        
+
         updateTaskStatus(pageNumber, 'success');
         return { pageNumber, products };
     } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         const status = shouldStopCrawling ? 'stopped' : 'error';
         updateTaskStatus(pageNumber, status, errorMsg);
-        
+
         // 실패한 페이지 기록
         failedPages.push(pageNumber);
         if (!failedPageErrors[pageNumber]) {
             failedPageErrors[pageNumber] = [];
         }
-        
+
         const attemptPrefix = attempt > 1 ? `Attempt ${attempt}: ` : '';
         failedPageErrors[pageNumber].push(`${attemptPrefix}${errorMsg}`);
-        
+
         return { pageNumber, products: null, error: errorMsg };
     }
 }
@@ -738,14 +738,14 @@ async function processProductDetailCrawl(
     }
 
     updateProductTaskStatus(product.url, 'running');
-    
+
     try {
         // 타임아웃/중단 지원 로직
         const detailProduct = await Promise.race([
             // 크롤링 로직
             crawlProductDetail(product),
             // 타임아웃 처리
-            new Promise<never>((_, reject) => 
+            new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('Timeout')), PRODUCT_DETAIL_TIMEOUT_MS)
             ),
             // 중단 처리
@@ -753,24 +753,28 @@ async function processProductDetailCrawl(
                 signal.addEventListener('abort', () => reject(new Error('Aborted')));
             })
         ]);
-        
+
         updateProductTaskStatus(product.url, 'success');
         return { url: product.url, product: detailProduct };
     } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         const status = shouldStopCrawling ? 'stopped' : 'error';
         updateProductTaskStatus(product.url, status, errorMsg);
-        
+
         // 실패한 제품 기록
+        if (!product.url) {
+            debugLog(`[RETRY][${attempt}] ERROR: 실패한 제품의 url이 undefined/null 입니다. product: ${JSON.stringify(product)}`);
+        } else {
+            debugLog(`[RETRY][${attempt}] 실패한 제품 url: ${product.url}`);
+        }
         failedProducts.push(product.url);
-        debugLog(`pageId: ${product.pageId} product url: ${product.url}`);
         if (!failedProductErrors[product.url]) {
             failedProductErrors[product.url] = [];
         }
-        
+
         const attemptPrefix = attempt > 1 ? `Attempt ${attempt}: ` : '';
         failedProductErrors[product.url].push(`${attemptPrefix}${errorMsg}`);
-        
+
         return { url: product.url, product: null, error: errorMsg };
     }
 }
@@ -803,25 +807,25 @@ async function crawlPageWithTimeout(
 ): Promise<Product[]> {
     // pageId 계산 (totalPages와 pageNumber로부터)
     const pageId = totalPages - pageNumber;
-    
+
     // 이미 동일한 pageId를 가진 제품이 있는지 확인 (간단한 O(1) 검사)
     const hasDuplicatePage = productsResults.some(product => product.pageId === pageId);
-    
+
     if (hasDuplicatePage) {
         // 이미 해당 페이지의 제품들이 수집되었음
         console.log(`[Crawler] Skipping duplicate page ${pageNumber} (pageId: ${pageId})`);
         return []; // 빈 배열 반환 (이미 처리된 페이지)
     }
-    
+
     // 중복이 아니라면 페이지 크롤링 진행
     const products = await crawlProductsFromPage(pageNumber, totalPages);
-    
+
     if (products && products.length > 0) {
         // 크롤링된 제품 정보를 결과 배열에 추가
         productsResults.push(...products);
         console.log(`[Crawler] Added ${products.length} products from page ${pageNumber} (pageId: ${pageId})`);
     }
-    
+
     return products;
 }
 
@@ -839,23 +843,23 @@ function saveProductsToFile(products: Product[]): string {
         const s = String(now.getSeconds()).padStart(2, '0');
         const filename = `products_${y}${m}${d}_${h}${min}${s}.json`;
         const outputDir = path.resolve(process.cwd(), 'dist-output');
-        
+
         if (!fs.existsSync(outputDir)) {
             fs.mkdirSync(outputDir, { recursive: true });
         }
-        
+
         const filePath = path.join(outputDir, filename);
         fs.writeFileSync(filePath, JSON.stringify(products, null, 2), 'utf-8');
         console.log(`[Crawler] Products saved to ${filePath}`);
-        
+
         // 수집된 products의 고유 pageId 분석
         const uniquePageIds = [...new Set(products.map(p => p.pageId).filter((id): id is number => id !== undefined))];
         const sortedPageIds = uniquePageIds.sort((a, b) => b - a); // 내림차순 정렬
-        
+
         // 고유 pageId 개수 및 목록 출력
         debugLog(`[Crawler] 수집된 고유 pageId 개수: ${uniquePageIds.length}`);
         debugLog(`[Crawler] 고유 pageId 목록(내림차순): ${sortedPageIds.join(', ')}`);
-        
+
         // 각 pageId별 제품 개수 분석 및 출력
         const pageIdCounts: Record<number, number> = {};
         products.forEach(p => {
@@ -863,14 +867,14 @@ function saveProductsToFile(products: Product[]): string {
                 pageIdCounts[p.pageId] = (pageIdCounts[p.pageId] || 0) + 1;
             }
         });
-        
+
         debugLog(`[Crawler] 각 pageId 별 제품 개수:`);
         Object.entries(pageIdCounts)
             .sort(([aKey, _], [bKey, __]) => Number(bKey) - Number(aKey)) // 내림차순 정렬
             .forEach(([pageId, count]) => {
                 debugLog(`[Crawler] pageId ${pageId}: ${count}개 제품`);
             });
-            
+
         return filePath;
     } catch (err) {
         console.error('[Crawler] Failed to save products json:', err);
@@ -892,11 +896,11 @@ function saveMatterProductsToFile(products: MatterProduct[]): string {
         const s = String(now.getSeconds()).padStart(2, '0');
         const filename = `matter-products_${y}${m}${d}_${h}${min}${s}.json`;
         const outputDir = path.resolve(process.cwd(), 'dist-output');
-        
+
         if (!fs.existsSync(outputDir)) {
             fs.mkdirSync(outputDir, { recursive: true });
         }
-        
+
         const filePath = path.join(outputDir, filename);
         fs.writeFileSync(filePath, JSON.stringify(products, null, 2), 'utf-8');
         console.log(`[Crawler] Matter products saved to ${filePath}`);
@@ -934,7 +938,7 @@ export async function startCrawling(): Promise<boolean> {
         // --------------------------------------------------
         // 1단계: 제품 목록 수집 (페이지 크롤링)
         // --------------------------------------------------
-        
+
         // 작업 상태 초기화
         initializeTaskStates(pageNumbers);
 
@@ -947,7 +951,7 @@ export async function startCrawling(): Promise<boolean> {
 
         // 중복 제거 및 정렬 로직 추가 (pageId, indexInPage 기준)
         debugLog(`[Crawler] 중복 제거 전 제품 수: ${productsResults.length}`);
-        
+
         // 중복 제거를 위한 Map 생성 (pageId-indexInPage 조합을 키로 사용)
         const uniqueProductsMap = new Map<string, Product>();
         productsResults.forEach(product => {
@@ -955,33 +959,33 @@ export async function startCrawling(): Promise<boolean> {
             // 중복이 있는 경우 마지막으로 처리된 항목으로 덮어씀
             uniqueProductsMap.set(key, product);
         });
-        
+
         // Map에서 중복 제거된 제품 목록을 배열로 변환
         const uniqueProducts = Array.from(uniqueProductsMap.values());
-        
+
         // pageId는 내림차순(숫자가 큰 것이 앞), 같은 pageId 내에서는 indexInPage 오름차순으로 정렬
         const sortedProducts = uniqueProducts.sort((a, b) => {
             // 안전한 타입 체크: undefined일 경우 기본값 설정
             const aPageId = a.pageId ?? 0;
             const bPageId = b.pageId ?? 0;
-            
+
             // pageId 기준 내림차순 정렬 (최신 페이지가 앞쪽에)
             if (aPageId !== bPageId) {
                 return bPageId - aPageId;
             }
-            
+
             // 같은 pageId 내에서는 indexInPage 기준 오름차순 정렬
             const aIndexInPage = a.indexInPage ?? 0;
             const bIndexInPage = b.indexInPage ?? 0;
             return aIndexInPage - bIndexInPage;
         });
-        
+
         // 정렬된 결과로 productsResults 업데이트
         productsResults.length = 0; // 기존 배열 비우기
         productsResults.push(...sortedProducts);
-        
+
         debugLog(`[Crawler] 중복 제거 및 정렬 후 제품 수: ${productsResults.length}`);
-        
+
         // 1단계 결과 처리 
         handleListCrawlingResults(productsResults, failedPages, failedPageErrors, crawlingProgress);
 
@@ -1009,12 +1013,12 @@ export async function startCrawling(): Promise<boolean> {
         initializeProductTaskStates(productsResults);
 
         debugLog(`Starting phase 2: crawling product details for ${productsResults.length} products`);
-        
+
         // 제품 상세 정보 병렬 크롤링 실행
         await executeParallelProductDetailCrawling(
-            productsResults, 
-            matterProducts, 
-            failedProducts, 
+            productsResults,
+            matterProducts,
+            failedProducts,
             failedProductErrors,
             abortController,
             DETAIL_CONCURRENCY
@@ -1023,8 +1027,8 @@ export async function startCrawling(): Promise<boolean> {
         // 실패한 제품 재시도 (최대 RETRY_MAX번)
         await retryFailedProductDetails(
             failedProducts,
-            productsResults, 
-            matterProducts, 
+            productsResults,
+            matterProducts,
             failedProductErrors,
             abortController
         );
@@ -1032,7 +1036,7 @@ export async function startCrawling(): Promise<boolean> {
         // 중복 제거 및 정렬 로직 추가 (matterProducts)
         debugLog(`[Crawler] 중복 제거 전 수집에 성공한 상세 제품 정보 수: ${matterProducts.length}`);
         debugLog(`[Crawler] 중복 제거 전 수집에 실패한 상세 제품 정보 수: ${failedProducts.length}`);
-        
+
         // 중복 제거를 위한 Map 생성 (pageId-indexInPage 조합을 키로 사용)
         const uniqueMatterProductsMap = new Map<string, MatterProduct>();
         matterProducts.forEach(product => {
@@ -1042,36 +1046,36 @@ export async function startCrawling(): Promise<boolean> {
                 uniqueMatterProductsMap.set(key, product);
             }
         });
-        
+
         // Map에서 중복 제거된 제품 목록을 배열로 변환
         const uniqueMatterProducts = Array.from(uniqueMatterProductsMap.values());
-        
+
         // pageId는 오름차순, 같은 pageId 내에서는 indexInPage 오름차순으로 정렬
         const sortedMatterProducts = uniqueMatterProducts.sort((a, b) => {
             // 안전한 타입 체크: undefined일 경우 기본값 설정
             const aPageId = a.pageId ?? 0;
             const bPageId = b.pageId ?? 0;
-            
+
             // pageId 기준 오름차순 정렬
             if (aPageId !== bPageId) {
                 return aPageId - bPageId;
             }
-            
+
             // 같은 pageId 내에서는 indexInPage 기준 오름차순으로 정렬
             const aIndexInPage = a.indexInPage ?? 0;
             const bIndexInPage = b.indexInPage ?? 0;
             return aIndexInPage - bIndexInPage;
         });
-        
+
         // 정렬된 결과로 matterProducts 업데이트
         matterProducts.length = 0; // 기존 배열 비우기
         matterProducts.push(...sortedMatterProducts);
-        
+
         debugLog(`[Crawler] 중복 제거 및 정렬 후 상세 제품 정보 수: ${matterProducts.length}`);
-        
+
         // 데이터 일관성 검증: productsResults와 matterProducts 비교
         debugLog(`[Crawler] 1단계(제품 목록)와 2단계(상세 정보) 데이터 일관성 검증 시작`);
-        
+
         // URL 기준으로 1단계 결과를 맵으로 변환하여 빠른 조회 가능하게 함
         const productsResultsMap = new Map<string, Product>();
         productsResults.forEach(product => {
@@ -1079,10 +1083,10 @@ export async function startCrawling(): Promise<boolean> {
                 productsResultsMap.set(product.url, product);
             }
         });
-        
+
         // 2단계에서 수집했지만 1단계에 없는 항목 확인
         const missingInProductsResults: MatterProduct[] = [];
-        
+
         // 1단계와 2단계 사이의 불일치 항목 확인
         const discrepancies: Array<{
             url: string;
@@ -1090,28 +1094,28 @@ export async function startCrawling(): Promise<boolean> {
             phase2Data: MatterProduct;
             differences: Array<{ field: string; phase1Value: any; phase2Value: any }>;
         }> = [];
-        
+
         // 2단계 수집 후 누락된 URL 확인 
         const missingInMatterProducts: Product[] = [];
-        
+
         // 모든 matterProducts 항목을 productsResults와 비교
         matterProducts.forEach(matterProduct => {
             const productResult = productsResultsMap.get(matterProduct.url);
-            
+
             if (!productResult) {
                 // 1단계에서 수집되지 않은 URL인 경우
                 missingInProductsResults.push(matterProduct);
             } else {
                 // 두 단계 사이의 데이터 불일치 확인
                 const differences: Array<{ field: string; phase1Value: any; phase2Value: any }> = [];
-                
+
                 // 주요 필드 비교
                 const fieldsToCompare: Array<keyof Product> = ['model', 'manufacturer', 'certificateId', 'pageId', 'indexInPage'];
-                
+
                 fieldsToCompare.forEach(field => {
                     const phase1Value = productResult[field];
                     const phase2Value = matterProduct[field];
-                    
+
                     // 값이 다르고, 둘 다 존재하는 경우에만 기록
                     if (phase1Value !== undefined && phase2Value !== undefined && phase1Value !== phase2Value) {
                         differences.push({
@@ -1121,7 +1125,7 @@ export async function startCrawling(): Promise<boolean> {
                         });
                     }
                 });
-                
+
                 if (differences.length > 0) {
                     discrepancies.push({
                         url: matterProduct.url,
@@ -1132,7 +1136,7 @@ export async function startCrawling(): Promise<boolean> {
                 }
             }
         });
-        
+
         // 1단계에서 수집했지만 2단계에서 누락된 항목 확인
         const matterProductsUrlSet = new Set(matterProducts.map(p => p.url));
         productsResults.forEach(product => {
@@ -1140,7 +1144,7 @@ export async function startCrawling(): Promise<boolean> {
                 missingInMatterProducts.push(product);
             }
         });
-        
+
         // 일관성 검증 결과 보고
         debugLog(`[Crawler] 데이터 일관성 검증 결과:`);
         debugLog(`[Crawler] - 1단계에 없지만 2단계에서 수집된 URL 수: ${missingInProductsResults.length}`);
@@ -1149,17 +1153,17 @@ export async function startCrawling(): Promise<boolean> {
                 debugLog(`[Crawler]   * ${product.url} (ID: ${product.id})`);
             });
         }
-        
+
         debugLog(`[Crawler] - 1단계와 2단계 사이 정보 불일치 항목 수: ${discrepancies.length}`);
         if (discrepancies.length > 0) {
-            discrepancies.forEach(({url, differences}) => {
+            discrepancies.forEach(({ url, differences }) => {
                 debugLog(`[Crawler]   * ${url} 불일치 필드:`);
                 differences.forEach(diff => {
                     debugLog(`[Crawler]     - ${diff.field}: 1단계="${diff.phase1Value}" vs 2단계="${diff.phase2Value}"`);
                 });
             });
         }
-        
+
         debugLog(`[Crawler] - 2단계에서 누락된 제품 URL 수: ${missingInMatterProducts.length}`);
         if (missingInMatterProducts.length > 0 && missingInMatterProducts.length <= 10) {
             // 10개 이하만 상세 출력
@@ -1170,7 +1174,7 @@ export async function startCrawling(): Promise<boolean> {
             // 10개 초과 시 일부만 출력
             debugLog(`[Crawler]   * 처음 10개만 표시: ${missingInMatterProducts.slice(0, 10).map(p => p.url).join(', ')}`);
         }
-        
+
         // 2단계 결과 처리 및 보고
         handleDetailCrawlingResults(matterProducts, failedProducts, failedProductErrors, crawlingProgress);
 
@@ -1277,24 +1281,24 @@ async function executeParallelProductDetailCrawling(
             const result = await processProductDetailCrawl(
                 product, matterProducts, failedProducts, failedProductErrors, signal
             );
-            
+
             processedItems++;
-            
+
             // 정기적으로 진행 상황 업데이트 (너무 자주 업데이트하지 않도록)
             const now = Date.now();
             if (now - lastProgressUpdate > progressUpdateInterval) {
                 lastProgressUpdate = now;
-                
+
                 const elapsedTime = now - startTime;
                 const percentage = (processedItems / totalItems) * 100;
                 let remainingTime: number | undefined = undefined;
-                
+
                 // 10% 이상 진행된 경우에만 남은 시간 예측
                 if (processedItems > totalItems * 0.1) {
                     const avgTimePerItem = elapsedTime / processedItems;
                     remainingTime = (totalItems - processedItems) * avgTimePerItem;
                 }
-                
+
                 crawlerEvents.emit('crawlingProgress', {
                     status: 'running',
                     currentPage: processedItems,  // 현재 처리 중인 항목을 currentPage로도 표시
@@ -1311,12 +1315,12 @@ async function executeParallelProductDetailCrawling(
                     updatedItems: 0
                 });
             }
-            
+
             // 결과가 성공적이면 matterProducts 배열에 추가
             if (result && result.product) {
                 matterProducts.push(result.product);
             }
-            
+
             return result;
         },
         concurrency,
@@ -1375,14 +1379,32 @@ async function retryFailedProductDetails(
     failedProductErrors: Record<string, string[]>,
     abortController: AbortController
 ): Promise<void> {
+    // URL 유효성 검증: 빈 URL 필터링
+    const validFailedProducts = failedProducts.filter(url => !!url);
+    if (validFailedProducts.length !== failedProducts.length) {
+        debugLog(`[RETRY] 유효하지 않은 URL ${failedProducts.length - validFailedProducts.length}개를 필터링했습니다.`);
+    }
+    
+    // 유효한 URL만 사용
+    failedProducts = validFailedProducts;
+    
     for (let attempt = RETRY_START; attempt <= RETRY_MAX && failedProducts.length > 0; attempt++) {
         const retryUrls = [...failedProducts];
-        failedProducts = [];
+        failedProducts = []; // 재시도 실패한 항목만 다시 추가될 예정
         
-        // 실패한 URL에 해당하는 제품 객체 찾기
-        const retryProducts = allProducts.filter(p => retryUrls.includes(p.url));
+        // URL로 제품 찾기 - 명확한 검색조건 사용
+        const retryProducts = allProducts.filter(p => p.url && retryUrls.includes(p.url));
         
-        await promisePool(
+        debugLog(`[RETRY][${attempt}] retryUrls(${retryUrls.length}): ${retryUrls.join(', ')}`);
+        debugLog(`[RETRY][${attempt}] retryProducts(${retryProducts.length}): ${retryProducts.map(p => p.url).join(', ')}`);
+        
+        if (retryUrls.length !== retryProducts.length) {
+            const missing = retryUrls.filter(url => !retryProducts.some(p => p.url === url));
+            debugLog(`[RETRY][${attempt}] WARNING: retryUrls 중 allProducts에 없는 url: ${missing.join(', ')}`);
+        }
+        
+        // 재시도 결과 명시적으로 받기
+        const results = await promisePool(
             retryProducts,
             async (product, signal) => processProductDetailCrawl(
                 product, matterProducts, failedProducts, failedProductErrors, signal, attempt
@@ -1390,6 +1412,39 @@ async function retryFailedProductDetails(
             RETRY_CONCURRENCY,
             abortController
         );
+        
+        // 재시도 성공한 항목 다시 확인 (processProductDetailCrawl에서 자동으로 matterProducts에 추가되지만, 중복 대비)
+        const successfulResults = results.filter(r => r && r.product);
+        const beforeCount = matterProducts.length;
+        
+        // 성공한 결과 추가 여부 재확인
+        for (const result of successfulResults) {
+            if (result && result.product && !matterProducts.some(p => p.url === result.product?.url)) {
+                // 아직 추가되지 않은 항목만 추가 (중복 방지)
+                matterProducts.push(result.product);
+                debugLog(`[RETRY][${attempt}] matterProducts에 누락된 항목 추가됨: ${result.url}`);
+            }
+        }
+        
+        // 재시도 성공한 항목 카운트 (디버깅용)
+        const successCount = successfulResults.length;
+        const actuallyAdded = matterProducts.length - beforeCount;
+        
+        debugLog(`[RETRY][${attempt}] 재시도 성공: ${successCount}개 (실제 추가: ${actuallyAdded}개), 실패: ${failedProducts.length}개`);
+        debugLog(`[RETRY][${attempt}] 재시도 후 failedProducts(${failedProducts.length}): ${failedProducts.join(', ')}`);
+        debugLog(`[RETRY][${attempt}] 현재까지 수집된 총 상세 정보 수: ${matterProducts.length}개`);
+        
+        // 더 이상 실패한 항목이 없으면 재시도 종료
+        if (failedProducts.length === 0) {
+            debugLog(`[RETRY] 모든 재시도가 성공했습니다. 반복을 종료합니다.`);
+            break;
+        }
+    }
+    
+    // 최종 실패 항목 기록
+    if (failedProducts.length > 0) {
+        debugLog(`[RETRY] 최종 실패한 URL 수: ${failedProducts.length}개`);
+        debugLog(`[RETRY] 최종 실패한 URL 목록: ${failedProducts.join(', ')}`);
     }
 }
 
@@ -1503,13 +1558,13 @@ export async function checkCrawlingStatus() {
         const totalPages = await getTotalPagesCached(true); // 강제 갱신
         const siteProductCount = totalPages * PRODUCTS_PER_PAGE;
         const { startPage, endPage } = await determineCrawlingRange();
-        
+
         // 직렬화 문제가 있는 객체들을 안전하게 변환
         const safeDbSummary = {
             ...dbSummary,
             lastUpdated: dbSummary.lastUpdated ? dbSummary.lastUpdated.toISOString() : null
         };
-        
+
         return {
             dbLastUpdated: safeDbSummary.lastUpdated,
             dbProductCount: safeDbSummary.productCount,
