@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getPlatformApi } from "./platform/api";
+import { getPlatformApi, Statistics } from "./platform/api";
 
 export function useStatistics(dataPointcount: number): Statistics[] {
     const [value, setValue] = useState<Statistics[]>([]);

@@ -12,6 +12,9 @@
         // define where the output files should be generated
         "outDir": "../../dist-electron",
         // ignore errors from dependencies
-        "skipLibCheck": true
+        "skipLibCheck": true,
+        // add source map support for debugging
+        "sourceMap": true,
+        "inlineSources": true
     }
 }
