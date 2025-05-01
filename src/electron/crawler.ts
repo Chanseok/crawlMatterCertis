@@ -11,7 +11,7 @@ import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
 import { debugLog } from './util.js';
-
+//#region file scope constants, variables and types
 // 크롤링 URL 상수
 const BASE_URL = 'https://csa-iot.org/csa-iot_products/';
 const MATTER_FILTER_URL = 'https://csa-iot.org/csa-iot_products/?p_keywords=&p_type%5B%5D=14&p_program_type%5B%5D=1049&p_certificate=&p_family=&p_firmware_ver=';
@@ -33,6 +33,7 @@ const CRAWLING_PHASES = {
     PRODUCT_LIST: '제품 목록 수집',
     PRODUCT_DETAIL: '제품 상세 정보 수집'
 };
+
 
 // 크롤링 이벤트 이미터
 export const crawlerEvents = new EventEmitter();
@@ -80,6 +81,8 @@ interface FailedProductReport {
 // 각 페이지별/상품별 작업 상태 관리용
 let concurrentTaskStates: Record<number, ConcurrentCrawlingTask> = {};
 let concurrentProductTaskStates: Record<string, any> = {};
+
+//#endregion
 
 /**
  * 캐시된 페이지 정보 반환 또는 최신화
@@ -149,8 +152,6 @@ async function determineCrawlingRange(): Promise<{ startPage: number; endPage: n
     const collectedPages = Math.floor(dbSummary.productCount / PRODUCTS_PER_PAGE);
     const endPage = Math.max(1, totalPages - collectedPages);
     const startPage = 1;
-
-    debugLog(`debugging purpose, range: ${startPage} - ${endPage}`);
 
     console.log(`[Crawler] Database has ${dbSummary.productCount} products. Will crawl from page ${startPage} to ${endPage}.`);
     return { startPage, endPage };
@@ -952,13 +953,15 @@ function saveProductsToFile(products: Product[]): string {
                 pageIdCounts[p.pageId] = (pageIdCounts[p.pageId] || 0) + 1;
             }
         });
-
-        debugLog(`[Crawler] 각 pageId 별 제품 개수:`);
-        Object.entries(pageIdCounts)
-            .sort(([aKey, _], [bKey, __]) => Number(bKey) - Number(aKey))
-            .forEach(([pageId, count]) => {
-                debugLog(`[Crawler] pageId ${pageId}: ${count}개 제품`);
-            });
+        
+        if(false){
+            debugLog(`[Crawler] 각 pageId 별 제품 개수:`);
+            Object.entries(pageIdCounts)
+                .sort(([aKey, _], [bKey, __]) => Number(bKey) - Number(aKey))
+                .forEach(([pageId, count]) => {
+                    debugLog(`[Crawler] pageId ${pageId}: ${count}개 제품`);
+                });
+        }
 
         return filePath;
     } catch (err) {
@@ -1199,8 +1202,9 @@ async function collectProductList(abortController: AbortController): Promise<{
  * 제품 목록 중복 제거 및 정렬
  */
 function deduplicateAndSortProducts(productsResults: Product[]): void {
-    debugLog(`[Crawler] 중복 제거 전 제품 수: ${productsResults.length}`);
-
+    if(false) {
+        debugLog(`[Crawler] 중복 제거 전 제품 수: ${productsResults.length}`);
+    }
     // 중복 제거를 위한 Map 생성 (pageId-indexInPage 조합을 키로 사용)
     const uniqueProductsMap = new Map<string, Product>();
     productsResults.forEach(product => {
@@ -1229,7 +1233,9 @@ function deduplicateAndSortProducts(productsResults: Product[]): void {
     productsResults.length = 0; 
     productsResults.push(...sortedProducts);
 
-    debugLog(`[Crawler] 중복 제거 및 정렬 후 제품 수: ${productsResults.length}`);
+    if (false) {
+        debugLog(`[Crawler] 중복 제거 및 정렬 후 제품 수: ${productsResults.length}`);
+    }
 }
 
 /**
