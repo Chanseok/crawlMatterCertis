@@ -1097,19 +1097,6 @@ export async function checkCrawlingStatus() {
     }
 }
 
-/**
- * 크롤링 완료 예상 시간을 계산하는 함수
- */
-function estimateEndTime(startTime: number, currentPage: number, totalPages: number): number {
-    if (currentPage <= 1) return 0;
-
-    const elapsed = Date.now() - startTime;
-    const avgTimePerPage = elapsed / currentPage;
-    const remainingPages = totalPages - currentPage;
-    const estimatedTimeRemaining = avgTimePerPage * remainingPages;
-
-    return Date.now() + estimatedTimeRemaining;
-}
 
 /**
  * 지정된 범위 내에서 랜덤한 지연 시간(ms)을 생성하는 함수
