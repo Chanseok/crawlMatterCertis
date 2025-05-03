@@ -21,3 +21,15 @@ export const RETRY_MAX = 10;           // 최대 재시도 횟수 (총 9회 재�
 
 // 캐시 관련 상수
 export const CACHE_TTL_MS = 5 * 60 * 1000; // 5분 캐시
+
+// 재시도 횟수 관련 상수 (Improving.md 요구사항에 따름)
+export const DEFAULT_PRODUCT_LIST_RETRY_COUNT = 9;    // Product List 수집 재시도 횟수 기본값
+export const DEFAULT_PRODUCT_DETAIL_RETRY_COUNT = 9;  // Product Detail 수집 재시도 횟수 기본값
+export const MIN_RETRY_COUNT = 3;    // 최소 재시도 횟수 
+export const MAX_RETRY_COUNT = 20;   // 최대 재시도 횟수
+
+// 페이지 범위 관련 상수
+export const DEFAULT_PAGE_RANGE_LIMIT = 0; // 0은 제한 없음을 의미
+
+// 설정 저장 관련 상수
+export const CONFIG_STORAGE_KEY = 'crawler_config';

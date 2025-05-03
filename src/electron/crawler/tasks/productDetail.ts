@@ -16,7 +16,12 @@ import {
 import type { DetailCrawlResult } from '../utils/types.js';
 import type { Product, MatterProduct } from '../../../../types.d.ts';
 import { debugLog } from '../../util.js';
-import { crawlerEvents } from '../utils/progress.js';
+import { 
+  crawlerEvents, 
+  updateRetryStatus, 
+  logRetryError
+} from '../utils/progress.js';
+import { getConfig } from '../core/config.js';
 
 export class ProductDetailCollector {
   private state: CrawlerState;
@@ -630,8 +635,8 @@ private cleanupResources(): void {
     let processedItems = 0;
     const totalItems = products.length;
     const startTime = Date.now();
-    let lastProgressUpdate = 0; // 즉시 첫 업데이트하도록 0으로 설정
-    const progressUpdateInterval = 500; // 더 빈번한 업데이트를 위해 500ms로 변경
+    let lastProgressUpdate = 0;
+    const progressUpdateInterval = 3000; // 최대 3초 간격으로 업데이트
   
     // 초기 진행 상황 설정
     this.state.updateProgress({
@@ -639,6 +644,23 @@ private cleanupResources(): void {
       totalItems: totalItems,
       stage: 'productDetail:fetching',
       message: `2단계: 제품 상세 정보 수집 중 (0/${totalItems})`
+    });
+    
+    // 최초 이벤트 발송 (0%)
+    crawlerEvents.emit('crawlingProgress', {
+      status: 'running',
+      currentPage: 0,
+      totalPages: totalItems,
+      processedItems: 0,
+      totalItems: totalItems,
+      percentage: 0,
+      currentStep: '제품 상세 정보 수집', // CRAWLING_PHASES.PRODUCT_DETAIL 대신 직접 문자열 사용
+      remainingTime: undefined,
+      elapsedTime: 0,
+      startTime: startTime,
+      estimatedEndTime: 0,
+      newItems: 0,
+      updatedItems: 0
     });
   
     console.log(`[ProductDetailCollector] Starting detail collection for ${totalItems} products`);
@@ -652,21 +674,53 @@ private cleanupResources(): void {
   
         processedItems++;
   
-        // 더 빈번하게 진행 상황 업데이트
+        // 각 제품 처리 완료 시마다 또는 일정 시간 간격으로 진행률 업데이트
         const now = Date.now();
         if (now - lastProgressUpdate > progressUpdateInterval) {
           lastProgressUpdate = now;
+          
+          // 진행률 계산
+          const percentage = (processedItems / totalItems) * 100;
+          const elapsedTime = now - startTime;
+          let remainingTime: number | undefined = undefined;
+          
+          // 처리된 항목이 최소 10% 이상일 때만 남은 시간 예측
+          if (processedItems > totalItems * 0.1) {
+            const avgTimePerItem = elapsedTime / processedItems;
+            remainingTime = Math.round((totalItems - processedItems) * avgTimePerItem);
+          }
+          
+          // 상세 진행 메시지 생성
+          const message = `2단계: 제품 상세 정보 수집 중 (${processedItems}/${totalItems})`;
   
-          // 더 자세한 메시지 포함
+          // 내부 상태 업데이트
           this.state.updateProgress({
             currentItem: processedItems,
             totalItems: totalItems,
-            message: `2단계: 제품 상세 정보 수집 중 (${processedItems}/${totalItems})`
+            message: message,
+            percentage: percentage
           });
   
           // 병렬 작업 상태도 업데이트
           const activeTasksCount = Math.min(DETAIL_CONCURRENCY, totalItems - processedItems + 1);
           this.state.updateParallelTasks(activeTasksCount, DETAIL_CONCURRENCY);
+          
+          // UI에 진행률 상세 정보 전송
+          crawlerEvents.emit('crawlingProgress', {
+            status: 'running',
+            currentPage: processedItems,
+            totalPages: totalItems,
+            processedItems: processedItems,
+            totalItems: totalItems,
+            percentage: percentage,
+            currentStep: '제품 상세 정보 수집', // CRAWLING_PHASES.PRODUCT_DETAIL 대신 직접 문자열 사용
+            remainingTime: remainingTime,
+            elapsedTime: elapsedTime,
+            startTime: startTime,
+            estimatedEndTime: remainingTime ? now + remainingTime : 0,
+            newItems: processedItems,
+            updatedItems: 0
+          });
         }
   
         return result;
@@ -676,12 +730,31 @@ private cleanupResources(): void {
     );
   
     // 최종 진행 상황 업데이트 - 항상 실행되도록 보장
+    const finalElapsedTime = Date.now() - startTime;
     this.state.updateProgress({
       currentItem: processedItems,
       totalItems: totalItems,
-      message: `2단계: 제품 상세 정보 수집 완료 (${processedItems}/${totalItems})`
+      message: `2단계: 제품 상세 정보 수집 완료 (${processedItems}/${totalItems})`,
+      percentage: 100
     });
     this.state.updateParallelTasks(0, DETAIL_CONCURRENCY);
+    
+    // 최종 완료 상태 이벤트 발송 (100%)
+    crawlerEvents.emit('crawlingProgress', {
+      status: 'completed',
+      currentPage: processedItems,
+      totalPages: totalItems,
+      processedItems: processedItems,
+      totalItems: totalItems,
+      percentage: 100,
+      currentStep: '제품 상세 정보 수집', // CRAWLING_PHASES.PRODUCT_DETAIL 대신 직접 문자열 사용
+      remainingTime: 0,
+      elapsedTime: finalElapsedTime,
+      startTime: startTime,
+      estimatedEndTime: Date.now(),
+      newItems: processedItems,
+      updatedItems: 0
+    });
   }
 
   /**
@@ -693,6 +766,15 @@ private cleanupResources(): void {
     matterProducts: MatterProduct[],
     failedProductErrors: Record<string, string[]>
   ): Promise<void> {
+    // 재시도 설정 가져오기
+    const { productDetailRetryCount } = getConfig();
+    
+    // 재시도 횟수가 0이면 재시도 하지 않음
+    if (productDetailRetryCount <= 0) {
+      debugLog(`[RETRY] 재시도 횟수가 0으로 설정되어 제품 상세 정보 재시도를 건너뜁니다.`);
+      return;
+    }
+    
     // URL 유효성 검증: 빈 URL 필터링
     const validFailedProducts = failedProducts.filter(url => !!url);
     if (validFailedProducts.length !== failedProducts.length) {
@@ -703,7 +785,36 @@ private cleanupResources(): void {
     failedProducts.length = 0;
     failedProducts.push(...validFailedProducts);
 
-    for (let attempt = RETRY_START; attempt <= RETRY_MAX && failedProducts.length > 0; attempt++) {
+    // 사용자 설정에 따른 최대 재시도 횟수 적용
+    const maxRetry = RETRY_START + productDetailRetryCount - 1;
+    
+    // 재시도 시작 상태 초기화 (UI-STATUS-001)
+    updateRetryStatus('detail-retry', {
+      stage: 'productDetail',
+      currentAttempt: 1,
+      maxAttempt: productDetailRetryCount,
+      remainingItems: failedProducts.length,
+      totalItems: failedProducts.length,
+      startTime: Date.now(),
+      itemIds: failedProducts
+    });
+    
+    // 재시도 시작 (RETRY_START는 첫 시도 이후의 첫 번째 재시도 회차)
+    for (let attempt = RETRY_START; attempt <= maxRetry && failedProducts.length > 0; attempt++) {
+      // 현재 재시도 회차 상태 업데이트 (UI-STATUS-001)
+      updateRetryStatus('detail-retry', {
+        currentAttempt: attempt - RETRY_START + 1,
+        remainingItems: failedProducts.length,
+        itemIds: [...failedProducts]
+      });
+      
+      // 재시도 진행 상태 전송 - UI에 현재 재시도 정보 표시
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'detail-retry',
+        status: 'running',
+        message: `제품 상세 정보 재시도 중 (${attempt - RETRY_START + 1}/${productDetailRetryCount}): ${failedProducts.length}개 항목`
+      });
+    
       const retryUrls = [...failedProducts];
 
       // 기존 배열을 재할당하지 않고 길이를 0으로 설정하여 비움
@@ -712,7 +823,7 @@ private cleanupResources(): void {
       // URL로 제품 찾기
       const retryProducts = allProducts.filter(p => p.url && retryUrls.includes(p.url));
 
-      debugLog(`[RETRY][${attempt}] 제품 상세 정보 재시도 중: ${retryProducts.length}개 제품`);
+      debugLog(`[RETRY][${attempt}] 제품 상세 정보 재시도 중: ${retryProducts.length}개 제품 (${attempt - RETRY_START + 1}/${productDetailRetryCount})`);
 
       if (retryProducts.length === 0) {
         debugLog(`[RETRY][${attempt}] 재시도할 제품이 없습니다.`);
@@ -725,6 +836,29 @@ private cleanupResources(): void {
           const result = await this.processProductDetailCrawl(
             product, matterProducts, failedProducts, failedProductErrors, signal, attempt
           );
+          
+          // 제품 처리 결과에 따라 상세 로깅 (UI-STATUS-001)
+          if (result) {
+            if (result.error) {
+              // 오류 정보 로깅
+              logRetryError(
+                'productDetail', 
+                product.url,
+                result.error,
+                attempt - RETRY_START + 1
+              );
+            } else {
+              // 성공 정보 로깅
+              console.log(`[RETRY][${attempt - RETRY_START + 1}/${productDetailRetryCount}] 제품 ${product.url} 재시도 성공`);
+            }
+            
+            // 재시도 상태 업데이트 - 남은 항목 수 등
+            updateRetryStatus('detail-retry', {
+              remainingItems: failedProducts.length,
+              itemIds: [...failedProducts]
+            });
+          }
+          
           return result;
         },
         RETRY_CONCURRENCY,
@@ -733,6 +867,21 @@ private cleanupResources(): void {
 
       if (failedProducts.length === 0) {
         debugLog(`[RETRY] 모든 제품 상세 정보 재시도 성공`);
+        
+        // 재시도 완료 상태 전송
+        crawlerEvents.emit('crawlingTaskStatus', {
+          taskId: 'detail-retry',
+          status: 'success',
+          message: `제품 상세 정보 재시도 완료: 모든 항목 성공`
+        });
+        
+        // 최종 성공 상태 업데이트 (UI-STATUS-001)
+        updateRetryStatus('detail-retry', {
+          remainingItems: 0,
+          itemIds: [],
+          currentAttempt: attempt - RETRY_START + 1
+        });
+        
         break;
       }
     }
@@ -744,7 +893,33 @@ private cleanupResources(): void {
     }
 
     if (failedProducts.length > 0) {
-      debugLog(`[RETRY] ${RETRY_MAX}회 재시도 후에도 실패한 제품 URL 수: ${failedProducts.length}`);
+      debugLog(`[RETRY] ${productDetailRetryCount}회 재시도 후에도 실패한 제품 URL 수: ${failedProducts.length}`);
+      
+      // 최종 실패 상태 전송
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'detail-retry',
+        status: 'error',
+        message: `제품 상세 정보 재시도 완료: ${failedProducts.length}개 항목 실패`
+      });
+      
+      // 최종 실패 상태 업데이트 (UI-STATUS-001)
+      updateRetryStatus('detail-retry', {
+        remainingItems: failedProducts.length,
+        itemIds: [...failedProducts]
+      });
+      
+      // 최종 실패 항목들 로깅
+      failedProducts.forEach(url => {
+        const errors = failedProductErrors[url] || ['Unknown error'];
+        console.error(`[RETRY] 제품 ${url} 재시도 최종 실패: ${errors.join('; ')}`);
+      });
+    } else {
+      // 성공 상태 전송
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'detail-retry',
+        status: 'success',
+        message: `제품 상세 정보 재시도 완료: 모든 항목 성공`
+      });
     }
   }
 }

@@ -5,6 +5,7 @@
 
 import { EventEmitter } from 'events';
 import type { CrawlingProgress } from '../../../ui/types.js';
+import type { RetryStatusInfo, RetryLogItem } from './types.js';
 
 // 크롤링 이벤트 이미터
 export const crawlerEvents = new EventEmitter();
@@ -24,6 +25,101 @@ export interface ConcurrentCrawlingTask {
     error?: string;
 }
 
+// 재시도 진행 상태를 위한 인터페이스 (UI-STATUS-001)
+export interface RetryStatus {
+    taskId: string;                 // 작업 식별자 (list-retry, detail-retry 등)
+    stage: 'productList' | 'productDetail'; // 작업 단계
+    currentAttempt: number;         // 현재 재시도 횟수
+    maxAttempt: number;             // 설정된 최대 재시도 횟수
+    remainingItems: number;         // 남은 항목 수 
+    totalItems: number;             // 총 재시도 항목 수
+    startTime: number;              // 재시도 시작 시간
+    itemIds: string[];              // 재시도 대상 항목들 (페이지 번호 또는 URL)
+}
+
+// 재시도 이벤트 추적을 위한 상태 객체
+export const retryStatusTracking: Record<string, RetryStatus> = {
+    'list-retry': {
+        taskId: 'list-retry',
+        stage: 'productList',
+        currentAttempt: 0,
+        maxAttempt: 0,
+        remainingItems: 0,
+        totalItems: 0,
+        startTime: 0,
+        itemIds: []
+    },
+    'detail-retry': {
+        taskId: 'detail-retry',
+        stage: 'productDetail',
+        currentAttempt: 0,
+        maxAttempt: 0,
+        remainingItems: 0,
+        totalItems: 0,
+        startTime: 0,
+        itemIds: []
+    }
+};
+
+/**
+ * 재시도 상태 업데이트 함수 (UI-STATUS-001)
+ */
+export function updateRetryStatus(
+    taskId: string,
+    updates: Partial<RetryStatusInfo>
+): void {
+    // 기존 상태가 없으면 기본값으로 초기화
+    if (!retryStatusTracking[taskId]) {
+        retryStatusTracking[taskId] = {
+            taskId,
+            stage: updates.stage as 'productList' | 'productDetail' || 'productList',
+            currentAttempt: updates.currentAttempt || 0,
+            maxAttempt: updates.maxAttempt || 0,
+            remainingItems: updates.remainingItems || 0,
+            totalItems: updates.totalItems || 0,
+            startTime: updates.startTime || Date.now(),
+            itemIds: updates.itemIds || []
+        };
+    } else {
+        // 상태 업데이트
+        if (updates.stage) retryStatusTracking[taskId].stage = updates.stage as 'productList' | 'productDetail';
+        if (updates.currentAttempt !== undefined) retryStatusTracking[taskId].currentAttempt = updates.currentAttempt;
+        if (updates.maxAttempt !== undefined) retryStatusTracking[taskId].maxAttempt = updates.maxAttempt;
+        if (updates.remainingItems !== undefined) retryStatusTracking[taskId].remainingItems = updates.remainingItems;
+        if (updates.totalItems !== undefined) retryStatusTracking[taskId].totalItems = updates.totalItems;
+        if (updates.startTime !== undefined) retryStatusTracking[taskId].startTime = updates.startTime;
+        if (updates.itemIds !== undefined) retryStatusTracking[taskId].itemIds = [...updates.itemIds];
+    }
+    
+    // 재시도 진행 상태 이벤트 발송
+    crawlerEvents.emit('retryStatusUpdate', {...retryStatusTracking[taskId]});
+}
+
+/**
+ * 오류 정보 로깅 및 알림 함수 (UI-STATUS-001)
+ */
+export function logRetryError(
+    stage: string,
+    itemId: string,
+    errorMessage: string,
+    attempt: number
+): void {
+    const timestamp = Date.now();
+    const errorInfo: RetryLogItem = {
+        stage,
+        itemId,
+        errorMessage,
+        attempt,
+        timestamp
+    };
+    
+    // 오류 로그 이벤트 발송
+    crawlerEvents.emit('retryErrorLogged', errorInfo);
+    
+    // 콘솔에 로깅
+    console.error(`[RETRY][${stage}] 재시도 ${attempt}회차 실패 - ${itemId}: ${errorMessage}`);
+}
+
 /**
  * 크롤링 진행 상태 초기화 함수
  */
@@ -40,7 +136,7 @@ export function initializeCrawlingProgress(currentStep: string): CrawlingProgres
         updatedItems: 0,
         percentage: 0,
         currentStep,
-        remainingTime: undefined,
+        remainingTime: -1,
         elapsedTime: 0
     };
     crawlerEvents.emit('crawlingProgress', progress);

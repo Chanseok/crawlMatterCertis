@@ -56,10 +56,16 @@ export class CrawlerEngine {
 
     try {
       console.log('[CrawlerEngine] Starting crawling process...');
+      
+      // 사용자 설정 가져오기 (CRAWL-RANGE-001)
+      const config = getConfig();
+      const userPageLimit = config.pageRangeLimit;
 
       // 1단계: 제품 목록 수집
       const productListCollector = new ProductListCollector(this.state, this.abortController);
-      const products = await productListCollector.collect();
+      
+      // 사용자 페이지 범위 설정이 있으면 적용 (CRAWL-RANGE-001)
+      const products = await productListCollector.collect(userPageLimit);
 
       // 중단 여부 확인 - 명시적으로 요청된 중단만 처리
       if (this.abortController.signal.aborted) {
@@ -92,21 +98,24 @@ export class CrawlerEngine {
       const successRate = totalPages > 0 ? (totalPages - failedPages.length) / totalPages : 1;
       const successRatePercent = (successRate * 100).toFixed(1);
       
-      if (successRate < 1) {
-        const message = `제품 목록 수집 성공률이 100%가 아닙니다(${successRatePercent}%). 2단계 크롤링을 진행하지 않습니다.`;
+      // 1단계에서 실패 페이지가 있으면 중단 (원래 동작으로 복원)
+      if (failedPages.length > 0) {
+        const message = `[경고] 제품 목록 수집 성공률: ${successRatePercent}% (${totalPages - failedPages.length}/${totalPages}). 실패한 페이지가 있어 크롤링을 중단합니다.`;
         console.warn(`[CrawlerEngine] ${message}`);
-        this.state.setStage('completed', message);
-        this.isCrawling = false;
         
-        // 성공률이 100%가 아닌 경우 UI에 알림
+        // 경고 이벤트 발생 및 크롤링 중단
         crawlerEvents.emit('crawlingWarning', {
           message,
           successRate: parseFloat(successRatePercent),
           failedPages: failedPages.length,
-          totalPages
+          totalPages,
+          continueProcess: false // 중단 설정
         });
         
-        return true;
+        // 크롤링 중단 상태로 설정
+        this.state.setStage('failed', '제품 목록 수집 중 오류가 발생하여 크롤링이 중단되었습니다.');
+        this.isCrawling = false;
+        return false; // 함수 종료
       }
 
       // 2단계: 제품 상세 정보 수집
@@ -177,17 +186,36 @@ export class CrawlerEngine {
       // 사이트 제품 수 계산
       const config = getConfig();
       const siteProductCount = totalPages * config.productsPerPage;
+      
+      // 사용자 설정 페이지 제한 확인
+      const userPageLimit = config.pageRangeLimit;
 
       // 크롤링 범위 계산
       let crawlingRange;
       if (dbSummary.productCount === 0) {
-        crawlingRange = { startPage: 1, endPage: totalPages };
+        // 페이지 제한 적용
+        const endPage = userPageLimit > 0 ? Math.min(userPageLimit, totalPages) : totalPages;
+        crawlingRange = { startPage: 1, endPage };
       } else {
         const collectedPages = Math.floor(dbSummary.productCount / config.productsPerPage);
-        const endPage = Math.max(1, totalPages - collectedPages);
+        let endPage = Math.max(1, totalPages - collectedPages);
+        
+        // 페이지 제한 적용
+        if (userPageLimit > 0) {
+          endPage = Math.min(endPage, userPageLimit);
+        }
+        
         crawlingRange = { startPage: 1, endPage };
       }
 
+      // 선택된 페이지 범위에 따른 예상 제품 수 계산
+      const selectedPageCount = crawlingRange.endPage - crawlingRange.startPage + 1;
+      const estimatedProductCount = selectedPageCount * config.productsPerPage;
+      
+      // 예상 소요 시간 계산 (페이지당 평균 5초 기준)
+      const estimatedTimePerPage = 5000; // 5초
+      const estimatedTotalTime = selectedPageCount * estimatedTimePerPage;
+      
       const safeDbSummary = {
         ...dbSummary,
         lastUpdated: dbSummary.lastUpdated ? dbSummary.lastUpdated.toISOString() : null
@@ -200,7 +228,12 @@ export class CrawlerEngine {
         siteProductCount,
         diff: siteProductCount - dbSummary.productCount,
         needCrawling: siteProductCount > dbSummary.productCount,
-        crawlingRange
+        crawlingRange,
+        // 추가 정보
+        selectedPageCount,
+        estimatedProductCount,
+        estimatedTotalTime,
+        userPageLimit: userPageLimit > 0 ? userPageLimit : undefined
       };
     } catch (error) {
       console.error("[CrawlerEngine] Error in checkCrawlingStatus:", error);
@@ -212,7 +245,10 @@ export class CrawlerEngine {
         siteProductCount: 0,
         diff: 0,
         needCrawling: false,
-        crawlingRange: { startPage: 1, endPage: 1 }
+        crawlingRange: { startPage: 1, endPage: 1 },
+        selectedPageCount: 0,
+        estimatedProductCount: 0,
+        estimatedTotalTime: 0
       };
     }
   }

@@ -34,6 +34,7 @@ export interface ProgressData {
   remainingTime?: number;
   failedItems?: string[];
   criticalError?: string;
+  percentage?: number;  // 진행률 퍼센트 (0-100)
 }
 
 export class CrawlerState {
@@ -132,6 +133,7 @@ public updateProgress(data: Partial<ProgressData>): void {
       if (percentComplete > 0) {
         const totalEstimatedTime = this.progressData.elapsedTime / percentComplete;
         this.progressData.remainingTime = totalEstimatedTime - this.progressData.elapsedTime;
+        this.progressData.percentage = Math.round(percentComplete * 100); // 진행률 퍼센트 계산
       }
     }
   }

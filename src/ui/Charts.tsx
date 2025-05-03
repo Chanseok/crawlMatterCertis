@@ -24,6 +24,9 @@ export function Chart(props: ChartProps) {
 // 동시 처리 작업 현황 시각화 컴포넌트
 export function ConcurrentTasksVisualizer() {
   const tasks = useStore(concurrentTasksStore);
+  
+  // Safety check to ensure tasks is an array
+  const tasksArray = Array.isArray(tasks) ? tasks : [];
 
   // 이모지/컬러 매핑
   const statusEmoji: Record<string, string> = {
@@ -41,8 +44,8 @@ export function ConcurrentTasksVisualizer() {
 
   return (
     <div className="flex flex-wrap gap-2 p-2 bg-gray-50 rounded shadow-inner">
-      {tasks.length === 0 && <span className="text-gray-400">아직 동시 작업 없음</span>}
-      {tasks.map((task: ConcurrentCrawlingTask) => (
+      {tasksArray.length === 0 && <span className="text-gray-400">아직 동시 작업 없음</span>}
+      {tasksArray.map((task: ConcurrentCrawlingTask) => (
         <div
           key={task.pageNumber}
           className={`flex flex-col items-center w-14 h-14 justify-center border rounded ${statusColor[task.status]}`}
