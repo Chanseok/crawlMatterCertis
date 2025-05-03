@@ -1,13 +1,69 @@
 /**
  * index.ts
- * 크롤러 모듈의 공개 API를 내보내는 파일
+ * 크롤러 모듈의 메인 진입점
  */
 
-// 크롤러의 핵심 기능들 내보내기
-export { startCrawling, stopCrawling, checkCrawlingStatus } from './crawler.js';
+import { CrawlerEngine } from './core/CrawlerEngine.js';
+import { getConfig, updateConfig, resetConfig } from './core/config.js';
+import type { CrawlerConfig } from './core/config.js';
+import type { CrawlingSummary } from './utils/types.js';
 
-// 이벤트 이미터 내보내기
-export { crawlerEvents } from './utils/progress.js';
+// 크롤러 인스턴스 생성
+const crawler = new CrawlerEngine();
 
-// 크롤링 단계 상수 내보내기
-export { CRAWLING_PHASES } from './utils/progress.js';
+/**
+ * 크롤링 작업을 시작하는 함수
+ * @returns 크롤링 작업 시작 성공 여부
+ */
+export async function startCrawling(): Promise<boolean> {
+  return crawler.startCrawling();
+}
+
+/**
+ * 크롤링 작업을 중지하는 함수
+ * @returns 중지 요청 성공 여부
+ */
+export function stopCrawling(): boolean {
+  return crawler.stopCrawling();
+}
+
+/**
+ * 크롤링 상태 체크(요약 정보) 함수
+ */
+export async function checkCrawlingStatus(): Promise<CrawlingSummary> {
+  return crawler.checkCrawlingStatus();
+}
+
+/**
+ * 크롤링이 현재 진행 중인지 확인
+ */
+export function isRunning(): boolean {
+  return crawler.isRunning();
+}
+
+/**
+ * 현재 크롤러 설정 가져오기
+ */
+export function getCrawlerConfig(): CrawlerConfig {
+  return getConfig();
+}
+
+/**
+ * 크롤러 설정 업데이트
+ * @param config 업데이트할 설정 객체
+ */
+export function updateCrawlerConfig(config: Partial<CrawlerConfig>): void {
+  updateConfig(config);
+}
+
+/**
+ * 크롤러 설정을 기본값으로 초기화
+ */
+export function resetCrawlerConfig(): void {
+  resetConfig();
+}
+
+// 모든 크롤러 기능 노출
+export {
+  crawler
+};

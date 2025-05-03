@@ -11,8 +11,22 @@ import {
     getDatabaseSummaryFromDb,
     markLastUpdatedInDb
 } from './database.js';
-import { startCrawling, stopCrawling, crawlerEvents, checkCrawlingStatus } from './crawler.js';
-import type { AppMode } from '../ui/types.js';
+import { startCrawling, stopCrawling, checkCrawlingStatus } from './crawler/index.js';
+import { crawlerEvents } from './crawler/utils/progress.js';
+import type { AppMode, CrawlingProgress } from '../ui/types.js';
+import type { FailedPageReport, FailedProductReport, CrawlingResultReport } from './crawler/utils/types.js';
+
+// 로컬에서 필요한 타입 정의
+interface CrawlingTaskStatus {
+    taskId: number | string;
+    status: 'pending' | 'running' | 'success' | 'error' | 'stopped';
+    message?: string;
+}
+
+interface CrawlingError {
+    message: string;
+    details: string;
+}
 
 // IPC 채널 상수 정의
 const IPC_CHANNELS = {
@@ -191,32 +205,32 @@ app.on('ready', async () => {
  */
 function setupCrawlerEvents(mainWindow: BrowserWindow): void {
     // 크롤링 진행 상태 이벤트
-    crawlerEvents.on('crawlingProgress', (progress) => {
+    crawlerEvents.on('crawlingProgress', (progress: CrawlingProgress) => {
         mainWindow.webContents.send('crawlingProgress', progress);
     });
     
     // 페이지별 병렬 작업 상태 이벤트 (추가)
-    crawlerEvents.on('crawlingTaskStatus', (taskStatus) => {
+    crawlerEvents.on('crawlingTaskStatus', (taskStatus: CrawlingTaskStatus) => {
         mainWindow.webContents.send('crawlingTaskStatus', taskStatus);
     });
     
     // 크롤링 중단 이벤트 (추가)
-    crawlerEvents.on('crawlingStopped', (taskStatus) => {
+    crawlerEvents.on('crawlingStopped', (taskStatus: CrawlingTaskStatus) => {
         mainWindow.webContents.send('crawlingStopped', taskStatus);
     });
     
     // 크롤링 실패한 페이지 이벤트 (추가)
-    crawlerEvents.on('crawlingFailedPages', (failedPages) => {
+    crawlerEvents.on('crawlingFailedPages', (failedPages: FailedPageReport[]) => {
         mainWindow.webContents.send('crawlingFailedPages', failedPages);
     });
     
     // 크롤링 완료 이벤트
-    crawlerEvents.on('crawlingComplete', (data) => {
+    crawlerEvents.on('crawlingComplete', (data: CrawlingResultReport) => {
         mainWindow.webContents.send('crawlingComplete', data);
     });
     
     // 크롤링 오류 이벤트
-    crawlerEvents.on('crawlingError', (error) => {
+    crawlerEvents.on('crawlingError', (error: CrawlingError) => {
         mainWindow.webContents.send('crawlingError', error);
     });
 }

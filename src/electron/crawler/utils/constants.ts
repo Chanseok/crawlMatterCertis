@@ -8,8 +8,8 @@ export const BASE_URL = 'https://csa-iot.org/csa-iot_products/';
 export const MATTER_FILTER_URL = 'https://csa-iot.org/csa-iot_products/?p_keywords=&p_type%5B%5D=14&p_program_type%5B%5D=1049&p_certificate=&p_family=&p_firmware_ver=';
 
 // 크롤링 설정 상수
-export const PAGE_TIMEOUT_MS = 10000; // 페이지 타임아웃
-export const PRODUCT_DETAIL_TIMEOUT_MS = 15000; // 제품 상세 페이지 타임아웃
+export const PAGE_TIMEOUT_MS = 30000; // 페이지 타임아웃
+export const PRODUCT_DETAIL_TIMEOUT_MS = 30000; // 제품 상세 페이지 타임아웃
 export const PRODUCTS_PER_PAGE = 12;  // 페이지당 제품 수
 export const INITIAL_CONCURRENCY = 9; // 초기 병렬 크롤링 동시성 수준
 export const DETAIL_CONCURRENCY = 9; // 제품 상세 정보 크롤링 동시성 수준
