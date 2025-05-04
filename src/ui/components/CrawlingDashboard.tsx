@@ -128,14 +128,15 @@ export function CrawlingDashboard() {
       setIsSuccess(isCompleteSuccess);
       setShowCompletion(true);
       
-      // 5초 후에 완료 표시 숨기기
+      // 애니메이션 표시를 위한 타이머 설정
       if (completionTimerRef.current) {
         clearTimeout(completionTimerRef.current);
       }
       
+      // 성공 시 10초, 실패 시 5초 동안 표시
       completionTimerRef.current = setTimeout(() => {
         setShowCompletion(false);
-      }, 8000);
+      }, isCompleteSuccess ? 10000 : 5000);
     } else {
       setShowCompletion(false);
     }
@@ -347,7 +348,9 @@ export function CrawlingDashboard() {
       <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/30 rounded-md border border-yellow-200 dark:border-yellow-800">
         <div className="text-sm text-yellow-800 dark:text-yellow-300 flex justify-between">
           <span>재시도:</span>
-          <span>{animatedValues.retryCount || 0}/{progress.maxRetries || '?'}</span>
+          <span className={`${animatedDigits.retryCount ? 'animate-pulse' : ''}`}>
+            {animatedValues.retryCount || 0}/{progress.maxRetries || config.productListRetryCount || '?'}
+          </span>
         </div>
         {progress.retryItem && (
           <div className="text-sm text-yellow-700 dark:text-yellow-400 mt-1 truncate">
@@ -408,7 +411,7 @@ export function CrawlingDashboard() {
         <div className="text-xs text-gray-500 dark:text-gray-400">
           {progress.currentStage === 1 ? "페이지 수집 현황" : "제품 상세 수집 현황"}
         </div>
-        <div className={`text-2xl font-digital font-medium mt-1 transition-all transform duration-300 ${animatedDigits.currentPage ? 'animate-flip' : ''}`} style={{
+        <div className={`text-2xl font-bold font-digital mt-1 transition-all transform duration-300 ${animatedDigits.currentPage ? 'animate-flip' : ''}`} style={{
           color: animatedValues.currentPage > 0 ? '#3b82f6' : '#6b7280'
         }}>
           {Math.round(animatedValues.currentPage)} <span className="text-sm text-gray-500">/ {
@@ -492,9 +495,9 @@ export function CrawlingDashboard() {
         {/* 재시도 정보 */}
         <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            {progress.currentStage === 1 ? "제품 목록 재시도" : "제품 상세 재시도"}
+            {progress.currentStage === 1 ? "재시도 진행 상태" : "제품 상세 재시도"}
           </div>
-          <div className={`text-2xl font-digital font-medium mt-1 transition-all transform duration-300 ${animatedDigits.retryCount ? 'animate-flip' : ''}`} style={{
+          <div className={`text-2xl font-bold font-digital mt-1 transition-all transform duration-300 ${animatedDigits.retryCount ? 'animate-flip' : ''}`} style={{
             color: animatedValues.retryCount > 0 ? '#f59e0b' : '#6b7280'
           }}>
             {animatedValues.retryCount} <span className="text-sm text-gray-500">/ {
@@ -515,8 +518,13 @@ export function CrawlingDashboard() {
           <div className="text-xs text-gray-500 dark:text-gray-400">
             {progress.currentStage === 1 ? "1단계 소요 시간" : progress.currentStage === 2 ? "2단계 소요 시간" : "소요 시간"}
           </div>
-          <div className="text-xl font-medium mt-1 text-gray-700 dark:text-gray-300 font-digital">
+          <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center">
             {formatDuration(localTime.elapsedTime)}
+            <div className={`ml-2 ${flipTimer % 2 === 0 ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}>
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
           </div>
         </div>
         
@@ -525,8 +533,13 @@ export function CrawlingDashboard() {
           <div className="text-xs text-gray-500 dark:text-gray-400">
             {progress.currentStage === 1 ? "1단계 예상 남은 시간" : progress.currentStage === 2 ? "2단계 예상 남은 시간" : "예상 남은 시간"}
           </div>
-          <div className="text-xl font-medium mt-1 text-gray-700 dark:text-gray-300 font-digital">
+          <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center">
             {formatDuration(localTime.remainingTime)}
+            <div className={`ml-2 ${flipTimer % 2 === 0 ? 'opacity-100 rotate-0' : 'opacity-70 rotate-180'} transition-all duration-500`}>
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
           </div>
         </div>
       </div>
@@ -538,14 +551,14 @@ export function CrawlingDashboard() {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <div className="text-xs text-gray-500 dark:text-gray-400">신규 항목</div>
-              <div className={`font-digital text-2xl font-medium text-green-600 dark:text-green-400 transition-all duration-300 ${animatedDigits.newItems ? 'animate-flip' : ''}`}>
+              <div className={`font-digital text-2xl font-bold text-green-600 dark:text-green-400 transition-all duration-300 ${animatedDigits.newItems ? 'animate-flip' : ''}`}>
                 {Math.round(animatedValues.newItems)}
                 <span className="text-sm text-gray-500">개</span>
               </div>
             </div>
             <div>
               <div className="text-xs text-gray-500 dark:text-gray-400">업데이트 항목</div>
-              <div className={`font-digital text-2xl font-medium text-blue-600 dark:text-blue-400 transition-all duration-300 ${animatedDigits.updatedItems ? 'animate-flip' : ''}`}>
+              <div className={`font-digital text-2xl font-bold text-blue-600 dark:text-blue-400 transition-all duration-300 ${animatedDigits.updatedItems ? 'animate-flip' : ''}`}>
                 {Math.round(animatedValues.updatedItems)}
                 <span className="text-sm text-gray-500">개</span>
               </div>
@@ -579,7 +592,18 @@ export function CrawlingDashboard() {
       {/* 모래시계 애니메이션 */}
       {status === 'running' && (
         <div className="mt-4 flex justify-center items-center">
-          <div className={`hourglass ${flipTimer % 10 === 0 ? 'animate-flip-hourglass' : ''}`}></div>
+          <div className={`relative w-8 h-12 ${flipTimer % 10 === 0 ? 'animate-flip-hourglass' : ''}`}>
+            <div className="absolute top-0 left-0 right-0 h-1/2 bg-amber-200 dark:bg-amber-700 overflow-hidden rounded-t-lg">
+              <div className="absolute bottom-0 left-1/4 right-1/4 border-l-transparent border-r-transparent border-t-amber-400 dark:border-t-amber-500" 
+                   style={{ borderWidth: '8px 8px 0 8px', height: 0, width: 0 }}></div>
+            </div>
+            <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-amber-200 dark:bg-amber-700 overflow-hidden rounded-b-lg">
+              <div className="absolute top-0 left-1/4 right-1/4 border-l-transparent border-r-transparent border-b-amber-400 dark:border-b-amber-500" 
+                   style={{ borderWidth: '0 8px 8px 8px', height: 0, width: 0 }}></div>
+              <div className="absolute top-1/3 left-0 right-0 bottom-0 bg-amber-300 dark:bg-amber-600 animate-sand-fall"></div>
+            </div>
+            <div className="absolute inset-0 border-2 border-amber-500 dark:border-amber-400 rounded-lg"></div>
+          </div>
         </div>
       )}
       
@@ -589,17 +613,21 @@ export function CrawlingDashboard() {
           {/* 성공 시 꽃가루 효과 */}
           {isSuccess && (
             <div className="confetti-container">
-              {[...Array(30)].map((_, i) => {
+              {[...Array(50)].map((_, i) => {
                 const randomX = Math.random() * 100;
                 const randomDelay = Math.random() * 3;
                 const randomColor = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'][Math.floor(Math.random() * 6)];
+                const randomSize = Math.random() * 10 + 5;
                 
                 return (
                   <div
                     key={i}
-                    className="confetti animate-confetti"
+                    className="confetti absolute animate-confetti"
                     style={{
                       left: `${randomX}%`,
+                      top: '-20px',
+                      width: `${randomSize}px`,
+                      height: `${randomSize}px`,
                       backgroundColor: randomColor,
                       animationDelay: `${randomDelay}s`,
                       transform: `rotate(${Math.random() * 360}deg)`
@@ -610,18 +638,32 @@ export function CrawlingDashboard() {
             </div>
           )}
           
-          <div className={isSuccess ? 'success-message' : 'failure-message animate-failure'}>
-            <div className="text-lg font-bold mb-2">
-              {isSuccess ? '수집 완료!' : '수집 실패!'}
+          <div className={isSuccess ? 'success-message animate-bounce-small' : 'failure-message animate-shake'}>
+            <div className="text-lg font-bold mb-2 flex justify-center items-center">
+              {isSuccess ? (
+                <>
+                  <svg className="w-6 h-6 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  수집 완료!
+                </>
+              ) : (
+                <>
+                  <svg className="w-6 h-6 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  수집 실패!
+                </>
+              )}
             </div>
-            <div>
+            <div className={`text-base ${isSuccess ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
               {isSuccess ? 
                 <span>제품 상세 수집이 성공적으로 완료되었습니다.</span> : 
                 <span>일부 제품 정보를 수집하지 못했습니다.</span>
               }
             </div>
-            <div className="mt-2">
-              <div className="text-xs text-gray-500">
+            <div className="mt-4 inline-block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+              <div className="text-lg font-bold">
                 {Math.round(progress.processedItems || 0)} / {
                   progress.totalItems || 
                   statusSummary?.siteProductCount || 
