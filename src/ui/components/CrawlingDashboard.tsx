@@ -148,13 +148,6 @@ export function CrawlingDashboard() {
     };
   }, [status, progress.currentStage, progress.processedItems, progress.totalItems]);
 
-  const [previousValues, setPreviousValues] = useState({
-    currentPage: 0,
-    retryCount: 0,
-    newItems: 0,
-    updatedItems: 0
-  });
-
   const [animatedDigits, setAnimatedDigits] = useState({
     currentPage: false,
     retryCount: false,
@@ -184,40 +177,42 @@ export function CrawlingDashboard() {
     }
   }, [progress.currentStage]);
 
-  // 이전 값과 비교하여 변경 시 애니메이션 트리거
+  // 애니메이션 효과를 위한 useEffect
+  const prevProgress = useRef(progress);
   useEffect(() => {
-    // 이전 값과 현재 목표값 비교
-    const newAnimations = {
-      currentPage: progress.currentPage !== undefined && progress.currentPage !== previousValues.currentPage,
-      retryCount: progress.retryCount !== undefined && progress.retryCount !== previousValues.retryCount,
-      newItems: progress.newItems !== undefined && progress.newItems !== previousValues.newItems,
-      updatedItems: progress.updatedItems !== undefined && progress.updatedItems !== previousValues.updatedItems
-    };
-
-    // 값이 변경되었다면 애니메이션 활성화
-    if (Object.values(newAnimations).some(v => v)) {
-      setAnimatedDigits(newAnimations);
+    // 값이 변경되었을 때만 애니메이션 적용
+    if (prevProgress.current) {
+      // 1단계: 페이지 수집 진행 상태
+      if (progress.currentPage !== prevProgress.current.currentPage) {
+        setAnimatedDigits(prev => ({ ...prev, currentPage: true }));
+        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, currentPage: false })), 300);
+      }
       
-      // 애니메이션 종료 후 상태 리셋
-      setTimeout(() => {
-        setAnimatedDigits({
-          currentPage: false,
-          retryCount: false,
-          newItems: false,
-          updatedItems: false
-        });
-        
-        // 현재 값을 이전 값으로 설정
-        setPreviousValues({
-          currentPage: progress.currentPage || 0,
-          retryCount: progress.retryCount || 0,
-          newItems: progress.newItems || 0,
-          updatedItems: progress.updatedItems || 0
-        });
-      }, 600); // 애니메이션 시간과 맞춤
+      // 2단계: 제품 상세 수집 진행 상태
+      if (progress.processedItems !== prevProgress.current.processedItems) {
+        setAnimatedDigits(prev => ({ ...prev, processedItems: true }));
+        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, processedItems: false })), 300);
+      }
+
+      if (progress.retryCount !== prevProgress.current.retryCount) {
+        setAnimatedDigits(prev => ({ ...prev, retryCount: true }));
+        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, retryCount: false })), 300);
+      }
+      
+      if (progress.elapsedTime !== prevProgress.current.elapsedTime) {
+        setAnimatedDigits(prev => ({ ...prev, elapsedTime: true }));
+        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, elapsedTime: false })), 300);
+      }
+      
+      if (progress.remainingTime !== prevProgress.current.remainingTime) {
+        setAnimatedDigits(prev => ({ ...prev, remainingTime: true }));
+        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, remainingTime: false })), 300);
+      }
     }
-  }, [progress.currentPage, progress.retryCount, progress.newItems, progress.updatedItems]);
-  
+    
+    prevProgress.current = progress;
+  }, [progress]);
+
   // 애니메이션을 위한 참조
   const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
@@ -414,7 +409,10 @@ export function CrawlingDashboard() {
         <div className={`text-2xl font-bold font-digital mt-1 transition-all transform duration-300 ${animatedDigits.currentPage ? 'animate-flip' : ''}`} style={{
           color: animatedValues.currentPage > 0 ? '#3b82f6' : '#6b7280'
         }}>
-          {Math.round(animatedValues.currentPage)} <span className="text-sm text-gray-500">/ {
+          {progress.currentStage === 1 
+            ? Math.round(animatedValues.currentPage) 
+            : Math.round(animatedValues.processedItems)}
+          <span className="text-sm text-gray-500"> / {
             progress.currentStage === 2 
               ? progress.totalItems || statusSummary?.siteProductCount || (targetPageCount * (config.productsPerPage || 12)) 
               : targetPageCount

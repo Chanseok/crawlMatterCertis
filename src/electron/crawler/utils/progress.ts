@@ -227,7 +227,7 @@ export function updateProductDetailProgress(
 
     crawlerEvents.emit('crawlingProgress', {
         status: isCompleted ? 'completed' : 'running',
-        currentPage: totalItems, // 1단계 완료 상태 유지
+        currentPage: processedItems, // 실제 처리된 항목 수로 변경
         totalPages: totalItems,
         processedItems,
         totalItems,
