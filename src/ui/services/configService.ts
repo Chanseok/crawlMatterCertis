@@ -1,4 +1,4 @@
-import { CrawlerConfig } from '../../electron/ConfigManager';
+import type { CrawlerConfig } from '../../../types';
 
 /**
  * 설정 관련 서비스
@@ -21,7 +21,8 @@ export async function getConfig(): Promise<CrawlerConfig> {
     return {
       pageRangeLimit: 10,
       productListRetryCount: 9,
-      productDetailRetryCount: 9
+      productDetailRetryCount: 9,
+      productsPerPage: 12  // 필수 필드 추가
     };
   }
 }

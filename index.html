@@ -7,7 +7,120 @@
     <title>Vite + React + TS</title>
     <meta 
       http-equiv="Content-Security-Policy" 
-      content="default-src 'self'; script-src 'self' ; style-src 'self' 'unsafe-inline';">
+      content="default-src 'self'; script-src 'self' ; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com;">
+    <!-- 디지털 스타일 폰트 추가 -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+      .font-digital {
+        font-family: 'Roboto Mono', monospace;
+        letter-spacing: 0.05em;
+      }
+      /* 수치 변화 애니메이션 */
+      @keyframes numberChange {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.15); }
+        100% { transform: scale(1); }
+      }
+      .number-change {
+        animation: numberChange 0.5s ease-out;
+      }
+      
+      /* 모래시계 스타일 */
+      .hourglass {
+        position: relative;
+        width: 20px;
+        height: 30px;
+        background: transparent;
+        transform-style: preserve-3d;
+        transition: transform 1s;
+      }
+      
+      .hourglass:before,
+      .hourglass:after {
+        content: '';
+        position: absolute;
+        width: 20px;
+        height: 15px;
+        background: transparent;
+        border: 2px solid #3b82f6;
+      }
+      
+      .hourglass:before {
+        top: 0;
+        border-bottom: none;
+        border-radius: 20px 20px 0 0;
+      }
+      
+      .hourglass:after {
+        bottom: 0;
+        border-top: none;
+        border-radius: 0 0 20px 20px;
+      }
+      
+      .hourglass:before {
+        background: linear-gradient(transparent 50%, #3b82f6 50%);
+      }
+      
+      .hourglass:after {
+        background: linear-gradient(#3b82f6 50%, transparent 50%);
+      }
+      
+      /* 회전 애니메이션 */
+      @keyframes flipHourglassAnim {
+        0% { transform: rotate(0); }
+        100% { transform: rotate(180deg); }
+      }
+      
+      .animate-flip-hourglass {
+        animation: flipHourglassAnim 1s ease-in-out;
+      }
+      
+      /* 꽃가루 스타일 */
+      .confetti-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        overflow: hidden;
+        z-index: 0;
+      }
+      
+      .confetti {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        border-radius: 0;
+        opacity: 0.7;
+      }
+      
+      /* 성공 메시지 애니메이션 */
+      @keyframes successPulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+      }
+      
+      .success-message {
+        animation: successPulse 2s infinite;
+        position: relative;
+        z-index: 1;
+      }
+      
+      /* 실패 메시지 애니메이션 */
+      @keyframes failureShake {
+        0%, 100% { transform: translateX(0); }
+        10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+        20%, 40%, 60%, 80% { transform: translateX(5px); }
+      }
+      
+      .failure-message {
+        animation: failureShake 1s ease-in-out;
+        position: relative;
+        z-index: 1;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

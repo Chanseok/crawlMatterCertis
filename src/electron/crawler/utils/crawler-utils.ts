@@ -20,7 +20,7 @@ let cachedTotalPagesFetchedAt: number | null = null;
 export async function getTotalPagesCached(force = false): Promise<number> {
   const config = getConfig();
   const now = Date.now();
-  if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < config.cacheTtlMs)) {
+  if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < (config.cacheTtlMs ?? 0))) {
     return cachedTotalPages;
   }
   
@@ -43,6 +43,10 @@ async function getTotalPages(): Promise<number> {
   try {
     const context = await browser.newContext();
     const page = await context.newPage();
+    
+    if (!config.matterFilterUrl) {
+      throw new Error('[CrawlerUtils] matterFilterUrl is not defined in the configuration.');
+    }
     
     console.log(`[CrawlerUtils] Navigating to ${config.matterFilterUrl}`);
     await page.goto(config.matterFilterUrl, { waitUntil: 'domcontentloaded' });

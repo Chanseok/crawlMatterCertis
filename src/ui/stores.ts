@@ -1,8 +1,7 @@
 import { atom, map } from 'nanostores';
 import { AppMode, CrawlingStatus, LogEntry, CrawlingProgress, DatabaseSummary, ProductDetail } from './types';
 import { getPlatformApi, updateApiForAppMode } from './platform/api';
-import type { ConcurrentCrawlingTask } from './types';
-import { CrawlerConfig } from '../electron/ConfigManager';
+import type { ConcurrentCrawlingTask, CrawlerConfig } from '../../types';
 import { getConfig, updateConfig } from './services/configService';
 
 // 앱 모드 상태 관리
@@ -89,7 +88,8 @@ export const recentTasksStore = atom<TaskStatusDetail[]>([]);
 export const configStore = map<CrawlerConfig>({
   pageRangeLimit: 10,
   productListRetryCount: 9,
-  productDetailRetryCount: 9
+  productDetailRetryCount: 9,
+  productsPerPage: 12  // 필수 필드 추가
 });
 
 // API 참조

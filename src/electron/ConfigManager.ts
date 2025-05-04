@@ -1,27 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import { electronResourcePaths } from './resourceManager.js';
+import { CrawlerConfig } from '../../types.js';
 
-// 크롤링 설정을 위한 인터페이스
-export interface CrawlerConfig {
-  // 페이지 범위 설정
-  pageRangeLimit: number;
-  
-  // 재시도 설정
-  productListRetryCount: number;
-  productDetailRetryCount: number;
-  
-  // 추가 설정을 위한 필드 확장
-  maxConcurrentTasks?: number;
-  requestDelay?: number;
-  customUserAgent?: string;
-}
 
 // 기본 설정 값
 const DEFAULT_CONFIG: CrawlerConfig = {
   pageRangeLimit: 10,
   productListRetryCount: 9,
-  productDetailRetryCount: 9
+  productDetailRetryCount: 9,
+  productsPerPage: 12,
 };
 
 /**

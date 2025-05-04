@@ -238,7 +238,10 @@ private cleanupResources(): void {
     const config = getConfig();
     
     // 서버 과부하 방지를 위한 무작위 지연 시간 적용
-    const delayTime = getRandomDelay(config.minRequestDelayMs, config.maxRequestDelayMs);
+    // Provide default values if config values are undefined
+    const minDelay = config.minRequestDelayMs ?? 100; // Default min delay
+    const maxDelay = config.maxRequestDelayMs ?? 2200; // Default max delay
+    const delayTime = getRandomDelay(minDelay, maxDelay);
     await delay(delayTime);
 
     const browser = await chromium.launch({ headless: true });
@@ -846,8 +849,9 @@ private cleanupResources(): void {
             percentage: percentage
           });
   
-          const activeTasksCount = Math.min(config.detailConcurrency, totalItems - processedItems + 1);
-          this.state.updateParallelTasks(activeTasksCount, config.detailConcurrency);
+          const detailConcurrency = config.detailConcurrency ?? 1; // Provide a default value
+          const activeTasksCount = Math.min(detailConcurrency, totalItems - processedItems + 1);
+          this.state.updateParallelTasks(activeTasksCount, detailConcurrency);
           
           if (this.progressCallback) {
             this.progressCallback(processedItems, this.newItems, this.updatedItems);
@@ -874,7 +878,7 @@ private cleanupResources(): void {
   
         return result;
       },
-      config.detailConcurrency,
+      config.detailConcurrency ?? 1, // Provide a default value if undefined
       this.abortController
     );
   
@@ -885,7 +889,7 @@ private cleanupResources(): void {
       message: `2/2단계: 제품 상세 정보 수집 완료 (${processedItems}/${totalItems})`,
       percentage: 100
     });
-    this.state.updateParallelTasks(0, config.detailConcurrency);
+    this.state.updateParallelTasks(0, config.detailConcurrency ?? 1);
     
     crawlerEvents.emit('crawlingProgress', {
       status: 'completed',
@@ -915,9 +919,9 @@ private cleanupResources(): void {
     matterProducts: MatterProduct[],
     failedProductErrors: Record<string, string[]>
   ): Promise<void> {
-    const { productDetailRetryCount } = getConfig();
     const config = getConfig();
-    const retryStart = config.retryStart;
+    const { productDetailRetryCount } = config;
+    const retryStart = config.retryStart ?? 1; // Default to 1 if undefined
     
     if (productDetailRetryCount <= 0) {
       debugLog(`[RETRY] 재시도 횟수가 0으로 설정되어 제품 상세 정보 재시도를 건너뜁니다.`);
@@ -997,7 +1001,7 @@ private cleanupResources(): void {
           
           return result;
         },
-        config.retryConcurrency,
+        config.retryConcurrency ?? 1, // Provide a default value if undefined
         this.abortController
       );
 

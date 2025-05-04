@@ -144,7 +144,7 @@ export class ProductListCollector {
         productsResults,
         failedPages,
         failedPageErrors,
-        config.initialConcurrency
+        config.initialConcurrency ?? 5 // Provide a default value if undefined
       );
   
       // 중단 여부 처리
@@ -266,7 +266,9 @@ export class ProductListCollector {
   public static async fetchTotalPagesCached(force = false): Promise<number> {
     const config = getConfig();
     const now = Date.now();
-    if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < config.cacheTtlMs)) {
+    // Provide a default TTL of 1 hour (3600000 ms) if not configured
+    const cacheTtl = config.cacheTtlMs ?? 3600000; 
+    if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < cacheTtl)) {
       return cachedTotalPages;
     }
 
@@ -287,6 +289,10 @@ export class ProductListCollector {
     try {
       const context = await browser.newContext();
       const page = await context.newPage();
+
+      if (!config.matterFilterUrl) {
+        throw new Error('Configuration error: matterFilterUrl is not defined.');
+      }
 
       console.log(`[ProductListCollector] Navigating to ${config.matterFilterUrl}`);
       await page.goto(config.matterFilterUrl, { waitUntil: 'domcontentloaded' });
@@ -377,7 +383,7 @@ export class ProductListCollector {
     const config = getConfig();
     
     // 서버 과부하 방지를 위한 무작위 지연 시간 적용
-    const delayTime = getRandomDelay(config.minRequestDelayMs, config.maxRequestDelayMs);
+    const delayTime = getRandomDelay(config.minRequestDelayMs ?? 1000, config.maxRequestDelayMs ?? 3000);
     await delay(delayTime);
 
     // 중단 확인
@@ -638,7 +644,7 @@ export class ProductListCollector {
   ): Promise<void> {
     // 재시도 설정 가져오기
     const config = getConfig();
-    const productListRetryCount = config.productListRetryCount;
+    const productListRetryCount = config.productListRetryCount ?? 3; // Default to 3 retries
     
     // 재시도 횟수가 0이면 재시도 하지 않음
     if (productListRetryCount <= 0) {
@@ -647,7 +653,7 @@ export class ProductListCollector {
     }
     
     // 재시도 최대 횟수 계산 (retryStart는 첫 번째 재시도 회차)
-    const retryStart = config.retryStart;
+    const retryStart = config.retryStart ?? 1; // Default to starting from attempt 1
     const maxRetry = retryStart + productListRetryCount - 1;
     
     // 재시도 시작 전 상태 초기화 (UI-STATUS-001)
@@ -712,7 +718,7 @@ export class ProductListCollector {
           
           return result;
         },
-        config.retryConcurrency,
+        config.retryConcurrency ?? 1, // Provide a default value if undefined
         this.abortController
       );
 

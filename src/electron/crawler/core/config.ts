@@ -6,6 +6,8 @@
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { app } from 'electron';
+import { CrawlerConfig } from '../../../../types.js';
+
 
 //#region Constants
 // 크롤링 URL 상수
@@ -37,26 +39,6 @@ const MAX_RETRY_COUNT = 20;   // 최대 재시도 횟수
 const DEFAULT_PAGE_RANGE_LIMIT = 0; // 0은 제한 없음을 의미
 
 //#endregion
-
-export interface CrawlerConfig {
-  baseUrl: string;
-  matterFilterUrl: string;
-  pageTimeoutMs: number;
-  productDetailTimeoutMs: number;
-  productsPerPage: number;
-  initialConcurrency: number;
-  detailConcurrency: number;
-  retryConcurrency: number;
-  minRequestDelayMs: number;
-  maxRequestDelayMs: number;
-  retryStart: number;
-  retryMax: number;
-  cacheTtlMs: number;
-  // 요구사항 CRAWL-RETRY-001에 따른 별도 재시도 설정 추가
-  productListRetryCount: number;  // Product List 수집 재시도 횟수
-  productDetailRetryCount: number; // Product Detail 수집 재시도 횟수
-  pageRangeLimit: number; // 수집할 페이지 수 제한
-}
 
 export const defaultConfig: CrawlerConfig = {
   baseUrl: BASE_URL,

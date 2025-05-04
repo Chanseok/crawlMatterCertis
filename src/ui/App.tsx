@@ -20,7 +20,8 @@ import {
   checkCrawlingStatus,
   crawlingStatusSummaryStore,
   lastCrawlingStatusSummaryStore,
-  CrawlingStatusSummary
+  CrawlingStatusSummary,
+  crawlingProgressStore
 } from './stores'
 import { LogEntry } from './types'
 import { format } from 'date-fns'
@@ -34,6 +35,7 @@ function App() {
   const searchQuery = useStore(searchQueryStore);
   const statusSummary = useStore(crawlingStatusSummaryStore);
   const lastStatusSummary = useStore(lastCrawlingStatusSummaryStore);
+  const progress = useStore(crawlingProgressStore);
   
   // 설정 및 탭 관련 상태
   const [activeTab, setActiveTab] = useState<'status' | 'settings'>('status');
@@ -173,37 +175,53 @@ function App() {
                 {/* 크롤링 대시보드 (진행 상황 상세 표시) */}
                 {showDashboard && <CrawlingDashboard />}
                 
-                <button
-                  onClick={handleCheckStatus}
-                  className="w-full py-2 px-4 rounded-md text-white font-medium bg-gray-500 hover:bg-gray-600 mb-2"
-                >
-                  상태 체크
-                </button>
-    
-                <button
-                  onClick={handleCrawlToggle}
-                  className={`w-full py-2 px-4 rounded-md text-white font-medium ${crawlingStatus === 'running'
-                      ? 'bg-red-500 hover:bg-red-600'
-                      : 'bg-blue-500 hover:bg-blue-600'
+                {/* 버튼 그룹을 한 줄로 배치 */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <button
+                    onClick={handleCheckStatus}
+                    className="py-2 px-2 rounded-md text-white font-medium bg-gray-500 hover:bg-gray-600 
+                    disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-all duration-200
+                    shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow border border-gray-600
+                    focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50"
+                    disabled={crawlingStatus === 'running'}
+                  >
+                    상태 체크
+                  </button>
+                  
+                  <button
+                    onClick={handleCrawlToggle}
+                    className={`py-2 px-2 rounded-md text-white font-medium transition-all duration-200
+                    shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow focus:outline-none
+                    focus:ring-2 focus:ring-opacity-50 ${
+                      crawlingStatus === 'running'
+                        ? 'bg-red-500 hover:bg-red-600 border border-red-600 focus:ring-red-400'
+                        : 'bg-blue-500 hover:bg-blue-600 border border-blue-600 focus:ring-blue-400'
                     }`}
-                  disabled={crawlingStatus === 'paused'}
-                >
-                  {crawlingStatus === 'running' ? '크롤링 중지' : '크롤링 시작'}
-                </button>
-    
-                <div className="mt-6">
+                    disabled={crawlingStatus === 'paused'}
+                  >
+                    {crawlingStatus === 'running' ? '크롤링 중지' : '크롤링 시작'}
+                  </button>
+                  
                   <button
                     onClick={handleExport}
-                    className="w-full py-2 px-4 bg-gray-500 hover:bg-gray-600 text-white rounded-md font-medium"
+                    className="py-2 px-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md font-medium
+                    disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-all duration-200
+                    shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow border border-gray-600
+                    focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50"
                     disabled={crawlingStatus === 'running' || products.length === 0}
                   >
-                    데이터 내보내기 (Excel)
+                    엑셀 내보내기
                   </button>
                 </div>
     
                 {/* 컨트롤 패널 아래에 동시 작업 현황 시각화 */}
-                <div className="mt-6">
-                  <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">동시 처리 현황</h3>
+                <div className="mt-6 transition-all duration-500 ease-in-out" 
+                     style={{ 
+                       opacity: progress.currentStage === 2 ? 0 : 1,
+                       maxHeight: progress.currentStage === 2 ? '0' : '200px',
+                       overflow: 'hidden'
+                     }}>
+                  <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">제품 목록 페이지 읽기</h3>
                   <ConcurrentTasksVisualizer />
                 </div>
               </>

@@ -115,12 +115,30 @@ export type StaticData = {
 
 // 크롤러 설정 타입
 export interface CrawlerConfig {
+    // 기본 설정
     pageRangeLimit: number;
     productListRetryCount: number;
     productDetailRetryCount: number;
+    
+    // UI 관련 추가 설정
     maxConcurrentTasks?: number;
     requestDelay?: number;
     customUserAgent?: string;
+    productsPerPage: number;
+    
+    // 크롤러 코어 관련 설정 (선택적으로 만들어 호환성 유지)
+    baseUrl?: string;
+    matterFilterUrl?: string;
+    pageTimeoutMs?: number;
+    productDetailTimeoutMs?: number;
+    initialConcurrency?: number;
+    detailConcurrency?: number;
+    retryConcurrency?: number;
+    minRequestDelayMs?: number;
+    maxRequestDelayMs?: number;
+    retryStart?: number;
+    retryMax?: number;
+    cacheTtlMs?: number;
 }
 
 // 동시 처리 작업 상태 타입
