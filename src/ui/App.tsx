@@ -1,11 +1,12 @@
 import { useStore } from '@nanostores/react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 import { ConcurrentTasksVisualizer } from './Charts';
+import { CrawlingSettings } from './components/CrawlingSettings';
+import { CrawlingDashboard } from './components/CrawlingDashboard';
 import {
   appModeStore,
   crawlingStatusStore,
-  crawlingProgressStore,
   logsStore,
   productsStore,
   searchQueryStore,
@@ -28,12 +29,15 @@ function App() {
   // nanostores를 통한 상태 관리
   const mode = useStore(appModeStore);
   const crawlingStatus = useStore(crawlingStatusStore);
-  const progress = useStore(crawlingProgressStore);
   const logs = useStore(logsStore);
   const products = useStore(productsStore);
   const searchQuery = useStore(searchQueryStore);
   const statusSummary = useStore(crawlingStatusSummaryStore);
   const lastStatusSummary = useStore(lastCrawlingStatusSummaryStore);
+  
+  // 설정 및 탭 관련 상태
+  const [activeTab, setActiveTab] = useState<'status' | 'settings'>('status');
+  const [showDashboard, setShowDashboard] = useState<boolean>(true);
 
   // API 초기화
   useEffect(() => {
@@ -127,64 +131,88 @@ function App() {
         <div className="lg:col-span-1 space-y-6">
           {/* 컨트롤 패널 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">크롤링 제어</h2>
-
-            <button
-              onClick={handleCheckStatus}
-              className="w-full py-2 px-4 rounded-md text-white font-medium bg-gray-500 hover:bg-gray-600 mb-2"
-            >
-              상태 체크
-            </button>
-
-            <button
-              onClick={handleCrawlToggle}
-              className={`w-full py-2 px-4 rounded-md text-white font-medium ${crawlingStatus === 'running'
-                  ? 'bg-red-500 hover:bg-red-600'
-                  : 'bg-blue-500 hover:bg-blue-600'
-                }`}
-              disabled={crawlingStatus === 'paused'}
-            >
-              {crawlingStatus === 'running' ? '크롤링 중지' : '크롤링 시작'}
-            </button>
-
-            {crawlingStatus === 'running' && progress && (
-              <div className="mt-4">
-                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
-                  <span>{progress.currentStep ?? '상태 로딩 중...'}</span>
-                  {/* percentage가 undefined일 경우 0으로 처리 */}
-                  <span>{(progress.percentage ?? 0).toFixed(1)}%</span>
-                </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                  <div
-                    className="bg-blue-500 h-2 rounded-full"
-                    style={{ width: `${progress.percentage ?? 0}%` }}
-                  ></div>
-                </div>
-                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {/* current -> processedItems, total -> totalItems 로 변경 */}
-                  <span>진행: {progress.processedItems ?? 0}/{progress.totalItems ?? 0}</span>
-                  {progress.remainingTime !== undefined && (
-                    <span>예상 남은 시간: {Math.floor(progress.remainingTime / 60)}분 {Math.floor(progress.remainingTime % 60)}초</span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-6">
+            {/* 탭 네비게이션 */}
+            <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4">
               <button
-                onClick={handleExport}
-                className="w-full py-2 px-4 bg-gray-500 hover:bg-gray-600 text-white rounded-md font-medium"
-                disabled={crawlingStatus === 'running' || products.length === 0}
+                className={`px-4 py-2 text-sm font-medium ${
+                  activeTab === 'status'
+                    ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+                onClick={() => setActiveTab('status')}
               >
-                데이터 내보내기 (Excel)
+                상태 & 제어
+              </button>
+              <button
+                className={`px-4 py-2 text-sm font-medium ${
+                  activeTab === 'settings'
+                    ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+                onClick={() => setActiveTab('settings')}
+              >
+                설정
               </button>
             </div>
-
-            {/* 컨트롤 패널 아래에 동시 작업 현황 시각화 */}
-            <div className="mt-6">
-              <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">동시 처리 현황</h3>
-              <ConcurrentTasksVisualizer />
-            </div>
+            
+            {/* 상태 및 제어 탭 */}
+            {activeTab === 'status' && (
+              <>
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">크롤링 제어</h2>
+                
+                {/* 대시보드 표시/숨김 토글 */}
+                <div className="flex justify-end mb-2">
+                  <button 
+                    onClick={() => setShowDashboard(!showDashboard)}
+                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    {showDashboard ? '대시보드 숨기기' : '대시보드 표시'}
+                  </button>
+                </div>
+    
+                {/* 크롤링 대시보드 (진행 상황 상세 표시) */}
+                {showDashboard && <CrawlingDashboard />}
+                
+                <button
+                  onClick={handleCheckStatus}
+                  className="w-full py-2 px-4 rounded-md text-white font-medium bg-gray-500 hover:bg-gray-600 mb-2"
+                >
+                  상태 체크
+                </button>
+    
+                <button
+                  onClick={handleCrawlToggle}
+                  className={`w-full py-2 px-4 rounded-md text-white font-medium ${crawlingStatus === 'running'
+                      ? 'bg-red-500 hover:bg-red-600'
+                      : 'bg-blue-500 hover:bg-blue-600'
+                    }`}
+                  disabled={crawlingStatus === 'paused'}
+                >
+                  {crawlingStatus === 'running' ? '크롤링 중지' : '크롤링 시작'}
+                </button>
+    
+                <div className="mt-6">
+                  <button
+                    onClick={handleExport}
+                    className="w-full py-2 px-4 bg-gray-500 hover:bg-gray-600 text-white rounded-md font-medium"
+                    disabled={crawlingStatus === 'running' || products.length === 0}
+                  >
+                    데이터 내보내기 (Excel)
+                  </button>
+                </div>
+    
+                {/* 컨트롤 패널 아래에 동시 작업 현황 시각화 */}
+                <div className="mt-6">
+                  <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">동시 처리 현황</h3>
+                  <ConcurrentTasksVisualizer />
+                </div>
+              </>
+            )}
+            
+            {/* 설정 탭 */}
+            {activeTab === 'settings' && (
+              <CrawlingSettings />
+            )}
           </div>
 
           {/* 상태 요약 패널 */}
@@ -255,12 +283,12 @@ function App() {
                   <div className="relative h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                     <div 
                       className="absolute top-0 left-0 h-full bg-blue-500" 
-                      style={{ width: `${Math.min(100, (statusSummary.dbProductCount / statusSummary.siteProductCount) * 100)}%` }}
+                      style={{ width: `${Math.min(100, (statusSummary.dbProductCount / Math.max(statusSummary.siteProductCount, 1)) * 100)}%` }}
                     ></div>
                     {statusSummary.diff > 0 && (
                       <div 
                         className="absolute top-0 right-0 h-full bg-red-400 opacity-70"
-                        style={{ width: `${Math.min(100, (statusSummary.diff / statusSummary.siteProductCount) * 100)}%` }}
+                        style={{ width: `${Math.min(100, (statusSummary.diff / Math.max(statusSummary.siteProductCount, 1)) * 100)}%` }}
                       ></div>
                     )}
                   </div>

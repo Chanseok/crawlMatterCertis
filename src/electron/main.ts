@@ -15,6 +15,7 @@ import { crawlerEvents } from './crawler/utils/progress.js';
 // UI 타입이 아닌 공유 타입 사용
 import type { AppMode, CrawlingProgress } from '../../types.js';
 import type { FailedPageReport, CrawlingResultReport } from './crawler/utils/types.js';
+import { configManager } from './ConfigManager.js';
 
 // 로컬에서 필요한 타입 정의
 interface CrawlingTaskStatus {
@@ -39,7 +40,12 @@ const IPC_CHANNELS = {
     START_CRAWLING: 'startCrawling',
     STOP_CRAWLING: 'stopCrawling',
     EXPORT_TO_EXCEL: 'exportToExcel',
-    CHECK_CRAWLING_STATUS: 'checkCrawlingStatus'
+    CHECK_CRAWLING_STATUS: 'checkCrawlingStatus',
+    
+    // 설정 관련 채널 추가
+    GET_CONFIG: 'crawler:get-config',
+    UPDATE_CONFIG: 'crawler:update-config',
+    RESET_CONFIG: 'crawler:reset-config'
 };
 
 app.on('ready', async () => {
@@ -195,6 +201,40 @@ app.on('ready', async () => {
             return { success: true, status };
         } catch (error) {
             console.error('[IPC] Error checking crawling status:', error);
+            return { success: false, error: String(error) };
+        }
+    });
+
+    // 설정 관련 핸들러 등록
+    ipcMain.handle(IPC_CHANNELS.GET_CONFIG, async () => {
+        console.log('[IPC] getConfig called');
+        try {
+            const config = configManager.getConfig();
+            return { success: true, config };
+        } catch (error) {
+            console.error('[IPC] Error getting config:', error);
+            return { success: false, error: String(error) };
+        }
+    });
+
+    ipcMain.handle(IPC_CHANNELS.UPDATE_CONFIG, async (_event, partialConfig) => {
+        console.log('[IPC] updateConfig called with:', partialConfig);
+        try {
+            const updatedConfig = configManager.updateConfig(partialConfig);
+            return { success: true, config: updatedConfig };
+        } catch (error) {
+            console.error('[IPC] Error updating config:', error);
+            return { success: false, error: String(error) };
+        }
+    });
+
+    ipcMain.handle(IPC_CHANNELS.RESET_CONFIG, async () => {
+        console.log('[IPC] resetConfig called');
+        try {
+            const resetConfig = configManager.resetConfig();
+            return { success: true, config: resetConfig };
+        } catch (error) {
+            console.error('[IPC] Error resetting config:', error);
             return { success: false, error: String(error) };
         }
     });

@@ -74,6 +74,11 @@ const electronAPI: IElectronAPI = {
     getDatabaseSummary: createMethodHandler('getDatabaseSummary'),
     markLastUpdated: createMethodHandler('markLastUpdated'),
     checkCrawlingStatus: createMethodHandler('checkCrawlingStatus'),
+    
+    // 설정 관련 API 추가
+    getConfig: () => ipcRenderer.invoke('crawler:get-config'),
+    updateConfig: (config: any) => ipcRenderer.invoke('crawler:update-config', config),
+    resetConfig: () => ipcRenderer.invoke('crawler:reset-config')
 };
 
 // contextBridge를 통해 안전하게 API 노출

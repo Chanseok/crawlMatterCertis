@@ -77,6 +77,12 @@ export type CrawlingProgress = {
     updatedItems?: number;
     currentStage?: number; // 1=목록 수집, 2=상세정보 수집
     message?: string; // 사용자에게 표시할 메시지
+    criticalError?: string; // 크롤링 중 발생한 심각한 오류 메시지
+    
+    // 재시도 관련 정보 (UI 개선을 위해 추가)
+    retryCount?: number; // 현재 재시도 횟수 
+    maxRetries?: number; // 최대 재시도 횟수
+    retryItem?: string; // 재시도 중인 항목의 식별자 (URL, ID 등)
 };
 
 // 크롤링 상태 요약 정보 타입
@@ -107,6 +113,16 @@ export type StaticData = {
     totalMemoryGB: number;
 };
 
+// 크롤러 설정 타입
+export interface CrawlerConfig {
+    pageRangeLimit: number;
+    productListRetryCount: number;
+    productDetailRetryCount: number;
+    maxConcurrentTasks?: number;
+    requestDelay?: number;
+    customUserAgent?: string;
+}
+
 // 동시 처리 작업 상태 타입
 export type ConcurrentTaskStatus = 'pending' | 'running' | 'success' | 'error' | 'stopped';
 
@@ -134,7 +150,7 @@ export type EventPayloadMapping = {
 
 // 메서드 매개변수 맵핑
 export type MethodParamsMapping = {
-    'startCrawling': { mode: AppMode };
+    'startCrawling': { mode: AppMode; config?: CrawlerConfig };
     'stopCrawling': void;
     'exportToExcel': { path?: string };
     'getProducts': { search?: string; page?: number; limit?: number };
@@ -144,6 +160,10 @@ export type MethodParamsMapping = {
     'getStaticData': void;
     'markLastUpdated': number;
     'checkCrawlingStatus': void;
+    // 설정 관련 메서드 추가
+    'crawler:get-config': void;
+    'crawler:update-config': Partial<CrawlerConfig>;
+    'crawler:reset-config': void;
 };
 
 // 메서드 반환값 맵핑
@@ -158,6 +178,10 @@ export type MethodReturnMapping = {
     'getStaticData': StaticData;
     'markLastUpdated': void;
     'checkCrawlingStatus': { success: boolean; status?: CrawlingStatusSummary; error?: string };
+    // 설정 관련 메서드 반환 타입 추가
+    'crawler:get-config': { success: boolean; config?: CrawlerConfig; error?: string };
+    'crawler:update-config': { success: boolean; config?: CrawlerConfig; error?: string };
+    'crawler:reset-config': { success: boolean; config?: CrawlerConfig; error?: string };
 };
 
 export type UnsubscribeFunction = () => void;
@@ -201,6 +225,11 @@ export interface IElectronAPI extends IPlatformAPI {
     checkCrawlingStatus: () => Promise<MethodReturnMapping['checkCrawlingStatus']>;
     searchProducts: (params: MethodParamsMapping['searchProducts']) => Promise<MethodReturnMapping['searchProducts']>;
     markLastUpdated: (timestamp: MethodParamsMapping['markLastUpdated']) => Promise<MethodReturnMapping['markLastUpdated']>;
+    
+    // 설정 관련 메서드 추가
+    getConfig: () => Promise<MethodReturnMapping['crawler:get-config']>;
+    updateConfig: (config: MethodParamsMapping['crawler:update-config']) => Promise<MethodReturnMapping['crawler:update-config']>;
+    resetConfig: () => Promise<MethodReturnMapping['crawler:reset-config']>;
 }
 
 // Window 인터페이스 확장은 글로벌로 유지

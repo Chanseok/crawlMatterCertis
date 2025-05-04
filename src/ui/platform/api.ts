@@ -3,8 +3,8 @@
  * 이 파일은 Electron, Tauri 등 다양한 백엔드 통신을 추상화합니다.
  */
 
-import type { EventPayloadMapping } from '../types';
-import { MatterProduct, AppMode, DatabaseSummary } from '../types';
+import type { EventPayloadMapping, MethodParamsMapping, MethodReturnMapping } from '../../../types';
+import { AppMode } from '../types';
 
 // 통계 데이터 인터페이스
 export interface Statistics {
@@ -30,34 +30,6 @@ export interface IPlatformAPI {
     methodName: K,
     params?: MethodParamsMapping[K]
   ): Promise<R>;
-}
-
-// 메소드 매개변수 맵핑 인터페이스
-export interface MethodParamsMapping {
-  'startCrawling': { mode: AppMode };
-  'stopCrawling': void;
-  'exportToExcel': { path?: string };
-  'getProducts': { search?: string; page?: number; limit?: number };
-  'getProductById': string;
-  'searchProducts': { query: string; page?: number; limit?: number };
-  'getDatabaseSummary': void;
-  'getStaticData': void;
-  'markLastUpdated': number;
-  'checkCrawlingStatus': void;
-}
-
-// 메소드 반환 맵핑 인터페이스
-export interface MethodReturnMapping {
-  'startCrawling': { success: boolean };
-  'stopCrawling': { success: boolean };
-  'exportToExcel': { success: boolean; path?: string };
-  'getProducts': { products: MatterProduct[]; total: number };
-  'getProductById': MatterProduct | null;
-  'searchProducts': { products: MatterProduct[]; total: number };
-  'getDatabaseSummary': DatabaseSummary;
-  'getStaticData': any;
-  'markLastUpdated': void;
-  'checkCrawlingStatus': { success: boolean; status?: any; error?: string };
 }
 
 // 현재 활성화된 플랫폼 API

@@ -5,8 +5,8 @@
  * by communicating with the Electron main process via IPC.
  */
 
-import { MatterProduct, DatabaseSummary } from "../types";
-import type { MethodReturnMapping } from "../platform/api";
+import { MethodReturnMapping } from "../../../types";
+import { MatterProduct, DatabaseSummary  } from "../types";
 
 // This interface defines the contract for database operations
 export interface DatabaseService {

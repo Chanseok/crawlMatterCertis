@@ -2,6 +2,8 @@ import { atom, map } from 'nanostores';
 import { AppMode, CrawlingStatus, LogEntry, CrawlingProgress, DatabaseSummary, ProductDetail } from './types';
 import { getPlatformApi, updateApiForAppMode } from './platform/api';
 import type { ConcurrentCrawlingTask } from './types';
+import { CrawlerConfig } from '../electron/ConfigManager';
+import { getConfig, updateConfig } from './services/configService';
 
 // 앱 모드 상태 관리
 export const appModeStore = atom<AppMode>('development');
@@ -82,6 +84,13 @@ export const activeTasksStore = map<Record<string | number, TaskStatusDetail>>({
 
 // 최근 완료된 작업 목록 (최대 10개 유지)
 export const recentTasksStore = atom<TaskStatusDetail[]>([]);
+
+// 설정 정보 관리
+export const configStore = map<CrawlerConfig>({
+  pageRangeLimit: 10,
+  productListRetryCount: 9,
+  productDetailRetryCount: 9
+});
 
 // API 참조
 let api = getPlatformApi();
@@ -272,6 +281,9 @@ async function loadInitialData() {
       
     databaseSummaryStore.set(dbSummary);
     
+    // 설정 로드 추가
+    await loadConfig();
+    
     // 제품 목록 가져오기 - 매개변수 형식을 수정하여 정확히 일치시킴
     const { products, total } = await api.invokeMethod('getProducts', { page: 1, limit: 100 })
       .catch(err => {
@@ -290,6 +302,28 @@ async function loadInitialData() {
   } catch (error) {
     console.error('Error loading initial data:', error);
     addLog(`초기 데이터 로드 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+// 설정 로딩
+export async function loadConfig(): Promise<void> {
+  try {
+    const config = await getConfig();
+    configStore.set(config);
+    addLog('설정을 로드했습니다.', 'info');
+  } catch (error) {
+    addLog(`설정 로드 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+// 설정 업데이트
+export async function updateConfigSettings(newConfig: Partial<CrawlerConfig>): Promise<void> {
+  try {
+    const updatedConfig = await updateConfig(newConfig);
+    configStore.set(updatedConfig);
+    addLog('설정이 업데이트되었습니다.', 'success');
+  } catch (error) {
+    addLog(`설정 업데이트 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
 }
 
@@ -353,9 +387,13 @@ export async function startCrawling(): Promise<void> {
     activeTasksStore.set({});
     recentTasksStore.set([]);
     
-    // API를 통해 크롤링 시작
+    const config = configStore.get();
+    addLog(`설정: 페이지 범위 ${config.pageRangeLimit}, 제품 목록 재시도 ${config.productListRetryCount}회, 제품 상세 재시도 ${config.productDetailRetryCount}회`, 'info');
+    
+    // API를 통해 크롤링 시작 (설정 전달 기능 추가 필요)
     const { success } = await api.invokeMethod('startCrawling', { 
-      mode: appModeStore.get()
+      mode: appModeStore.get(),
+      config: configStore.get() // 설정 전달 (향후 백엔드 업데이트 필요)
     });
     
     if (!success) {
