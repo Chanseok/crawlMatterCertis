@@ -25,8 +25,7 @@ import {
   DEFAULT_PRODUCT_DETAIL_RETRY_COUNT,
   MIN_RETRY_COUNT,
   MAX_RETRY_COUNT,
-  DEFAULT_PAGE_RANGE_LIMIT,
-  CONFIG_STORAGE_KEY
+  DEFAULT_PAGE_RANGE_LIMIT
 } from '../utils/constants.js';
 
 export interface CrawlerConfig {

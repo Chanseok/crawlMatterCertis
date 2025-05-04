@@ -2,8 +2,7 @@
  * concurrency.ts
  * 병렬 크롤링을 위한 동시성 관리 유틸리티
  */
-
-import { ConcurrentTaskStatus } from './progress.js';
+import type { ConcurrentTaskStatus } from '../../../../types.js';
 import { crawlerEvents } from './progress.js';
 
 // 각 페이지별/상품별 작업 상태 관리용

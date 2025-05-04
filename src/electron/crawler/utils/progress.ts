@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
-import type { CrawlingProgress } from '../../../ui/types.js';
+import type { CrawlingProgress, ConcurrentTaskStatus } from '../../../../types.js';
 import type { RetryStatusInfo, RetryLogItem } from './types.js';
 
 // 크롤링 이벤트 이미터
@@ -24,9 +24,7 @@ export const CRAWLING_STAGE = {
     COMPLETE: 3
 };
 
-// 동시 작업 상태 타입 정의
-export type ConcurrentTaskStatus = 'pending' | 'running' | 'success' | 'error' | 'stopped';
-
+// 동시 작업 상태는 공유 타입에서 사용
 export interface ConcurrentCrawlingTask {
     pageNumber: number;
     status: ConcurrentTaskStatus;
@@ -135,6 +133,9 @@ export function logRetryError(
  */
 export function initializeCrawlingProgress(currentStep: string, currentStage: number = CRAWLING_STAGE.INIT): CrawlingProgress {
     const progress: CrawlingProgress = {
+        // types.d.ts에서 필요한 필수 속성 추가
+        current: 0,
+        total: 0,
         status: 'initializing',
         currentPage: 0,
         totalPages: 0,

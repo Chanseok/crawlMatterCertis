@@ -46,7 +46,18 @@ export type Product = {
     indexInPage?: number;
 };
 
-// 크롤링 진행 상태 타입
+// 크롤링 상태 타입 (통합)
+export type CrawlingStatus = 
+    | 'idle' 
+    | 'running' 
+    | 'paused' 
+    | 'completed' 
+    | 'error' 
+    | 'initializing' 
+    | 'stopped' 
+    | 'completed_stage_1';
+
+// 크롤링 진행 상태 타입 (통합)
 export type CrawlingProgress = {
     current: number;
     total: number;
@@ -54,8 +65,8 @@ export type CrawlingProgress = {
     currentStep: string;
     remainingTime?: number;
     elapsedTime: number;
-    // UI에서 사용하는 CrawlingStatus와 호환되도록 status 타입 정의
-    status?: 'idle' | 'running' | 'paused' | 'completed' | 'error' | 'initializing' | 'stopped' | 'completed_stage_1';
+    // 명확한 타입으로 정의
+    status?: CrawlingStatus;
     currentPage?: number;
     totalPages?: number;
     processedItems?: number;

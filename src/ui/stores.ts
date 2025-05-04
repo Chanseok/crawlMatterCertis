@@ -12,6 +12,11 @@ export const crawlingStatusStore = atom<CrawlingStatus>('idle');
 // 크롤링 진행 상태 관리
 export const crawlingProgressStore = map<CrawlingProgress>({
   status: 'idle',
+  current: 0,
+  total: 0,
+  percentage: 0,
+  currentStep: '',
+  elapsedTime: 0,
   currentPage: 0,
   totalPages: 0,
   processedItems: 0,
@@ -20,10 +25,7 @@ export const crawlingProgressStore = map<CrawlingProgress>({
   estimatedEndTime: 0,
   newItems: 0,
   updatedItems: 0,
-  percentage: 0,
-  currentStep: '',
   currentStage: 0, // 0=초기화, 1=목록 수집, 2=상세 수집
-  elapsedTime: 0,
   message: '' // 사용자에게 표시할 메시지
 });
 
@@ -295,8 +297,10 @@ async function loadInitialData() {
 function validateCrawlingStatus(status: string | undefined): CrawlingStatus {
   if (!status) return 'idle'; // 기본값 
   
-  // 허용된 상태 값 목록
-  const validStatuses: CrawlingStatus[] = ['idle', 'running', 'paused', 'completed', 'error', 'initializing', 'stopped'];
+  // 허용된 상태 값 목록 (공유 타입 정의와 일치시킴)
+  const validStatuses: CrawlingStatus[] = [
+    'idle', 'running', 'paused', 'completed', 'error', 'initializing', 'stopped', 'completed_stage_1'
+  ];
   
   // 허용된 값이면 그대로 반환, 아니면 기본값 반환
   return validStatuses.includes(status as CrawlingStatus) 
@@ -330,7 +334,7 @@ export function updateCrawlingProgress(progress: Partial<CrawlingProgress>): voi
   // status가 있으면 타입 검증
   const updatedProgress = { ...progress };
   if (progress.status) {
-    updatedProgress.status = validateCrawlingStatus(progress.status as string);
+    updatedProgress.status = validateCrawlingStatus(String(progress.status));
   }
   
   crawlingProgressStore.set({

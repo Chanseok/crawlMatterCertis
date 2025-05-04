@@ -3,13 +3,11 @@
  * 크롤링 작업의 핵심 로직을 담당하는 엔진 클래스
  */
 
-import { EventEmitter } from 'events';
 import { 
   crawlerEvents, 
   initializeCrawlingProgress, 
   updateProductListProgress, 
   updateProductDetailProgress,
-  CRAWLING_PHASES,
   CRAWLING_STAGE
 } from '../utils/progress.js';
 import { getDatabaseSummaryFromDb } from '../../database.js';
@@ -18,17 +16,17 @@ import { CrawlerState } from './CrawlerState.js';
 import { ProductListCollector } from '../tasks/productList.js';
 import { ProductDetailCollector } from '../tasks/productDetail.js';
 import { saveProductsToFile, saveMatterProductsToFile } from '../utils/file.js';
-import { deduplicateAndSortProducts, deduplicateAndSortMatterProducts, validateDataConsistency } from '../utils/data-processing.js';
+import { 
+  deduplicateAndSortMatterProducts, 
+  validateDataConsistency 
+} from '../utils/data-processing.js';
 import { initializeCrawlingState } from '../utils/concurrency.js';
 import type {
   CrawlingSummary,
-  CrawlResult,
-  DetailCrawlResult,
   FailedPageReport,
   FailedProductReport
 } from '../utils/types.js';
-import type { Product, MatterProduct } from '../../../../types.d.ts';
-import type { CrawlingProgress } from '../../../ui/types.js';
+import type { Product, MatterProduct } from '../../../../types.js';
 import { debugLog } from '../../util.js';
 
 export class CrawlerEngine {

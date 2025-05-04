@@ -3,10 +3,8 @@
  * 크롤링 상태를 관리하는 클래스
  */
 
-import type { Product, MatterProduct } from '../../../../types.d.ts';
-import type { CrawlingProgress } from '../../../ui/types.js';
-import { crawlerEvents, CRAWLING_PHASES } from '../utils/progress.js';
-// import { CRAWLING_PHASES } from '../utils/constants.js';
+import type { Product, MatterProduct } from '../../../../types.js';
+import { crawlerEvents } from '../utils/progress.js';
 
 export type CrawlingStage =
   | 'preparation'
@@ -75,43 +73,6 @@ export class CrawlerState {
     crawlerEvents.emit('crawlingProgress', {...this.progressData});
     
     console.log(`[CrawlerState] Stage changed to: ${stage} - ${message}`);
-    
-    // if (message) {
-    //   this.progressData.message = message;
-    // } else {
-    //   // 기본 메시지 설정
-    //   switch (stage) {
-    //     case 'preparation':
-    //       this.progressData.message = '크롤링 준비 중...';
-    //       break;
-    //     case 'productList:init':
-    //       this.progressData.message = '1단계: 제품 목록 수집 준비 중';
-    //       break;
-    //     case 'productList:fetching':
-    //       this.progressData.message = '1단계: 제품 목록 페이지 수집 중';
-    //       break;
-    //     case 'productList:processing':
-    //       this.progressData.message = '1단계: 제품 목록 처리 중';
-    //       break;
-    //     case 'productDetail:init':
-    //       this.progressData.message = '2단계: 제품 상세 정보 수집 준비 중';
-    //       break;
-    //     case 'productDetail:fetching':
-    //       this.progressData.message = '2단계: 제품 상세 정보 수집 중';
-    //       break;
-    //     case 'productDetail:processing':
-    //       this.progressData.message = '2단계: 제품 상세 정보 처리 중';
-    //       break;
-    //     case 'completed':
-    //       this.progressData.message = '크롤링 완료';
-    //       break;
-    //     case 'failed':
-    //       this.progressData.message = '크롤링 실패';
-    //       break;
-    //   }
-    // }
-    
-    // this.emitProgressUpdate();
   }
 /**
  * 진행 상태 업데이트

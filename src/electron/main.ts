@@ -1,5 +1,4 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
-import path from 'path';
 import { isDev } from './util.js';
 import { getStaticData, pollResources } from './resourceManager.js';
 import { getPreloadPath, getUIPath } from './pathResolver.js';
@@ -13,8 +12,9 @@ import {
 } from './database.js';
 import { startCrawling, stopCrawling, checkCrawlingStatus } from './crawler/index.js';
 import { crawlerEvents } from './crawler/utils/progress.js';
-import type { AppMode, CrawlingProgress } from '../ui/types.js';
-import type { FailedPageReport, FailedProductReport, CrawlingResultReport } from './crawler/utils/types.js';
+// UI 타입이 아닌 공유 타입 사용
+import type { AppMode, CrawlingProgress } from '../../types.js';
+import type { FailedPageReport, CrawlingResultReport } from './crawler/utils/types.js';
 
 // 로컬에서 필요한 타입 정의
 interface CrawlingTaskStatus {
@@ -60,7 +60,7 @@ app.on('ready', async () => {
     });
 
     // 메인 윈도우 닫힘 이벤트 처리
-    mainWindow.on('close', (e) => {
+    mainWindow.on('close', (_e) => {
         console.log('Main window close event triggered');
         
         // 실행 중인 크롤링 작업이 있다면 중지 시도
@@ -105,40 +105,40 @@ app.on('ready', async () => {
     // 직접 ipcMain.handle을 사용하여 더 안정적인 IPC 통신 구현
     
     // 기본 데이터 핸들러
-    ipcMain.handle(IPC_CHANNELS.GET_STATIC_DATA, (event) => {
+    ipcMain.handle(IPC_CHANNELS.GET_STATIC_DATA, (_event) => {
         return getStaticData();
     });
 
     // 데이터베이스 핸들러
-    ipcMain.handle(IPC_CHANNELS.GET_PRODUCTS, async (event, args) => {
+    ipcMain.handle(IPC_CHANNELS.GET_PRODUCTS, async (_event, args) => {
         console.log('[IPC] getProducts called with args:', args);
         const { page, limit } = args || {};
         return await getProductsFromDb(page, limit);
     });
 
-    ipcMain.handle(IPC_CHANNELS.GET_PRODUCT_BY_ID, async (event, id) => {
+    ipcMain.handle(IPC_CHANNELS.GET_PRODUCT_BY_ID, async (_event, id) => {
         console.log('[IPC] getProductById called with id:', id);
         return await getProductByIdFromDb(id);
     });
 
-    ipcMain.handle(IPC_CHANNELS.SEARCH_PRODUCTS, async (event, args) => {
+    ipcMain.handle(IPC_CHANNELS.SEARCH_PRODUCTS, async (_event, args) => {
         console.log('[IPC] searchProducts called with args:', args);
         const { query, page, limit } = args || {};
         return await searchProductsInDb(query, page, limit);
     });
 
-    ipcMain.handle(IPC_CHANNELS.GET_DATABASE_SUMMARY, async (event) => {
+    ipcMain.handle(IPC_CHANNELS.GET_DATABASE_SUMMARY, async (_event) => {
         console.log('[IPC] getDatabaseSummary called');
         return await getDatabaseSummaryFromDb();
     });
 
-    ipcMain.handle(IPC_CHANNELS.MARK_LAST_UPDATED, async (event, count) => {
+    ipcMain.handle(IPC_CHANNELS.MARK_LAST_UPDATED, async (_event, count) => {
         console.log('[IPC] markLastUpdated called with count:', count);
         return await markLastUpdatedInDb(count);
     });
 
     // 크롤링 핸들러
-    ipcMain.handle(IPC_CHANNELS.START_CRAWLING, async (event, args) => {
+    ipcMain.handle(IPC_CHANNELS.START_CRAWLING, async (_event, args) => {
         // 매개변수 디버깅 로깅 추가
         console.log('[IPC] startCrawling called with args (raw):', args);
         console.log('[IPC] startCrawling args type:', typeof args);
@@ -166,7 +166,7 @@ app.on('ready', async () => {
         }
     });
 
-    ipcMain.handle(IPC_CHANNELS.STOP_CRAWLING, async (event) => {
+    ipcMain.handle(IPC_CHANNELS.STOP_CRAWLING, async (_event) => {
         console.log('[IPC] stopCrawling called');
         try {
             const success = stopCrawling();
@@ -177,7 +177,7 @@ app.on('ready', async () => {
         }
     });
 
-    ipcMain.handle(IPC_CHANNELS.EXPORT_TO_EXCEL, async (event, args) => {
+    ipcMain.handle(IPC_CHANNELS.EXPORT_TO_EXCEL, async (_event, args) => {
         console.log('[IPC] exportToExcel called with args:', args);
         try {
             const path = args?.path || '/path/to/exported/file.xlsx';
@@ -188,7 +188,7 @@ app.on('ready', async () => {
         }
     });
 
-    ipcMain.handle(IPC_CHANNELS.CHECK_CRAWLING_STATUS, async (event) => {
+    ipcMain.handle(IPC_CHANNELS.CHECK_CRAWLING_STATUS, async (_event) => {
         console.log('[IPC] checkCrawlingStatus called');
         try {
             const status = await checkCrawlingStatus(); // await 추가하여 Promise가 resolve되도록 수정
@@ -252,7 +252,7 @@ function prepareForAppTermination(): void {
 }
 
 // 앱이 종료되기 직전 이벤트
-app.on('before-quit', (event) => {
+app.on('before-quit', (_event) => {
     console.log('Before-quit event triggered');
     
     // 종료 전 정리 작업 수행

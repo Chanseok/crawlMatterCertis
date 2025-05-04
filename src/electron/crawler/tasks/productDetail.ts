@@ -11,7 +11,7 @@ import {
 } from '../utils/concurrency.js';
 import {
   PRODUCT_DETAIL_TIMEOUT_MS, DETAIL_CONCURRENCY, RETRY_CONCURRENCY,
-  MIN_REQUEST_DELAY_MS, MAX_REQUEST_DELAY_MS, RETRY_START, RETRY_MAX
+  MIN_REQUEST_DELAY_MS, MAX_REQUEST_DELAY_MS, RETRY_START
 } from '../utils/constants.js';
 import type { DetailCrawlResult } from '../utils/types.js';
 import type { Product, MatterProduct } from '../../../../types.d.ts';

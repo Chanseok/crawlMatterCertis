@@ -11,10 +11,10 @@ import {
   promisePool, updateTaskStatus, initializeTaskStates,
 } from '../utils/concurrency.js';
 import {
-  BASE_URL, MATTER_FILTER_URL, PAGE_TIMEOUT_MS,
+  MATTER_FILTER_URL, PAGE_TIMEOUT_MS,
   PRODUCTS_PER_PAGE, INITIAL_CONCURRENCY, RETRY_CONCURRENCY,
   MIN_REQUEST_DELAY_MS, MAX_REQUEST_DELAY_MS,
-  RETRY_START, RETRY_MAX, CACHE_TTL_MS
+  RETRY_START, CACHE_TTL_MS
 } from '../utils/constants.js';
 import type { CrawlResult } from '../utils/types.js';
 import type { Product } from '../../../../types.d.ts';
@@ -316,13 +316,6 @@ export class ProductListCollector {
   }
 
   /**
-   * 총 페이지 수를 가져오는 함수
-   */
-  private async getTotalPages(): Promise<number> {
-    return ProductListCollector.fetchTotalPages();
-  }
-
-  /**
    * 크롤링해야 할 페이지 범위를 결정하는 함수
    * @param totalPages 총 페이지 수
    * @param userPageLimit 사용자가 설정한 페이지 수 제한 (선택적)
@@ -336,9 +329,9 @@ export class ProductListCollector {
       return { startPage: 1, endPage };
     }
 
-    // 이미 수집된 페이지 수 계산
-    const collectedPages = Math.floor(dbSummary.productCount / PRODUCTS_PER_PAGE);
-    const endPage = 3; //Math.max(1, totalPages - collectedPages);
+    // 이미 수집된 페이지 수 계산 (미사용 변수이지만 주석으로 남겨둠)
+    // const collectedPages = Math.floor(dbSummary.productCount / PRODUCTS_PER_PAGE);
+    const endPage = 12; //Math.max(1, totalPages - collectedPages);
     const startPage = 1;
 
     // 사용자 설정 페이지 수 제한 적용
