@@ -26,6 +26,83 @@ import {
 import { LogEntry } from './types'
 import { format } from 'date-fns'
 
+// ExpandableSection 컴포넌트 - Hook 규칙을 준수하도록 별도 컴포넌트로 추출
+const ExpandableSection = ({
+  title,
+  isExpanded,
+  onToggle,
+  children,
+  defaultExpanded = true,
+  additionalClasses = ''
+}: {
+  title: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  defaultExpanded?: boolean;
+  additionalClasses?: string;
+}) => {
+  const contentRef = useRef<HTMLDivElement>(null);
+  // 초기화 여부를 추적하는 ref - 컴포넌트 라이프사이클 동안 유지됨
+  const initializedRef = useRef<boolean>(false);
+  
+  // 컴포넌트 마운트 시 defaultExpanded 값에 따라 초기 상태 설정
+  useEffect(() => {
+    // 이미 초기화되었다면 중복 실행 방지
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      
+      // defaultExpanded 값과 현재 상태가 다르면 지연 실행으로 토글
+      if (defaultExpanded !== isExpanded) {
+        const timer = setTimeout(() => {
+          onToggle();
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [defaultExpanded, isExpanded, onToggle]);
+
+  return (
+    <div className={`mb-4 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden ${additionalClasses}`}>
+      {/* 헤더 (클릭 시 접기/펼치기) */}
+      <div 
+        className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-750 cursor-pointer"
+        onClick={onToggle}
+      >
+        <h3 className="font-medium text-gray-700 dark:text-gray-300">{title}</h3>
+        <svg 
+          className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isExpanded ? 'transform rotate-180' : ''}`} 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+      
+      {/* 내용 (접기/펼치기) */}
+      <div 
+        ref={contentRef}
+        className="transition-all duration-300 ease-in-out overflow-hidden"
+        style={{
+          maxHeight: isExpanded ? '5000px' : '0',
+          opacity: isExpanded ? 1 : 0,
+          visibility: isExpanded ? 'visible' : 'hidden',
+          display: 'block', // 항상 DOM에 존재하도록 하여 레이아웃 계산 오류 방지
+          transition: isExpanded 
+            ? 'max-height 0.3s ease-in-out, opacity 0.3s ease-in-out, transform 0.3s ease-in-out' 
+            : 'max-height 0.3s ease-in-out, opacity 0.2s ease-in-out, transform 0.3s ease-in-out, visibility 0s linear 0.3s',
+          transform: isExpanded ? 'translateY(0)' : 'translateY(-10px)',
+        }}
+      >
+        <div className="p-4">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 function App() {
   // nanostores를 통한 상태 관리
   const mode = useStore(appModeStore);
@@ -40,10 +117,12 @@ function App() {
   // 설정 및 탭 관련 상태
   const [activeTab, setActiveTab] = useState<'settings' | 'status' | 'localDB'>('status');
   
-  // 대시보드 확장/축소 상태
-  const [dashboardExpanded, setDashboardExpanded] = useState<boolean>(false);
-  const dashboardRef = useRef<HTMLDivElement>(null);
-
+  // 섹션별 확장/축소 상태
+  const [statusExpanded, setStatusExpanded] = useState<boolean>(true);
+  const [compareExpanded, setCompareExpanded] = useState<boolean>(false);
+  const [productsExpanded, setProductsExpanded] = useState<boolean>(true);
+  const [logsExpanded, setLogsExpanded] = useState<boolean>(true);
+  
   // API 초기화
   useEffect(() => {
     initializeApiSubscriptions();
@@ -59,12 +138,12 @@ function App() {
     return () => clearTimeout(delaySearch);
   }, [searchQuery]);
   
-  // 상태 체크 및 크롤링 시작 시 대시보드 확장/축소 효과
+  // 상태 체크 및 크롤링 시작 시 섹션 확장/축소 효과
   useEffect(() => {
     if (crawlingStatus === 'running') {
       // 크롤링 시작 시 자동 축소
       setTimeout(() => {
-        setDashboardExpanded(false);
+        setCompareExpanded(false);
       }, 500); // 애니메이션 효과를 위해 약간의 지연 적용
     }
   }, [crawlingStatus]);
@@ -75,6 +154,10 @@ function App() {
       stopCrawling();
     } else {
       startCrawling();
+      // 크롤링 시작 시 애니메이션과 함께 비교 섹션 축소
+      setTimeout(() => {
+        setCompareExpanded(false);
+      }, 300);
     }
   };
 
@@ -87,12 +170,25 @@ function App() {
   const handleCheckStatus = () => {
     checkCrawlingStatus();
     // 상태 체크 시 자동 확장
-    setDashboardExpanded(true);
+    setCompareExpanded(true);
   };
 
-  // 대시보드 토글 핸들러
-  const toggleDashboard = () => {
-    setDashboardExpanded(!dashboardExpanded);
+  // 섹션 토글 핸들러
+  const toggleSection = (section: 'status' | 'compare' | 'products' | 'logs') => {
+    switch (section) {
+      case 'status':
+        setStatusExpanded(!statusExpanded);
+        break;
+      case 'compare':
+        setCompareExpanded(!compareExpanded);
+        break;
+      case 'products':
+        setProductsExpanded(!productsExpanded);
+        break;
+      case 'logs':
+        setLogsExpanded(!logsExpanded);
+        break;
+    }
   };
 
   // 변경된 상태 값 감지
@@ -189,7 +285,9 @@ function App() {
             
             {/* 설정 탭 */}
             {activeTab === 'settings' && (
-              <CrawlingSettings />
+              <div>
+                <CrawlingSettings />
+              </div>
             )}
             
             {/* 상태 및 제어 탭 */}
@@ -198,44 +296,20 @@ function App() {
                 <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">크롤링 제어</h2>
                 
                 {/* 크롤링 대시보드 (접을 수 있는 형태) */}
-                <div className="mb-4 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                  {/* 대시보드 헤더 (클릭 시 접기/펼치기) */}
-                  <div 
-                    className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-750 cursor-pointer"
-                    onClick={toggleDashboard}
-                  >
-                    <h3 className="font-medium text-gray-700 dark:text-gray-300">수집 상태</h3>
-                    <svg 
-                      className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${dashboardExpanded ? 'transform rotate-180' : ''}`} 
-                      fill="none" 
-                      stroke="currentColor" 
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                  
-                  {/* 대시보드 내용 (접기/펼치기) */}
-                  <div 
-                    ref={dashboardRef}
-                    className="transition-all duration-500 ease-in-out overflow-hidden"
-                    style={{
-                      maxHeight: dashboardExpanded ? (dashboardRef.current ? dashboardRef.current.scrollHeight + 1000 : '1000px') : '0',
-                      opacity: dashboardExpanded ? 1 : 0,
-                      transform: dashboardExpanded ? 'translateY(0)' : 'translateY(-10px)',
-                    }}
-                  >
-                    <div className="p-4">
-                      <CrawlingDashboard />
-                    </div>
-                  </div>
-                </div>
+                <ExpandableSection
+                  title="수집 상태"
+                  isExpanded={statusExpanded}
+                  onToggle={() => toggleSection('status')}
+                  defaultExpanded={true}
+                >
+                  <CrawlingDashboard />
+                </ExpandableSection>
                 
                 {/* 버튼 그룹을 한 줄로 배치 */}
-                <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="flex justify-between mb-4">
                   <button
                     onClick={handleCheckStatus}
-                    className="py-2 px-2 rounded-md text-white font-medium bg-gray-500 hover:bg-gray-600 
+                    className="flex-1 py-2 px-2 mr-2 rounded-md text-white font-medium bg-gray-500 hover:bg-gray-600 
                     disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-all duration-200
                     shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow border border-gray-600
                     focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50"
@@ -246,7 +320,7 @@ function App() {
                   
                   <button
                     onClick={handleCrawlToggle}
-                    className={`py-2 px-2 rounded-md text-white font-medium transition-all duration-200
+                    className={`flex-1 py-2 px-2 mx-2 rounded-md text-white font-medium transition-all duration-200
                     shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow focus:outline-none
                     focus:ring-2 focus:ring-opacity-50 ${
                       crawlingStatus === 'running'
@@ -260,7 +334,7 @@ function App() {
                   
                   <button
                     onClick={handleExport}
-                    className="py-2 px-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md font-medium
+                    className="flex-1 py-2 px-2 ml-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md font-medium
                     disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-all duration-200
                     shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow border border-gray-600
                     focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50"
@@ -280,6 +354,95 @@ function App() {
                   <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">제품 목록 페이지 읽기</h3>
                   <ConcurrentTasksVisualizer />
                 </div>
+                
+                {/* 사이트 로컬 비교 섹션 */}
+                {statusSummary && Object.keys(statusSummary).length > 0 && (
+                  <ExpandableSection
+                    title="사이트 로컬 비교"
+                    isExpanded={compareExpanded}
+                    onToggle={() => toggleSection('compare')}
+                    defaultExpanded={false}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 dark:text-gray-400">마지막 DB 업데이트:</span>
+                        <span className={`font-medium ${isValueChanged('dbLastUpdated') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                          {statusSummary.dbLastUpdated 
+                            ? format(new Date(statusSummary.dbLastUpdated), 'yyyy-MM-dd HH:mm') 
+                            : '없음'}
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 dark:text-gray-400">DB 제품 수:</span>
+                        <span className={`font-medium ${isValueChanged('dbProductCount') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                          {statusSummary.dbProductCount.toLocaleString()}개
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 dark:text-gray-400">사이트 페이지 수:</span>
+                        <span className={`font-medium ${isValueChanged('siteTotalPages') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                          {statusSummary.siteTotalPages.toLocaleString()}페이지
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 dark:text-gray-400">사이트 제품 수:</span>
+                        <span className={`font-medium ${isValueChanged('siteProductCount') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                          {statusSummary.siteProductCount.toLocaleString()}개
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 dark:text-gray-400">차이:</span>
+                        <span className={`font-medium ${isValueChanged('diff') ? 'text-yellow-600 dark:text-yellow-400' : statusSummary.diff > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                          {statusSummary.diff > 0 ? '+' : ''}{statusSummary.diff.toLocaleString()}개
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 dark:text-gray-400">크롤링 필요:</span>
+                        <span className={`font-medium ${isValueChanged('needCrawling') ? 'text-yellow-600 dark:text-yellow-400' : statusSummary.needCrawling ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                          {statusSummary.needCrawling ? '예' : '아니오'}
+                        </span>
+                      </div>
+                      
+                      {statusSummary.crawlingRange && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-600 dark:text-gray-400">크롤링 범위:</span>
+                          <span className={`font-medium ${isValueChanged('crawlingRange') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                            {statusSummary.crawlingRange.startPage} ~ {statusSummary.crawlingRange.endPage} 페이지
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* 그래프로 표현 */}
+                      <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                        <div className="mb-2 flex justify-between text-xs">
+                          <span className="text-gray-500 dark:text-gray-400">DB</span>
+                          <span className="text-gray-500 dark:text-gray-400">사이트</span>
+                        </div>
+                        <div className="relative h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div 
+                            className="absolute top-0 left-0 h-full bg-blue-500" 
+                            style={{ width: `${Math.min(100, (statusSummary.dbProductCount / Math.max(statusSummary.siteProductCount, 1)) * 100)}%` }}
+                          ></div>
+                          {statusSummary.diff > 0 && (
+                            <div 
+                              className="absolute top-0 right-0 h-full bg-red-400 opacity-70"
+                              style={{ width: `${Math.min(100, (statusSummary.diff / Math.max(statusSummary.siteProductCount, 1)) * 100)}%` }}
+                            ></div>
+                          )}
+                        </div>
+                        <div className="flex justify-between mt-1 text-xs">
+                          <span className="text-gray-500 dark:text-gray-400">{statusSummary.dbProductCount.toLocaleString()}</span>
+                          <span className="text-gray-500 dark:text-gray-400">{statusSummary.siteProductCount.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </ExpandableSection>
+                )}
               </>
             )}
             
@@ -287,110 +450,80 @@ function App() {
             {activeTab === 'localDB' && (
               <>
                 <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">로컬 데이터베이스</h2>
-                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
-                  <div className="text-gray-600 dark:text-gray-400 mb-2">현재 수집된 제품 수</div>
-                  <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">{products.length}</div>
-                  
-                  <div className="mt-4 text-gray-600 dark:text-gray-400 mb-2">마지막 업데이트</div>
-                  <div className="text-lg text-gray-800 dark:text-gray-200">
-                    {statusSummary?.dbLastUpdated 
-                      ? format(new Date(statusSummary.dbLastUpdated), 'yyyy-MM-dd HH:mm:ss') 
-                      : '정보 없음'}
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="text-center">
+                      <div className="text-gray-600 dark:text-gray-400 mb-2">현재 수집된 제품 수</div>
+                      <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">{products?.length?.toLocaleString() || '0'}</div>
+                    </div>
+                    
+                    <div className="text-center">
+                      <div className="text-gray-600 dark:text-gray-400 mb-2">마지막 업데이트</div>
+                      <div className="text-lg text-gray-800 dark:text-gray-200">
+                        {statusSummary?.dbLastUpdated 
+                          ? format(new Date(statusSummary.dbLastUpdated), 'yyyy-MM-dd HH:mm:ss') 
+                          : '정보 없음'}
+                      </div>
+                    </div>
                   </div>
+
+                  {statusSummary && (
+                    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">데이터베이스 통계</div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">총 제조사 수:</span>
+                              <span className="font-medium text-gray-800 dark:text-gray-200">
+                                {new Set(products?.map(p => p.manufacturer) || []).size.toLocaleString()}개
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">총 기기 유형:</span>
+                              <span className="font-medium text-gray-800 dark:text-gray-200">
+                                {new Set(products?.map(p => p.deviceType) || []).size.toLocaleString()}개
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">사이트 비교</div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">사이트 제품 수:</span>
+                              <span className="font-medium text-gray-800 dark:text-gray-200">
+                                {statusSummary?.siteProductCount?.toLocaleString() || '0'}개
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">수집률:</span>
+                              <span className={`font-medium ${statusSummary?.siteProductCount > 0 ? 
+                                (products?.length / statusSummary.siteProductCount >= 0.95 ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400') : 
+                                'text-gray-800 dark:text-gray-200'}`}>
+                                {statusSummary?.siteProductCount > 0 ? 
+                                  `${Math.round((products?.length / statusSummary.siteProductCount) * 100)}%` : 
+                                  '정보 없음'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}
           </div>
-
-          {/* 상태 요약 패널 */}
-          {statusSummary && Object.keys(statusSummary).length > 0 && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">사이트 로컬 비교</h2>
-              
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600 dark:text-gray-400">마지막 DB 업데이트:</span>
-                  <span className={`font-medium ${isValueChanged('dbLastUpdated') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                    {statusSummary.dbLastUpdated 
-                      ? format(new Date(statusSummary.dbLastUpdated), 'yyyy-MM-dd HH:mm') 
-                      : '없음'}
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600 dark:text-gray-400">DB 제품 수:</span>
-                  <span className={`font-medium ${isValueChanged('dbProductCount') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                    {statusSummary.dbProductCount.toLocaleString()}개
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600 dark:text-gray-400">사이트 페이지 수:</span>
-                  <span className={`font-medium ${isValueChanged('siteTotalPages') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                    {statusSummary.siteTotalPages.toLocaleString()}페이지
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600 dark:text-gray-400">사이트 제품 수:</span>
-                  <span className={`font-medium ${isValueChanged('siteProductCount') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                    {statusSummary.siteProductCount.toLocaleString()}개
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600 dark:text-gray-400">차이:</span>
-                  <span className={`font-medium ${isValueChanged('diff') ? 'text-yellow-600 dark:text-yellow-400' : statusSummary.diff > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                    {statusSummary.diff > 0 ? '+' : ''}{statusSummary.diff.toLocaleString()}개
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600 dark:text-gray-400">크롤링 필요:</span>
-                  <span className={`font-medium ${isValueChanged('needCrawling') ? 'text-yellow-600 dark:text-yellow-400' : statusSummary.needCrawling ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                    {statusSummary.needCrawling ? '예' : '아니오'}
-                  </span>
-                </div>
-                
-                {statusSummary.crawlingRange && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600 dark:text-gray-400">크롤링 범위:</span>
-                    <span className={`font-medium ${isValueChanged('crawlingRange') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                      {statusSummary.crawlingRange.startPage} ~ {statusSummary.crawlingRange.endPage} 페이지
-                    </span>
-                  </div>
-                )}
-                
-                {/* 그래프로 표현 */}
-                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                  <div className="mb-2 flex justify-between text-xs">
-                    <span className="text-gray-500 dark:text-gray-400">DB</span>
-                    <span className="text-gray-500 dark:text-gray-400">사이트</span>
-                  </div>
-                  <div className="relative h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
-                      className="absolute top-0 left-0 h-full bg-blue-500" 
-                      style={{ width: `${Math.min(100, (statusSummary.dbProductCount / Math.max(statusSummary.siteProductCount, 1)) * 100)}%` }}
-                    ></div>
-                    {statusSummary.diff > 0 && (
-                      <div 
-                        className="absolute top-0 right-0 h-full bg-red-400 opacity-70"
-                        style={{ width: `${Math.min(100, (statusSummary.diff / Math.max(statusSummary.siteProductCount, 1)) * 100)}%` }}
-                      ></div>
-                    )}
-                  </div>
-                  <div className="flex justify-between mt-1 text-xs">
-                    <span className="text-gray-500 dark:text-gray-400">{statusSummary.dbProductCount.toLocaleString()}</span>
-                    <span className="text-gray-500 dark:text-gray-400">{statusSummary.siteProductCount.toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 로그 패널 */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">로그</h2>
+          
+          {/* 로그 패널 - 모든 탭에 공통으로 표시 */}
+          <ExpandableSection
+            title="로그"
+            isExpanded={logsExpanded}
+            onToggle={() => toggleSection('logs')}
+            defaultExpanded={true}
+            additionalClasses="mt-6"
+          >
             <div className="bg-gray-100 dark:bg-gray-700 rounded-md p-4 h-80 overflow-y-auto font-mono text-sm">
               {logs.length === 0 ? (
                 <p className="text-gray-500 dark:text-gray-400 text-left">로그 메시지가 없습니다.</p>
@@ -398,23 +531,26 @@ function App() {
                 [...logs].reverse().map((log, index) => renderLogMessage(log, index))
               )}
             </div>
-          </div>
+          </ExpandableSection>
         </div>
 
         {/* 오른쪽 메인 콘텐츠 (데이터 표시) */}
         <div className="lg:col-span-2">
-          {(activeTab === 'localDB' || activeTab === 'status') && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+          {activeTab === 'localDB' && (
+            <ExpandableSection
+              title="수집된 제품 정보"
+              isExpanded={productsExpanded}
+              onToggle={() => toggleSection('products')}
+              defaultExpanded={true}
+            >
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-gray-800 dark:text-white">수집된 제품 정보</h2>
-
-                <div className="relative">
+                <div className="relative w-full max-w-md">
                   <input
                     type="text"
                     placeholder="검색..."
                     value={searchQuery}
                     onChange={(e) => searchQueryStore.set(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="pl-10 pr-4 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <svg
                     className="absolute left-3 top-2.5 h-5 w-5 text-gray-400"
@@ -467,13 +603,31 @@ function App() {
               {/* 페이지네이션 (나중에 구현 예정) */}
               <div className="flex justify-between items-center mt-6">
                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                  총 {products.length}개 항목
+                  총 {products.length.toLocaleString()}개 항목
                 </div>
                 <div className="flex space-x-2">
                   <button className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded">이전</button>
                   <button className="px-3 py-1 bg-blue-500 text-white rounded">1</button>
                   <button className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded">다음</button>
                 </div>
+              </div>
+            </ExpandableSection>
+          )}
+          
+          {/* '설정' 탭일 때 오른쪽 영역 내용 */}
+          {activeTab === 'settings' && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <div className="flex justify-center items-center h-64 text-gray-500 dark:text-gray-400">
+                <p>좌측의 설정 패널에서 크롤링 설정을 조정하세요.</p>
+              </div>
+            </div>
+          )}
+          
+          {/* '상태 & 제어' 탭에서는 메인 영역에 내용이 없음 */}
+          {activeTab === 'status' && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <div className="flex justify-center items-center h-64 text-gray-500 dark:text-gray-400">
+                <p>좌측의 크롤링 제어 패널을 이용하여 데이터 수집을 시작하세요.</p>
               </div>
             </div>
           )}
