@@ -10,12 +10,7 @@ import { CrawlerState } from '../core/CrawlerState.js';
 import {
   promisePool, updateTaskStatus, initializeTaskStates,
 } from '../utils/concurrency.js';
-import {
-  MATTER_FILTER_URL, PAGE_TIMEOUT_MS,
-  PRODUCTS_PER_PAGE, INITIAL_CONCURRENCY, RETRY_CONCURRENCY,
-  MIN_REQUEST_DELAY_MS, MAX_REQUEST_DELAY_MS,
-  RETRY_START, CACHE_TTL_MS
-} from '../utils/constants.js';
+
 import type { CrawlResult } from '../utils/types.js';
 import type { Product } from '../../../../types.d.ts';
 import { debugLog } from '../../util.js';
@@ -76,6 +71,9 @@ export class ProductListCollector {
       // 사용자 설정 페이지 수에 따른 범위 계산
       const pageNumbers = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
       
+      // 설정값 가져오기
+      const config = getConfig();
+      
       // 수집할 페이지 범위 정보 이벤트 발송
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'list-range',
@@ -87,7 +85,7 @@ export class ProductListCollector {
           startPage,
           endPage,
           pageCount: pageNumbers.length,
-          estimatedProductCount: pageNumbers.length * PRODUCTS_PER_PAGE
+          estimatedProductCount: pageNumbers.length * config.productsPerPage
         })
       });
   
@@ -114,7 +112,7 @@ export class ProductListCollector {
       this.state.updateProgress({
         totalPages,
         currentPage: 0,
-        totalItems: pageNumbers.length * PRODUCTS_PER_PAGE,
+        totalItems: pageNumbers.length * config.productsPerPage,
         currentItem: 0
       });
   
@@ -146,7 +144,7 @@ export class ProductListCollector {
         productsResults,
         failedPages,
         failedPageErrors,
-        INITIAL_CONCURRENCY
+        config.initialConcurrency
       );
   
       // 중단 여부 처리
@@ -266,8 +264,9 @@ export class ProductListCollector {
    * 외부 모듈에서 쉽게 접근할 수 있는 간단한 API 제공
    */
   public static async fetchTotalPagesCached(force = false): Promise<number> {
+    const config = getConfig();
     const now = Date.now();
-    if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < CACHE_TTL_MS)) {
+    if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < config.cacheTtlMs)) {
       return cachedTotalPages;
     }
 
@@ -281,6 +280,7 @@ export class ProductListCollector {
    * 정적 메서드: 총 페이지 수를 가져오는 함수
    */
   private static async fetchTotalPages(): Promise<number> {
+    const config = getConfig();
     const browser = await chromium.launch({ headless: true });
     let totalPages = 0;
 
@@ -288,8 +288,8 @@ export class ProductListCollector {
       const context = await browser.newContext();
       const page = await context.newPage();
 
-      console.log(`[ProductListCollector] Navigating to ${MATTER_FILTER_URL}`);
-      await page.goto(MATTER_FILTER_URL, { waitUntil: 'domcontentloaded' });
+      console.log(`[ProductListCollector] Navigating to ${config.matterFilterUrl}`);
+      await page.goto(config.matterFilterUrl, { waitUntil: 'domcontentloaded' });
 
       // 페이지네이션 정보 추출
       const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
@@ -321,6 +321,7 @@ export class ProductListCollector {
    * @param userPageLimit 사용자가 설정한 페이지 수 제한 (선택적)
    */
   private async determineCrawlingRange(totalPages: number, userPageLimit: number = 0): Promise<{ startPage: number; endPage: number }> {
+    const config = getConfig();
     const dbSummary = await getDatabaseSummaryFromDb();
 
     if (dbSummary.productCount === 0) {
@@ -329,9 +330,9 @@ export class ProductListCollector {
       return { startPage: 1, endPage };
     }
 
-    // 이미 수집된 페이지 수 계산 (미사용 변수이지만 주석으로 남겨둠)
-    // const collectedPages = Math.floor(dbSummary.productCount / PRODUCTS_PER_PAGE);
-    const endPage = 12; //Math.max(1, totalPages - collectedPages);
+    // 이미 수집된 페이지 수 계산 
+    const collectedPages = Math.floor(dbSummary.productCount / config.productsPerPage);
+    const endPage = Math.max(1, totalPages - collectedPages);
     const startPage = 1;
 
     // 사용자 설정 페이지 수 제한 적용
@@ -348,6 +349,7 @@ export class ProductListCollector {
    * @param userPageLimit 사용자가 설정한 페이지 수 제한 (선택적)
    */
   public static async determineCrawlingRange(totalPages: number, userPageLimit: number = 0): Promise<{ startPage: number; endPage: number }> {
+    const config = getConfig();
     const dbSummary = await getDatabaseSummaryFromDb();
 
     if (dbSummary.productCount === 0) {
@@ -357,7 +359,7 @@ export class ProductListCollector {
     }
 
     // 이미 수집된 페이지 수 계산
-    const collectedPages = Math.floor(dbSummary.productCount / PRODUCTS_PER_PAGE);
+    const collectedPages = Math.floor(dbSummary.productCount / config.productsPerPage);
     const endPage = Math.max(1, totalPages - collectedPages);
     const startPage = 1;
     
@@ -372,8 +374,10 @@ export class ProductListCollector {
  * 특정 페이지의 제품 정보 목록을 크롤링하는 함수
  */
   private async crawlProductsFromPage(pageNumber: number, totalPages: number, signal: AbortSignal): Promise<Product[]> {
+    const config = getConfig();
+    
     // 서버 과부하 방지를 위한 무작위 지연 시간 적용
-    const delayTime = getRandomDelay(MIN_REQUEST_DELAY_MS, MAX_REQUEST_DELAY_MS);
+    const delayTime = getRandomDelay(config.minRequestDelayMs, config.maxRequestDelayMs);
     await delay(delayTime);
 
     // 중단 확인
@@ -381,7 +385,7 @@ export class ProductListCollector {
       throw new Error('Aborted');
     }
 
-    const pageUrl = `${MATTER_FILTER_URL}&paged=${pageNumber}`;
+    const pageUrl = `${config.matterFilterUrl}&paged=${pageNumber}`;
     const browser = await chromium.launch({ headless: true });
 
     try {
@@ -516,6 +520,8 @@ export class ProductListCollector {
     signal: AbortSignal,
     attempt: number = 1
   ): Promise<CrawlResult | null> {
+    const config = getConfig();
+    
     if (signal.aborted) {
       updateTaskStatus(pageNumber, 'stopped');
       return null;
@@ -529,7 +535,7 @@ export class ProductListCollector {
         stage: 1,
         type: 'page',
         pageNumber,
-        url: `${MATTER_FILTER_URL}&paged=${pageNumber}`,
+        url: `${config.matterFilterUrl}&paged=${pageNumber}`,
         attempt: attempt,
         startTime: new Date().toISOString()
       })
@@ -542,7 +548,7 @@ export class ProductListCollector {
       const products = await Promise.race([
         this.crawlPageWithTimeout(pageNumber, totalPages, productsResults, signal),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), PAGE_TIMEOUT_MS)
+          setTimeout(() => reject(new Error('Timeout')), config.pageTimeoutMs)
         )
       ]);
 
@@ -640,8 +646,9 @@ export class ProductListCollector {
       return;
     }
     
-    // 재시도 최대 횟수 계산 (RETRY_START는 첫 번째 재시도 회차)
-    const maxRetry = RETRY_START + productListRetryCount - 1;
+    // 재시도 최대 횟수 계산 (retryStart는 첫 번째 재시도 회차)
+    const retryStart = config.retryStart;
+    const maxRetry = retryStart + productListRetryCount - 1;
     
     // 재시도 시작 전 상태 초기화 (UI-STATUS-001)
     updateRetryStatus('list-retry', {
@@ -654,13 +661,13 @@ export class ProductListCollector {
       itemIds: failedPages.map(page => page.toString())
     });
     
-    for (let attempt = RETRY_START; attempt <= maxRetry && failedPages.length > 0; attempt++) {
+    for (let attempt = retryStart; attempt <= maxRetry && failedPages.length > 0; attempt++) {
       const retryPages = [...failedPages];
       failedPages.length = 0;
       
       // 현재 재시도 회차 상태 업데이트 (UI-STATUS-001)
       updateRetryStatus('list-retry', {
-        currentAttempt: attempt - RETRY_START + 1,
+        currentAttempt: attempt - retryStart + 1,
         remainingItems: retryPages.length,
         itemIds: retryPages.map(page => page.toString())
       });
@@ -669,10 +676,10 @@ export class ProductListCollector {
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'list-retry',
         status: 'running',
-        message: `페이지 목록 재시도 중 (${attempt - RETRY_START + 1}/${productListRetryCount}): ${retryPages.length}개 페이지`
+        message: `페이지 목록 재시도 중 (${attempt - retryStart + 1}/${productListRetryCount}): ${retryPages.length}개 페이지`
       });
       
-      debugLog(`[RETRY] 페이지 재시도 중 (${attempt - RETRY_START + 1}/${productListRetryCount}): ${retryPages.join(', ')}`);
+      debugLog(`[RETRY] 페이지 재시도 중 (${attempt - retryStart + 1}/${productListRetryCount}): ${retryPages.join(', ')}`);
 
       await promisePool(
         retryPages,
@@ -689,11 +696,11 @@ export class ProductListCollector {
                 'productList', 
                 pageNumber.toString(),
                 result.error,
-                attempt - RETRY_START + 1
+                attempt - retryStart + 1
               );
             } else {
               // 성공 정보 로깅
-              console.log(`[RETRY][${attempt - RETRY_START + 1}/${productListRetryCount}] 페이지 ${pageNumber} 재시도 성공`);
+              console.log(`[RETRY][${attempt - retryStart + 1}/${productListRetryCount}] 페이지 ${pageNumber} 재시도 성공`);
             }
             
             // 재시도 상태 업데이트 - 남은 항목 수 등
@@ -705,7 +712,7 @@ export class ProductListCollector {
           
           return result;
         },
-        RETRY_CONCURRENCY,
+        config.retryConcurrency,
         this.abortController
       );
 
@@ -723,7 +730,7 @@ export class ProductListCollector {
         updateRetryStatus('list-retry', {
           remainingItems: 0,
           itemIds: [],
-          currentAttempt: attempt - RETRY_START + 1
+          currentAttempt: attempt - retryStart + 1
         });
         
         break;

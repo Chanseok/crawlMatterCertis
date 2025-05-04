@@ -9,10 +9,7 @@ import { CrawlerState } from '../core/CrawlerState.js';
 import {
   promisePool, updateProductTaskStatus, initializeProductTaskStates
 } from '../utils/concurrency.js';
-import {
-  PRODUCT_DETAIL_TIMEOUT_MS, DETAIL_CONCURRENCY, RETRY_CONCURRENCY,
-  MIN_REQUEST_DELAY_MS, MAX_REQUEST_DELAY_MS, RETRY_START
-} from '../utils/constants.js';
+
 import type { DetailCrawlResult } from '../utils/types.js';
 import type { Product, MatterProduct } from '../../../../types.d.ts';
 import { debugLog } from '../../util.js';
@@ -21,6 +18,7 @@ import {
   updateRetryStatus, 
   logRetryError
 } from '../utils/progress.js';
+
 import { getConfig } from '../core/config.js';
 
 // 진행 상황 콜백 타입 정의
@@ -82,6 +80,8 @@ export class ProductDetailCollector {
       return [];
     }
 
+    const config = getConfig();
+
     // 진행 상황 초기화
     this.processedItems = 0;
     this.newItems = 0;
@@ -93,7 +93,7 @@ export class ProductDetailCollector {
     this.state.updateProgress({
       totalItems: products.length,
       currentItem: 0,
-      parallelTasks: DETAIL_CONCURRENCY,
+      parallelTasks: config.detailConcurrency,
       activeParallelTasks: 0
     });
 
@@ -235,8 +235,10 @@ private cleanupResources(): void {
    * 제품 상세 정보를 크롤링하는 함수
    */
   private async crawlProductDetail(product: Product, signal: AbortSignal): Promise<MatterProduct> {
+    const config = getConfig();
+    
     // 서버 과부하 방지를 위한 무작위 지연 시간 적용
-    const delayTime = getRandomDelay(MIN_REQUEST_DELAY_MS, MAX_REQUEST_DELAY_MS);
+    const delayTime = getRandomDelay(config.minRequestDelayMs, config.maxRequestDelayMs);
     await delay(delayTime);
 
     const browser = await chromium.launch({ headless: true });
@@ -685,6 +687,8 @@ private cleanupResources(): void {
     signal: AbortSignal,
     attempt: number = 1
   ): Promise<DetailCrawlResult | null> {
+    const config = getConfig();
+    
     if (signal.aborted) {
       updateProductTaskStatus(product.url, 'stopped');
       return null;
@@ -710,7 +714,7 @@ private cleanupResources(): void {
       const detailProduct = await Promise.race([
         this.crawlProductDetail(product, signal),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), PRODUCT_DETAIL_TIMEOUT_MS)
+          setTimeout(() => reject(new Error('Timeout')), config.productDetailTimeoutMs)
         )
       ]);
 
@@ -776,6 +780,8 @@ private cleanupResources(): void {
     failedProducts: string[],
     failedProductErrors: Record<string, string[]>
   ): Promise<void> {
+    const config = getConfig();
+    
     let processedItems = 0;
     const totalItems = products.length;
     const startTime = Date.now();
@@ -840,8 +846,8 @@ private cleanupResources(): void {
             percentage: percentage
           });
   
-          const activeTasksCount = Math.min(DETAIL_CONCURRENCY, totalItems - processedItems + 1);
-          this.state.updateParallelTasks(activeTasksCount, DETAIL_CONCURRENCY);
+          const activeTasksCount = Math.min(config.detailConcurrency, totalItems - processedItems + 1);
+          this.state.updateParallelTasks(activeTasksCount, config.detailConcurrency);
           
           if (this.progressCallback) {
             this.progressCallback(processedItems, this.newItems, this.updatedItems);
@@ -868,7 +874,7 @@ private cleanupResources(): void {
   
         return result;
       },
-      DETAIL_CONCURRENCY,
+      config.detailConcurrency,
       this.abortController
     );
   
@@ -879,7 +885,7 @@ private cleanupResources(): void {
       message: `2단계: 제품 상세 정보 수집 완료 (${processedItems}/${totalItems})`,
       percentage: 100
     });
-    this.state.updateParallelTasks(0, DETAIL_CONCURRENCY);
+    this.state.updateParallelTasks(0, config.detailConcurrency);
     
     crawlerEvents.emit('crawlingProgress', {
       status: 'completed',
@@ -910,6 +916,8 @@ private cleanupResources(): void {
     failedProductErrors: Record<string, string[]>
   ): Promise<void> {
     const { productDetailRetryCount } = getConfig();
+    const config = getConfig();
+    const retryStart = config.retryStart;
     
     if (productDetailRetryCount <= 0) {
       debugLog(`[RETRY] 재시도 횟수가 0으로 설정되어 제품 상세 정보 재시도를 건너뜁니다.`);
@@ -924,7 +932,7 @@ private cleanupResources(): void {
     failedProducts.length = 0;
     failedProducts.push(...validFailedProducts);
 
-    const maxRetry = RETRY_START + productDetailRetryCount - 1;
+    const maxRetry = retryStart + productDetailRetryCount - 1;
     
     updateRetryStatus('detail-retry', {
       stage: 'productDetail',
@@ -936,9 +944,9 @@ private cleanupResources(): void {
       itemIds: failedProducts
     });
     
-    for (let attempt = RETRY_START; attempt <= maxRetry && failedProducts.length > 0; attempt++) {
+    for (let attempt = retryStart; attempt <= maxRetry && failedProducts.length > 0; attempt++) {
       updateRetryStatus('detail-retry', {
-        currentAttempt: attempt - RETRY_START + 1,
+        currentAttempt: attempt - retryStart + 1,
         remainingItems: failedProducts.length,
         itemIds: [...failedProducts]
       });
@@ -946,7 +954,7 @@ private cleanupResources(): void {
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'detail-retry',
         status: 'running',
-        message: `제품 상세 정보 재시도 중 (${attempt - RETRY_START + 1}/${productDetailRetryCount}): ${failedProducts.length}개 항목`
+        message: `제품 상세 정보 재시도 중 (${attempt - retryStart + 1}/${productDetailRetryCount}): ${failedProducts.length}개 항목`
       });
     
       const retryUrls = [...failedProducts];
@@ -955,7 +963,7 @@ private cleanupResources(): void {
 
       const retryProducts = allProducts.filter(p => p.url && retryUrls.includes(p.url));
 
-      debugLog(`[RETRY][${attempt}] 제품 상세 정보 재시도 중: ${retryProducts.length}개 제품 (${attempt - RETRY_START + 1}/${productDetailRetryCount})`);
+      debugLog(`[RETRY][${attempt}] 제품 상세 정보 재시도 중: ${retryProducts.length}개 제품 (${attempt - retryStart + 1}/${productDetailRetryCount})`);
 
       if (retryProducts.length === 0) {
         debugLog(`[RETRY][${attempt}] 재시도할 제품이 없습니다.`);
@@ -975,10 +983,10 @@ private cleanupResources(): void {
                 'productDetail', 
                 product.url,
                 result.error,
-                attempt - RETRY_START + 1
+                attempt - retryStart + 1
               );
             } else {
-              console.log(`[RETRY][${attempt - RETRY_START + 1}/${productDetailRetryCount}] 제품 ${product.url} 재시도 성공`);
+              console.log(`[RETRY][${attempt - retryStart + 1}/${productDetailRetryCount}] 제품 ${product.url} 재시도 성공`);
             }
             
             updateRetryStatus('detail-retry', {
@@ -989,7 +997,7 @@ private cleanupResources(): void {
           
           return result;
         },
-        RETRY_CONCURRENCY,
+        config.retryConcurrency,
         this.abortController
       );
 
@@ -1005,7 +1013,7 @@ private cleanupResources(): void {
         updateRetryStatus('detail-retry', {
           remainingItems: 0,
           itemIds: [],
-          currentAttempt: attempt - RETRY_START + 1
+          currentAttempt: attempt - retryStart + 1
         });
         
         break;

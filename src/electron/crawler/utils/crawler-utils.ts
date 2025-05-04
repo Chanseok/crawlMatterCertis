@@ -5,7 +5,7 @@
 
 import { chromium } from 'playwright-chromium';
 import { getDatabaseSummaryFromDb } from '../../database.js';
-import { MATTER_FILTER_URL, PRODUCTS_PER_PAGE, CACHE_TTL_MS } from './constants.js';
+import { getConfig } from '../core/config.js';
 
 // 캐시
 let cachedTotalPages: number | null = null;
@@ -18,8 +18,9 @@ let cachedTotalPagesFetchedAt: number | null = null;
  * @returns 총 페이지 수
  */
 export async function getTotalPagesCached(force = false): Promise<number> {
+  const config = getConfig();
   const now = Date.now();
-  if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < CACHE_TTL_MS)) {
+  if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < config.cacheTtlMs)) {
     return cachedTotalPages;
   }
   
@@ -35,6 +36,7 @@ export async function getTotalPagesCached(force = false): Promise<number> {
  * @returns 총 페이지 수
  */
 async function getTotalPages(): Promise<number> {
+  const config = getConfig();
   const browser = await chromium.launch({ headless: true });
   let totalPages = 0;
   
@@ -42,8 +44,8 @@ async function getTotalPages(): Promise<number> {
     const context = await browser.newContext();
     const page = await context.newPage();
     
-    console.log(`[CrawlerUtils] Navigating to ${MATTER_FILTER_URL}`);
-    await page.goto(MATTER_FILTER_URL, { waitUntil: 'domcontentloaded' });
+    console.log(`[CrawlerUtils] Navigating to ${config.matterFilterUrl}`);
+    await page.goto(config.matterFilterUrl, { waitUntil: 'domcontentloaded' });
     
     // 페이지네이션 정보 추출
     const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
@@ -76,6 +78,7 @@ async function getTotalPages(): Promise<number> {
  * @returns 시작 페이지와 종료 페이지
  */
 export async function determineCrawlingRange(totalPages: number): Promise<{ startPage: number; endPage: number }> {
+  const config = getConfig();
   const dbSummary = await getDatabaseSummaryFromDb();
   
   if (dbSummary.productCount === 0) {
@@ -84,7 +87,7 @@ export async function determineCrawlingRange(totalPages: number): Promise<{ star
   }
   
   // 이미 수집된 페이지 수 계산
-  const collectedPages = Math.floor(dbSummary.productCount / PRODUCTS_PER_PAGE);
+  const collectedPages = Math.floor(dbSummary.productCount / config.productsPerPage);
   const endPage = Math.max(1, totalPages - collectedPages);
   const startPage = 1;
   
