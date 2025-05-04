@@ -518,7 +518,7 @@ export function CrawlingDashboard() {
           <div className="text-xs text-gray-500 dark:text-gray-400">
             {progress.currentStage === 1 ? "1단계 소요 시간" : progress.currentStage === 2 ? "2단계 소요 시간" : "소요 시간"}
           </div>
-          <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center">
+          <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center justify-center">
             {formatDuration(localTime.elapsedTime)}
             <div className={`ml-2 ${flipTimer % 2 === 0 ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}>
               <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -533,7 +533,7 @@ export function CrawlingDashboard() {
           <div className="text-xs text-gray-500 dark:text-gray-400">
             {progress.currentStage === 1 ? "1단계 예상 남은 시간" : progress.currentStage === 2 ? "2단계 예상 남은 시간" : "예상 남은 시간"}
           </div>
-          <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center">
+          <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center justify-center">
             {formatDuration(localTime.remainingTime)}
             <div className={`ml-2 ${flipTimer % 2 === 0 ? 'opacity-100 rotate-0' : 'opacity-70 rotate-180'} transition-all duration-500`}>
               <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

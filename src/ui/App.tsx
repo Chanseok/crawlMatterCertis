@@ -449,7 +449,7 @@ function App() {
             {/* 로컬DB 탭 */}
             {activeTab === 'localDB' && (
               <>
-                <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">로컬 데이터베이스</h2>
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">로컬 데이터베이스(수정 필요)</h2>
                 <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="text-center">
@@ -614,23 +614,7 @@ function App() {
             </ExpandableSection>
           )}
           
-          {/* '설정' 탭일 때 오른쪽 영역 내용 */}
-          {activeTab === 'settings' && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-              <div className="flex justify-center items-center h-64 text-gray-500 dark:text-gray-400">
-                <p>좌측의 설정 패널에서 크롤링 설정을 조정하세요.</p>
-              </div>
-            </div>
-          )}
-          
-          {/* '상태 & 제어' 탭에서는 메인 영역에 내용이 없음 */}
-          {activeTab === 'status' && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-              <div className="flex justify-center items-center h-64 text-gray-500 dark:text-gray-400">
-                <p>좌측의 크롤링 제어 패널을 이용하여 데이터 수집을 시작하세요.</p>
-              </div>
-            </div>
-          )}
+
         </div>
       </main>
 
