@@ -22,7 +22,9 @@ export const crawlingProgressStore = map<CrawlingProgress>({
   updatedItems: 0,
   percentage: 0,
   currentStep: '',
-  elapsedTime: 0
+  currentStage: 0, // 0=초기화, 1=목록 수집, 2=상세 수집
+  elapsedTime: 0,
+  message: '' // 사용자에게 표시할 메시지
 });
 
 // 로그 항목 관리
@@ -63,6 +65,22 @@ export const lastCrawlingStatusSummaryStore = map<CrawlingStatusSummary>({} as C
 // 동시 처리 작업 상태 관리 (예: 각 페이지별 크롤링 상태)
 export const concurrentTasksStore = atom<ConcurrentCrawlingTask[]>([]);
 
+// 작업별 상태 정보 저장 (task ID를 키로 사용)
+export interface TaskStatusDetail {
+  id: string | number;
+  status: 'pending' | 'running' | 'success' | 'error' | 'stopped';
+  details?: any;
+  startTime?: number;
+  endTime?: number;
+  message?: string;
+}
+
+// 활성 작업 목록 저장 
+export const activeTasksStore = map<Record<string | number, TaskStatusDetail>>({});
+
+// 최근 완료된 작업 목록 (최대 10개 유지)
+export const recentTasksStore = atom<TaskStatusDetail[]>([]);
+
 // API 참조
 let api = getPlatformApi();
 
@@ -76,10 +94,31 @@ export function initializeApiSubscriptions() {
   
   // 크롤링 진행 상황 구독
   const unsubProgress = api.subscribeToEvent('crawlingProgress', (progress) => {
+    // status 속성을 CrawlingStatus 타입으로 안전하게 변환
+    const validStatus = validateCrawlingStatus(progress.status);
+    
+    // 진행 상황 업데이트 (타입 안전하게 처리)
     crawlingProgressStore.set({
       ...crawlingProgressStore.get(),
-      ...progress
+      ...progress,
+      status: validStatus // 문자열을 CrawlingStatus 타입으로 변환하여 설정
     });
+    
+    // 단계별 로그 추가 (메시지가 있을 때만)
+    if (progress.message) {
+      // 메시지에서 중요한 상태 변경이나 단계 변경을 감지하여 로그에 추가
+      if (progress.message.includes('1단계 완료') || 
+          progress.message.includes('2단계 완료') ||
+          progress.message.includes('크롤링 완료')) {
+        addLog(progress.message, 'success');
+      } else if (progress.message.includes('1단계:') || progress.message.includes('2단계:')) {
+        // 상태 변경 시에만 로그 추가 (모든 진행 상황을 로그로 남기면 너무 많아짐)
+        const currentStep = crawlingProgressStore.get().currentStep;
+        if (currentStep !== progress.currentStep) {
+          addLog(progress.message, 'info');
+        }
+      }
+    }
   });
   unsubscribeFunctions.push(unsubProgress);
 
@@ -118,8 +157,68 @@ export function initializeApiSubscriptions() {
   unsubscribeFunctions.push(unsubProducts);
 
   // 동시 작업 상태 실시간 구독
-  const unsubConcurrentTasks = api.subscribeToEvent('crawlingTaskStatus', (tasks) => {
-    concurrentTasksStore.set(tasks);
+  const unsubConcurrentTasks = api.subscribeToEvent('crawlingTaskStatus', (taskStatus) => {
+    // 기존 동시 작업 목록 업데이트
+    if (Array.isArray(taskStatus)) {
+      concurrentTasksStore.set(taskStatus);
+    } else if (taskStatus) {
+      // 개별 작업 상태 업데이트 (새로운 방식)
+      const { taskId, status, message } = taskStatus as { taskId: number | string; status: string; message?: string };
+      
+      try {
+        // 메시지 파싱 시도 (JSON이면 구조화된 정보로, 아니면 일반 텍스트로)
+        let details = {};
+        try {
+          if (message && typeof message === 'string' && message.trim().startsWith('{')) {
+            details = JSON.parse(message);
+          } else {
+            details = { description: message };
+          }
+        } catch (e) {
+          details = { description: message };
+        }
+        
+        // status 값을 안전하게 변환
+        const validStatus = validateTaskStatus(status);
+        
+        // 작업 상태에 따라 처리
+        if (validStatus === 'running' || validStatus === 'pending') {
+          // 실행 중인 작업 목록에 추가/업데이트
+          const activeTasks = {...activeTasksStore.get()};
+          activeTasks[taskId] = {
+            id: taskId,
+            status: validStatus, // 변환된 status 사용
+            details,
+            startTime: Date.now(),
+            message: typeof message === 'string' ? message : JSON.stringify(details)
+          };
+          activeTasksStore.set(activeTasks);
+        } else {
+          // 완료된 작업은 최근 작업 목록에 이동
+          const finishedTask: TaskStatusDetail = {
+            id: taskId,
+            status: validStatus, // 변환된 status 사용
+            details,
+            startTime: (activeTasksStore.get()[taskId]?.startTime || Date.now()) - 1000,
+            endTime: Date.now(),
+            message: typeof message === 'string' ? message : JSON.stringify(details)
+          };
+          
+          // 최근 작업 목록 앞에 추가하고 최대 10개만 유지
+          const recentTasks = [...recentTasksStore.get()];
+          recentTasks.unshift(finishedTask);
+          if (recentTasks.length > 10) recentTasks.pop();
+          recentTasksStore.set(recentTasks);
+          
+          // 완료된 작업을 활성 목록에서 제거
+          const activeTasks = {...activeTasksStore.get()};
+          delete activeTasks[taskId];
+          activeTasksStore.set(activeTasks);
+        }
+      } catch (e) {
+        console.error('Error processing task status:', e);
+      }
+    }
   });
   unsubscribeFunctions.push(unsubConcurrentTasks);
 
@@ -192,6 +291,29 @@ async function loadInitialData() {
   }
 }
 
+// CrawlingStatus 타입으로 안전하게 변환하는 헬퍼 함수
+function validateCrawlingStatus(status: string | undefined): CrawlingStatus {
+  if (!status) return 'idle'; // 기본값 
+  
+  // 허용된 상태 값 목록
+  const validStatuses: CrawlingStatus[] = ['idle', 'running', 'paused', 'completed', 'error', 'initializing', 'stopped'];
+  
+  // 허용된 값이면 그대로 반환, 아니면 기본값 반환
+  return validStatuses.includes(status as CrawlingStatus) 
+    ? (status as CrawlingStatus) 
+    : 'running'; // 기본값으로 'running' 사용
+}
+
+// TaskStatusDetail의 status 값을 안전하게 변환하는 헬퍼 함수
+function validateTaskStatus(status: string): 'pending' | 'running' | 'success' | 'error' | 'stopped' {
+  const validStatuses: ('pending' | 'running' | 'success' | 'error' | 'stopped')[] = 
+    ['pending', 'running', 'success', 'error', 'stopped'];
+  
+  return validStatuses.includes(status as any) 
+    ? (status as 'pending' | 'running' | 'success' | 'error' | 'stopped') 
+    : 'error'; // 기본값으로 'error' 사용
+}
+
 // 로그 추가 함수
 export function addLog(message: string, type: LogEntry['type'] = 'info'): void {
   const logEntry: LogEntry = {
@@ -205,9 +327,15 @@ export function addLog(message: string, type: LogEntry['type'] = 'info'): void {
 
 // 크롤링 상태 업데이트 함수
 export function updateCrawlingProgress(progress: Partial<CrawlingProgress>): void {
+  // status가 있으면 타입 검증
+  const updatedProgress = { ...progress };
+  if (progress.status) {
+    updatedProgress.status = validateCrawlingStatus(progress.status as string);
+  }
+  
   crawlingProgressStore.set({
     ...crawlingProgressStore.get(),
-    ...progress
+    ...updatedProgress
   });
 }
 
@@ -216,6 +344,10 @@ export async function startCrawling(): Promise<void> {
   try {
     crawlingStatusStore.set('running');
     addLog('크롤링을 시작합니다...', 'info');
+    
+    // 크롤링 시작 전 활성 작업 및 최근 작업 초기화
+    activeTasksStore.set({});
+    recentTasksStore.set([]);
     
     // API를 통해 크롤링 시작
     const { success } = await api.invokeMethod('startCrawling', { 

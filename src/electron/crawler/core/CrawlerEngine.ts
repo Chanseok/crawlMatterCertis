@@ -4,7 +4,14 @@
  */
 
 import { EventEmitter } from 'events';
-import { crawlerEvents } from '../utils/progress.js';
+import { 
+  crawlerEvents, 
+  initializeCrawlingProgress, 
+  updateProductListProgress, 
+  updateProductDetailProgress,
+  CRAWLING_PHASES,
+  CRAWLING_STAGE
+} from '../utils/progress.js';
 import { getDatabaseSummaryFromDb } from '../../database.js';
 import { getConfig } from './config.js';
 import { CrawlerState } from './CrawlerState.js';
@@ -28,6 +35,7 @@ export class CrawlerEngine {
   private state: CrawlerState;
   private isCrawling: boolean = false;
   private abortController: AbortController | null = null;
+  private startTime: number = 0;
 
   constructor() {
     this.state = new CrawlerState();
@@ -53,19 +61,45 @@ export class CrawlerEngine {
     initializeCrawlingState();
     this.isCrawling = true;
     this.abortController = new AbortController();
+    this.startTime = Date.now();
 
     try {
       console.log('[CrawlerEngine] Starting crawling process...');
+      
+      // 초기 크롤링 상태 이벤트
+      initializeCrawlingProgress('크롤링 초기화', CRAWLING_STAGE.INIT);
       
       // 사용자 설정 가져오기 (CRAWL-RANGE-001)
       const config = getConfig();
       const userPageLimit = config.pageRangeLimit;
 
-      // 1단계: 제품 목록 수집
+      // 1단계: 제품 목록 수집 시작 알림
+      updateProductListProgress(0, 0, this.startTime);
+      
+      // 제품 목록 수집기 생성 (1단계)
       const productListCollector = new ProductListCollector(this.state, this.abortController);
       
+      // 총 페이지 수 먼저 확인
+      const totalPages = await productListCollector.getTotalPagesCached(true);
+      
+      // 1단계 시작 - 총 페이지 수 알게 된 후 업데이트
+      updateProductListProgress(0, totalPages, this.startTime);
+      
       // 사용자 페이지 범위 설정이 있으면 적용 (CRAWL-RANGE-001)
+      const listStartTime = Date.now();
+      const progressUpdater = (processedPages: number) => {
+        // 진행 상황 업데이트 - 1단계
+        updateProductListProgress(processedPages, totalPages, listStartTime);
+      };
+      
+      // 페이지별 작업 상태 전송 함수 설정
+      productListCollector.setProgressCallback(progressUpdater);
+      
+      // 제품 목록 수집 실행
       const products = await productListCollector.collect(userPageLimit);
+
+      // 1단계 완료 이벤트
+      updateProductListProgress(totalPages, totalPages, listStartTime, true);
 
       // 중단 여부 확인 - 명시적으로 요청된 중단만 처리
       if (this.abortController.signal.aborted) {
@@ -94,7 +128,6 @@ export class CrawlerEngine {
 
       // 성공률 확인
       const failedPages = this.state.getFailedPages();
-      const totalPages = this.state.getTotalPagesCount();
       const successRate = totalPages > 0 ? (totalPages - failedPages.length) / totalPages : 1;
       const successRatePercent = (successRate * 100).toFixed(1);
       
@@ -118,10 +151,35 @@ export class CrawlerEngine {
         return false; // 함수 종료
       }
 
-      // 2단계: 제품 상세 정보 수집
+      // 2단계: 제품 상세 정보 수집 시작 알림
+      const detailStartTime = Date.now();
+      updateProductDetailProgress(0, products.length, detailStartTime);
+      
       debugLog(`[CrawlerEngine] Found ${products.length} products to process. Starting detail collection...`);
+      
+      // 제품 상세 정보 수집기 생성 (2단계)
       const productDetailCollector = new ProductDetailCollector(this.state, this.abortController);
+      
+      // 진행 상황 업데이트 함수 설정 - 2단계
+      const detailProgressUpdater = (processedItems: number, newItems: number, updatedItems: number) => {
+        updateProductDetailProgress(processedItems, products.length, detailStartTime, false, newItems, updatedItems);
+      };
+      
+      // 콜백 함수 설정
+      productDetailCollector.setProgressCallback(detailProgressUpdater);
+      
+      // 제품 상세 정보 수집 실행
       const matterProducts = await productDetailCollector.collect(products);
+
+      // 2단계 완료 이벤트
+      updateProductDetailProgress(
+        products.length, 
+        products.length, 
+        detailStartTime, 
+        true, 
+        matterProducts.filter(p => p.isNewProduct).length,
+        matterProducts.filter(p => !p.isNewProduct).length
+      );
 
       // 중복 제거 및 정렬
       deduplicateAndSortMatterProducts(matterProducts);

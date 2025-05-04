@@ -34,6 +34,7 @@ export type MatterProduct = {
     transportInterface?: string;
     primaryDeviceTypeId?: string;
     applicationCategories?: string[];
+    isNewProduct?: boolean; // 신규 제품인지 여부를 나타내는 플래그 추가
 };
 
 export type Product = {
@@ -53,6 +54,18 @@ export type CrawlingProgress = {
     currentStep: string;
     remainingTime?: number;
     elapsedTime: number;
+    // UI에서 사용하는 CrawlingStatus와 호환되도록 status 타입 정의
+    status?: 'idle' | 'running' | 'paused' | 'completed' | 'error' | 'initializing' | 'stopped' | 'completed_stage_1';
+    currentPage?: number;
+    totalPages?: number;
+    processedItems?: number;
+    totalItems?: number;
+    startTime?: number;
+    estimatedEndTime?: number;
+    newItems?: number;
+    updatedItems?: number;
+    currentStage?: number; // 1=목록 수집, 2=상세정보 수집
+    message?: string; // 사용자에게 표시할 메시지
 };
 
 // 크롤링 상태 요약 정보 타입

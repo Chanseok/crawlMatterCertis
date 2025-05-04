@@ -32,8 +32,10 @@ export interface CrawlingProgress {
   updatedItems: number;
   percentage?: number;
   currentStep?: string;
+  currentStage?: number; // 1=목록 수집, 2=상세정보 수집
   remainingTime?: number; // 예상 남은 시간 (초)
   elapsedTime?: number; // 경과 시간 (초)
+  message?: string; // 사용자에게 표시할 명확한 메시지
 }
 
 // ProductDetail은 UI 전용이므로 유지

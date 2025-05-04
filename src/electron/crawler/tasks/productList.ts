@@ -26,13 +26,36 @@ import { crawlerEvents, updateRetryStatus, logRetryError } from '../utils/progre
 let cachedTotalPages: number | null = null;
 let cachedTotalPagesFetchedAt: number | null = null;
 
+// 진행 상황 콜백 타입 정의
+export type ProgressCallback = (processedPages: number) => void;
+
 export class ProductListCollector {
   private state: CrawlerState;
   private abortController: AbortController;
+  private progressCallback: ProgressCallback | null = null;
+  private processedPages: number = 0;
 
   constructor(state: CrawlerState, abortController: AbortController) {
     this.state = state;
     this.abortController = abortController;
+  }
+
+  /**
+   * 진행 상황 콜백 설정 함수
+   * @param callback 진행 상황을 업데이트할 콜백 함수
+   */
+  public setProgressCallback(callback: ProgressCallback): void {
+    this.progressCallback = callback;
+  }
+
+  /**
+   * 진행 상황 업데이트 함수
+   */
+  private updateProgress(): void {
+    this.processedPages++;
+    if (this.progressCallback) {
+      this.progressCallback(this.processedPages);
+    }
   }
 
   /**
@@ -42,6 +65,7 @@ export class ProductListCollector {
   public async collect(userPageLimit: number = 0): Promise<Product[]> {
     try {
       this.state.setStage('productList:init', '1단계: 제품 목록 페이지 수 파악 중');
+      this.processedPages = 0;
   
       // 총 페이지 수 파악
       const totalPages = await this.getTotalPagesCached();
@@ -53,17 +77,36 @@ export class ProductListCollector {
       const pageNumbers = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
       
       // 수집할 페이지 범위 정보 이벤트 발송
-      crawlerEvents.emit('crawlingRangeSelected', {
-        totalPages,
-        startPage,
-        endPage,
-        pageCount: pageNumbers.length,
-        estimatedProductCount: pageNumbers.length * PRODUCTS_PER_PAGE
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'list-range',
+        status: 'running',
+        message: JSON.stringify({
+          stage: 1,
+          type: 'range',
+          totalPages,
+          startPage,
+          endPage,
+          pageCount: pageNumbers.length,
+          estimatedProductCount: pageNumbers.length * PRODUCTS_PER_PAGE
+        })
       });
   
       // 수집해야할 페이지가 없는 경우
       if (pageNumbers.length === 0) {
         console.log('[ProductListCollector] No new pages to crawl. Database is up to date.');
+        
+        // 상태 업데이트
+        crawlerEvents.emit('crawlingTaskStatus', {
+          taskId: 'list-range',
+          status: 'success',
+          message: JSON.stringify({
+            stage: 1,
+            type: 'range',
+            message: 'DB 정보가 최신 상태입니다. 새로운 페이지가 없습니다.',
+            totalPages
+          })
+        });
+        
         return [];
       }
   
@@ -167,6 +210,21 @@ export class ProductListCollector {
       const successRate = successPages / totalPagesToFetch;
       console.log(`[ProductListCollector] Collection success rate: ${(successRate * 100).toFixed(1)}% (${successPages}/${totalPagesToFetch})`);
   
+      // 수집 완료 상태 이벤트 발송
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'list-complete',
+        status: 'success',
+        message: JSON.stringify({
+          stage: 1,
+          type: 'complete',
+          totalPages,
+          processedPages: successPages,
+          collectedProducts: productsResults.length,
+          failedPages: totalFailedPages,
+          successRate: parseFloat((successRate * 100).toFixed(1))
+        })
+      });
+      
       // 제품 목록 반환
       this.state.setStage('productList:processing', '수집된 제품 목록 처리 중');
       this.state.addProducts(productsResults);
@@ -470,6 +528,20 @@ export class ProductListCollector {
       return null;
     }
 
+    // 상세 작업 상태 이벤트 발송 (JSON 구조화)
+    crawlerEvents.emit('crawlingTaskStatus', {
+      taskId: `page-${pageNumber}`,
+      status: 'running',
+      message: JSON.stringify({
+        stage: 1,
+        type: 'page',
+        pageNumber,
+        url: `${MATTER_FILTER_URL}&paged=${pageNumber}`,
+        attempt: attempt,
+        startTime: new Date().toISOString()
+      })
+    });
+
     updateTaskStatus(pageNumber, 'running');
 
     try {
@@ -485,6 +557,22 @@ export class ProductListCollector {
       this.state.updateProgress({
         currentPage: pageNumber
       });
+      
+      // 페이지 성공적으로 처리했으면 진행 상황 업데이트
+      this.updateProgress();
+
+      // 상세 작업 완료 이벤트 발송 (JSON 구조화)
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: `page-${pageNumber}`,
+        status: 'success',
+        message: JSON.stringify({
+          stage: 1,
+          type: 'page',
+          pageNumber,
+          productsCount: products?.length || 0,
+          endTime: new Date().toISOString()
+        })
+      });
 
       updateTaskStatus(pageNumber, 'success');
       return { pageNumber, products };
@@ -492,6 +580,20 @@ export class ProductListCollector {
       const errorMsg = err instanceof Error ? err.message : String(err);
       const status = signal.aborted ? 'stopped' : 'error';
       updateTaskStatus(pageNumber, status, errorMsg);
+
+      // 실패 이벤트 발송 (JSON 구조화)
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: `page-${pageNumber}`,
+        status: 'error',
+        message: JSON.stringify({
+          stage: 1,
+          type: 'page',
+          pageNumber,
+          error: errorMsg,
+          attempt: attempt,
+          endTime: new Date().toISOString()
+        })
+      });
 
       failedPages.push(pageNumber);
       if (!failedPageErrors[pageNumber]) {

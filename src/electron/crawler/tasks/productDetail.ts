@@ -23,13 +23,53 @@ import {
 } from '../utils/progress.js';
 import { getConfig } from '../core/config.js';
 
+// 진행 상황 콜백 타입 정의
+export type DetailProgressCallback = (
+  processedItems: number, 
+  newItems: number, 
+  updatedItems: number
+) => void;
+
 export class ProductDetailCollector {
   private state: CrawlerState;
   private abortController: AbortController;
+  private progressCallback: DetailProgressCallback | null = null;
+  private processedItems: number = 0;
+  private newItems: number = 0; // 새로 추가된 항목
+  private updatedItems: number = 0; // 업데이트된 항목
 
   constructor(state: CrawlerState, abortController: AbortController) {
     this.state = state;
     this.abortController = abortController;
+    this.processedItems = 0;
+    this.newItems = 0;
+    this.updatedItems = 0;
+  }
+
+  /**
+   * 진행 상황 콜백 설정 함수
+   * @param callback 진행 상황을 업데이트할 콜백 함수
+   */
+  public setProgressCallback(callback: DetailProgressCallback): void {
+    this.progressCallback = callback;
+  }
+
+  /**
+   * 진행 상황 업데이트 함수
+   * @param isNew 새로운 항목인지 여부
+   */
+  private updateProgress(isNew: boolean = true): void {
+    this.processedItems++;
+    
+    if (isNew) {
+      this.newItems++;
+    } else {
+      this.updatedItems++;
+    }
+    
+    if (this.progressCallback) {
+      this.progressCallback(this.processedItems, this.newItems, this.updatedItems);
+    }
   }
 
   /**
@@ -41,6 +81,11 @@ export class ProductDetailCollector {
       console.log('[ProductDetailCollector] No products to collect details for.');
       return [];
     }
+
+    // 진행 상황 초기화
+    this.processedItems = 0;
+    this.newItems = 0;
+    this.updatedItems = 0;
 
     this.state.setStage('productDetail:init', '2단계: 제품 상세 정보 수집 준비 중');
 
@@ -62,6 +107,18 @@ export class ProductDetailCollector {
     this.state.setStage('productDetail:fetching', '2단계: 제품 상세 정보 수집 중');
     debugLog(`Starting phase 2: crawling product details for ${products.length} products`);
 
+    // 전체 크롤링 시작 메시지 이벤트
+    crawlerEvents.emit('crawlingTaskStatus', {
+      taskId: 'detail-start',
+      status: 'running',
+      message: JSON.stringify({
+        stage: 2,
+        type: 'start',
+        totalProducts: products.length,
+        startTime: new Date().toISOString()
+      })
+    });
+
     // 제품 상세 정보 병렬 크롤링 실행
     await this.executeParallelProductDetailCrawling(
       products,
@@ -73,6 +130,21 @@ export class ProductDetailCollector {
     // 중단 여부 처리
     if (this.abortController.signal.aborted) {
       console.log('[ProductDetailCollector] Crawling was stopped during product detail collection.');
+      
+      // 중단 상태 이벤트 발송
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'detail-abort',
+        status: 'stopped',
+        message: JSON.stringify({
+          stage: 2,
+          type: 'abort',
+          processedItems: this.processedItems,
+          totalItems: products.length,
+          abortReason: 'user_request',
+          endTime: new Date().toISOString()
+        })
+      });
+      
       return matterProducts;
     }
 
@@ -107,6 +179,24 @@ export class ProductDetailCollector {
     const successProducts = totalProducts - finalFailedCount;
     const successRate = successProducts / totalProducts;
     console.log(`[ProductDetailCollector] Collection success rate: ${(successRate * 100).toFixed(1)}% (${successProducts}/${totalProducts})`);
+
+    // 최종 완료 상태 이벤트 발송
+    crawlerEvents.emit('crawlingTaskStatus', {
+      taskId: 'detail-complete',
+      status: 'success',
+      message: JSON.stringify({
+        stage: 2,
+        type: 'complete',
+        totalItems: products.length,
+        processedItems: this.processedItems,
+        successItems: successProducts,
+        failedItems: finalFailedCount,
+        newItems: this.newItems,
+        updatedItems: this.updatedItems,
+        successRate: parseFloat((successRate * 100).toFixed(1)),
+        endTime: new Date().toISOString()
+      })
+    });
 
     // 제품 상세 정보 처리 단계로 전환
     this.state.setStage('productDetail:processing', '2단계: 제품 상세 정보 처리 중');
@@ -554,7 +644,17 @@ private cleanupResources(): void {
         return result;
       }, product);
 
-      return detailProduct as MatterProduct;
+      // 신규 제품인지 여부 결정 (개선된 로직 필요 시 이 부분을 수정)
+      // 현재는 예시로 일부 속성을 활용한 조건문 제공
+      const isNewProduct = true; // 기본값을 true로 설정 (기존 코드와 호환성 유지)
+      
+      // 기존 제품 속성을 MatterProduct 형식으로 확장
+      const matterProduct: MatterProduct = {
+        ...detailProduct,
+        isNewProduct  // isNewProduct 속성 추가
+      };
+
+      return matterProduct;
     } catch (error: unknown) {
       if (signal.aborted) {
         throw new Error(`Aborted crawling for ${product.url}`);
@@ -590,11 +690,23 @@ private cleanupResources(): void {
       return null;
     }
 
+    crawlerEvents.emit('crawlingTaskStatus', {
+      taskId: `product-${product.url}`,
+      status: 'running',
+      message: JSON.stringify({
+        stage: 2,
+        type: 'product',
+        url: product.url,
+        manufacturer: product.manufacturer || 'Unknown',
+        model: product.model || 'Unknown',
+        attempt: attempt,
+        startTime: new Date().toISOString()
+      })
+    });
+
     updateProductTaskStatus(product.url, 'running');
 
-    // AbortController에 signal을 전달하는 대신 직접 사용
     try {
-      // 이제 crawlProductDetail 함수에 signal을 전달합니다
       const detailProduct = await Promise.race([
         this.crawlProductDetail(product, signal),
         new Promise<never>((_, reject) =>
@@ -603,6 +715,23 @@ private cleanupResources(): void {
       ]);
 
       updateProductTaskStatus(product.url, 'success');
+      
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: `product-${product.url}`,
+        status: 'success',
+        message: JSON.stringify({
+          stage: 2,
+          type: 'product',
+          url: product.url,
+          manufacturer: detailProduct.manufacturer || 'Unknown',
+          model: detailProduct.model || 'Unknown',
+          isNew: detailProduct.isNewProduct,
+          endTime: new Date().toISOString()
+        })
+      });
+      
+      this.updateProgress(!!detailProduct.isNewProduct);
+
       matterProducts.push(detailProduct);
 
       return { url: product.url, product: detailProduct };
@@ -610,6 +739,21 @@ private cleanupResources(): void {
       const errorMsg = err instanceof Error ? err.message : String(err);
       const status = signal.aborted ? 'stopped' : 'error';
       updateProductTaskStatus(product.url, status, errorMsg);
+
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: `product-${product.url}`,
+        status: 'error',
+        message: JSON.stringify({
+          stage: 2,
+          type: 'product',
+          url: product.url,
+          manufacturer: product.manufacturer || 'Unknown',
+          model: product.model || 'Unknown',
+          error: errorMsg,
+          attempt: attempt,
+          endTime: new Date().toISOString()
+        })
+      });
 
       failedProducts.push(product.url);
       if (!failedProductErrors[product.url]) {
@@ -636,9 +780,8 @@ private cleanupResources(): void {
     const totalItems = products.length;
     const startTime = Date.now();
     let lastProgressUpdate = 0;
-    const progressUpdateInterval = 3000; // 최대 3초 간격으로 업데이트
+    const progressUpdateInterval = 3000;
   
-    // 초기 진행 상황 설정
     this.state.updateProgress({
       currentItem: 0,
       totalItems: totalItems,
@@ -646,7 +789,6 @@ private cleanupResources(): void {
       message: `2단계: 제품 상세 정보 수집 중 (0/${totalItems})`
     });
     
-    // 최초 이벤트 발송 (0%)
     crawlerEvents.emit('crawlingProgress', {
       status: 'running',
       currentPage: 0,
@@ -654,13 +796,15 @@ private cleanupResources(): void {
       processedItems: 0,
       totalItems: totalItems,
       percentage: 0,
-      currentStep: '제품 상세 정보 수집', // CRAWLING_PHASES.PRODUCT_DETAIL 대신 직접 문자열 사용
+      currentStep: '제품 상세 정보 수집',
+      currentStage: 2,
       remainingTime: undefined,
       elapsedTime: 0,
       startTime: startTime,
       estimatedEndTime: 0,
       newItems: 0,
-      updatedItems: 0
+      updatedItems: 0,
+      message: `2단계: 제품 상세정보 0/${totalItems} 처리 중 (0.0%)`
     });
   
     console.log(`[ProductDetailCollector] Starting detail collection for ${totalItems} products`);
@@ -674,26 +818,21 @@ private cleanupResources(): void {
   
         processedItems++;
   
-        // 각 제품 처리 완료 시마다 또는 일정 시간 간격으로 진행률 업데이트
         const now = Date.now();
         if (now - lastProgressUpdate > progressUpdateInterval) {
           lastProgressUpdate = now;
           
-          // 진행률 계산
           const percentage = (processedItems / totalItems) * 100;
           const elapsedTime = now - startTime;
           let remainingTime: number | undefined = undefined;
           
-          // 처리된 항목이 최소 10% 이상일 때만 남은 시간 예측
           if (processedItems > totalItems * 0.1) {
             const avgTimePerItem = elapsedTime / processedItems;
             remainingTime = Math.round((totalItems - processedItems) * avgTimePerItem);
           }
           
-          // 상세 진행 메시지 생성
-          const message = `2단계: 제품 상세 정보 수집 중 (${processedItems}/${totalItems})`;
+          const message = `2단계: 제품 상세정보 ${processedItems}/${totalItems} 처리 중 (${percentage.toFixed(1)}%)`;
   
-          // 내부 상태 업데이트
           this.state.updateProgress({
             currentItem: processedItems,
             totalItems: totalItems,
@@ -701,11 +840,13 @@ private cleanupResources(): void {
             percentage: percentage
           });
   
-          // 병렬 작업 상태도 업데이트
           const activeTasksCount = Math.min(DETAIL_CONCURRENCY, totalItems - processedItems + 1);
           this.state.updateParallelTasks(activeTasksCount, DETAIL_CONCURRENCY);
           
-          // UI에 진행률 상세 정보 전송
+          if (this.progressCallback) {
+            this.progressCallback(processedItems, this.newItems, this.updatedItems);
+          }
+          
           crawlerEvents.emit('crawlingProgress', {
             status: 'running',
             currentPage: processedItems,
@@ -713,13 +854,15 @@ private cleanupResources(): void {
             processedItems: processedItems,
             totalItems: totalItems,
             percentage: percentage,
-            currentStep: '제품 상세 정보 수집', // CRAWLING_PHASES.PRODUCT_DETAIL 대신 직접 문자열 사용
+            currentStep: '제품 상세 정보 수집',
+            currentStage: 2,
             remainingTime: remainingTime,
             elapsedTime: elapsedTime,
             startTime: startTime,
             estimatedEndTime: remainingTime ? now + remainingTime : 0,
-            newItems: processedItems,
-            updatedItems: 0
+            newItems: this.newItems,
+            updatedItems: this.updatedItems,
+            message: message
           });
         }
   
@@ -729,7 +872,6 @@ private cleanupResources(): void {
       this.abortController
     );
   
-    // 최종 진행 상황 업데이트 - 항상 실행되도록 보장
     const finalElapsedTime = Date.now() - startTime;
     this.state.updateProgress({
       currentItem: processedItems,
@@ -739,7 +881,6 @@ private cleanupResources(): void {
     });
     this.state.updateParallelTasks(0, DETAIL_CONCURRENCY);
     
-    // 최종 완료 상태 이벤트 발송 (100%)
     crawlerEvents.emit('crawlingProgress', {
       status: 'completed',
       currentPage: processedItems,
@@ -747,13 +888,15 @@ private cleanupResources(): void {
       processedItems: processedItems,
       totalItems: totalItems,
       percentage: 100,
-      currentStep: '제품 상세 정보 수집', // CRAWLING_PHASES.PRODUCT_DETAIL 대신 직접 문자열 사용
+      currentStep: '제품 상세 정보 수집',
+      currentStage: 2,
       remainingTime: 0,
       elapsedTime: finalElapsedTime,
       startTime: startTime,
       estimatedEndTime: Date.now(),
-      newItems: processedItems,
-      updatedItems: 0
+      newItems: this.newItems,
+      updatedItems: this.updatedItems,
+      message: `2단계 완료: ${totalItems}개 제품 상세정보 수집 완료 (신규: ${this.newItems}, 업데이트: ${this.updatedItems})` 
     });
   }
 
@@ -766,29 +909,23 @@ private cleanupResources(): void {
     matterProducts: MatterProduct[],
     failedProductErrors: Record<string, string[]>
   ): Promise<void> {
-    // 재시도 설정 가져오기
     const { productDetailRetryCount } = getConfig();
     
-    // 재시도 횟수가 0이면 재시도 하지 않음
     if (productDetailRetryCount <= 0) {
       debugLog(`[RETRY] 재시도 횟수가 0으로 설정되어 제품 상세 정보 재시도를 건너뜁니다.`);
       return;
     }
     
-    // URL 유효성 검증: 빈 URL 필터링
     const validFailedProducts = failedProducts.filter(url => !!url);
     if (validFailedProducts.length !== failedProducts.length) {
       debugLog(`[RETRY] 유효하지 않은 URL ${failedProducts.length - validFailedProducts.length}개를 필터링했습니다.`);
     }
 
-    // 유효한 URL로 원래 배열 업데이트 (참조 유지)
     failedProducts.length = 0;
     failedProducts.push(...validFailedProducts);
 
-    // 사용자 설정에 따른 최대 재시도 횟수 적용
     const maxRetry = RETRY_START + productDetailRetryCount - 1;
     
-    // 재시도 시작 상태 초기화 (UI-STATUS-001)
     updateRetryStatus('detail-retry', {
       stage: 'productDetail',
       currentAttempt: 1,
@@ -799,16 +936,13 @@ private cleanupResources(): void {
       itemIds: failedProducts
     });
     
-    // 재시도 시작 (RETRY_START는 첫 시도 이후의 첫 번째 재시도 회차)
     for (let attempt = RETRY_START; attempt <= maxRetry && failedProducts.length > 0; attempt++) {
-      // 현재 재시도 회차 상태 업데이트 (UI-STATUS-001)
       updateRetryStatus('detail-retry', {
         currentAttempt: attempt - RETRY_START + 1,
         remainingItems: failedProducts.length,
         itemIds: [...failedProducts]
       });
       
-      // 재시도 진행 상태 전송 - UI에 현재 재시도 정보 표시
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'detail-retry',
         status: 'running',
@@ -817,10 +951,8 @@ private cleanupResources(): void {
     
       const retryUrls = [...failedProducts];
 
-      // 기존 배열을 재할당하지 않고 길이를 0으로 설정하여 비움
       failedProducts.length = 0;
 
-      // URL로 제품 찾기
       const retryProducts = allProducts.filter(p => p.url && retryUrls.includes(p.url));
 
       debugLog(`[RETRY][${attempt}] 제품 상세 정보 재시도 중: ${retryProducts.length}개 제품 (${attempt - RETRY_START + 1}/${productDetailRetryCount})`);
@@ -837,10 +969,8 @@ private cleanupResources(): void {
             product, matterProducts, failedProducts, failedProductErrors, signal, attempt
           );
           
-          // 제품 처리 결과에 따라 상세 로깅 (UI-STATUS-001)
           if (result) {
             if (result.error) {
-              // 오류 정보 로깅
               logRetryError(
                 'productDetail', 
                 product.url,
@@ -848,11 +978,9 @@ private cleanupResources(): void {
                 attempt - RETRY_START + 1
               );
             } else {
-              // 성공 정보 로깅
               console.log(`[RETRY][${attempt - RETRY_START + 1}/${productDetailRetryCount}] 제품 ${product.url} 재시도 성공`);
             }
             
-            // 재시도 상태 업데이트 - 남은 항목 수 등
             updateRetryStatus('detail-retry', {
               remainingItems: failedProducts.length,
               itemIds: [...failedProducts]
@@ -868,14 +996,12 @@ private cleanupResources(): void {
       if (failedProducts.length === 0) {
         debugLog(`[RETRY] 모든 제품 상세 정보 재시도 성공`);
         
-        // 재시도 완료 상태 전송
         crawlerEvents.emit('crawlingTaskStatus', {
           taskId: 'detail-retry',
           status: 'success',
           message: `제품 상세 정보 재시도 완료: 모든 항목 성공`
         });
         
-        // 최종 성공 상태 업데이트 (UI-STATUS-001)
         updateRetryStatus('detail-retry', {
           remainingItems: 0,
           itemIds: [],
@@ -886,7 +1012,6 @@ private cleanupResources(): void {
       }
     }
 
-    // 재시도 결과 요약 로깅
     const retrySuccessCount = validFailedProducts.length - failedProducts.length;
     if (retrySuccessCount > 0) {
       debugLog(`[RETRY] 재시도를 통해 ${retrySuccessCount}개의 추가 제품 정보를 성공적으로 수집했습니다.`);
@@ -895,26 +1020,22 @@ private cleanupResources(): void {
     if (failedProducts.length > 0) {
       debugLog(`[RETRY] ${productDetailRetryCount}회 재시도 후에도 실패한 제품 URL 수: ${failedProducts.length}`);
       
-      // 최종 실패 상태 전송
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'detail-retry',
         status: 'error',
         message: `제품 상세 정보 재시도 완료: ${failedProducts.length}개 항목 실패`
       });
       
-      // 최종 실패 상태 업데이트 (UI-STATUS-001)
       updateRetryStatus('detail-retry', {
         remainingItems: failedProducts.length,
         itemIds: [...failedProducts]
       });
       
-      // 최종 실패 항목들 로깅
       failedProducts.forEach(url => {
         const errors = failedProductErrors[url] || ['Unknown error'];
         console.error(`[RETRY] 제품 ${url} 재시도 최종 실패: ${errors.join('; ')}`);
       });
     } else {
-      // 성공 상태 전송
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'detail-retry',
         status: 'success',
