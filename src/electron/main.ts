@@ -152,19 +152,34 @@ app.on('ready', async () => {
         
         // 안전한 매개변수 처리
         let mode: AppMode = 'development'; // 기본값
+        let config = null; // 설정 추가
         
         try {
-            if (args && typeof args === 'object' && 'mode' in args) {
-                mode = args.mode as AppMode;
+            if (args && typeof args === 'object') {
+                if ('mode' in args) {
+                    mode = args.mode as AppMode;
+                }
+                // 설정 데이터 추출
+                if ('config' in args && args.config) {
+                    config = args.config;
+                    // 설정 업데이트
+                    if (config.pageRangeLimit) {
+                        configManager.updateConfig({
+                            pageRangeLimit: config.pageRangeLimit
+                        });
+                    }
+                    console.log('[IPC] Using config from UI:', JSON.stringify(config));
+                }
             }
         } catch (err) {
             console.error('[IPC] Error parsing startCrawling args:', err);
         }
         
-        console.log(`[IPC] Start crawling requested in ${mode} mode.`);
+        console.log(`[IPC] Start crawling requested in ${mode} mode with pageLimit: ${config?.pageRangeLimit || 'default'}`);
         
         try {
-            const success = await startCrawling();
+            // 설정 전달하여 크롤링 시작
+            const success = await startCrawling(config);
             return { success };
         } catch (error) {
             console.error('[IPC] Error during crawling:', error);

@@ -116,7 +116,7 @@ export class ProductListCollector {
         currentItem: 0
       });
   
-      this.state.setStage('productList:fetching', '1단계: 제품 목록 수집 중');
+      this.state.setStage('productList:fetching', '1/2단계: 제품 목록 수집 중');
       debugLog(`Total pages to crawl: ${pageNumbers.length} (range: ${startPage}~${endPage}, total site pages: ${totalPages})`);
   
       const productsResults: Product[] = [];

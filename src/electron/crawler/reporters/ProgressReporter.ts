@@ -94,8 +94,8 @@ export class ProgressReporter {
    * 단계 이름을 사용자 친화적 형식으로 변환
    */
   public formatStage(stage: CrawlingStage): string {
-    if (stage.startsWith('productList')) return '1단계: 제품 목록 수집';
-    if (stage.startsWith('productDetail')) return '2단계: 제품 상세 정보 수집';
+    if (stage.startsWith('productList')) return '1/2단계: 제품 목록 수집';
+    if (stage.startsWith('productDetail')) return '2/2단계: 제품 상세 정보 수집';
     if (stage === 'completed') return '완료';
     if (stage === 'failed') return '실패';
     return '준비 중';

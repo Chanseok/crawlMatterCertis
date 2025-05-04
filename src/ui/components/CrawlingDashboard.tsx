@@ -47,13 +47,13 @@ export function CrawlingDashboard() {
     if (progress.currentStage === 1) {
       return (
         <span className="px-2 py-1 text-xs font-medium rounded-md bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
-          1단계: 제품 목록 수집
+          1/2단계: 제품 목록 수집
         </span>
       );
     } else if (progress.currentStage === 2) {
       return (
         <span className="px-2 py-1 text-xs font-medium rounded-md bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300">
-          2단계: 제품 상세 정보 수집
+          2/2단계: 제품 상세 정보 수집
         </span>
       );
     }

@@ -71,7 +71,7 @@ export class CrawlerEngine {
       const config = getConfig();
       const userPageLimit = config.pageRangeLimit;
 
-      // 1단계: 제품 목록 수집 시작 알림
+      // 1/2단계: 제품 목록 수집 시작 알림
       updateProductListProgress(0, 0, this.startTime);
       
       // 제품 목록 수집기 생성 (1단계)
@@ -149,7 +149,7 @@ export class CrawlerEngine {
         return false; // 함수 종료
       }
 
-      // 2단계: 제품 상세 정보 수집 시작 알림
+      // 2/2단계: 제품 상세 정보 수집 시작 알림
       const detailStartTime = Date.now();
       updateProductDetailProgress(0, products.length, detailStartTime);
       

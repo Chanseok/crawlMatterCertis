@@ -13,9 +13,15 @@ const crawler = new CrawlerEngine();
 
 /**
  * 크롤링 작업을 시작하는 함수
+ * @param userConfig UI에서 전달받은 사용자 설정 (옵션)
  * @returns 크롤링 작업 시작 성공 여부
  */
-export async function startCrawling(): Promise<boolean> {
+export async function startCrawling(userConfig?: Partial<CrawlerConfig> | null): Promise<boolean> {
+  if (userConfig) {
+    // UI에서 전달받은 설정이 있으면 크롤러 설정 업데이트
+    console.log('[Crawler] Applying user config:', JSON.stringify(userConfig));
+    updateConfig(userConfig);
+  }
   return crawler.startCrawling();
 }
 

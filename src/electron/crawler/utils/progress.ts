@@ -157,7 +157,7 @@ export function initializeCrawlingProgress(currentStep: string, currentStage: nu
 }
 
 /**
- * 1단계: 제품 목록 수집 상태 업데이트
+ * 1/2단계: 제품 목록 수집 상태 업데이트
  */
 export function updateProductListProgress(
     processedPages: number,
@@ -200,7 +200,7 @@ export function updateProductListProgress(
 }
 
 /**
- * 2단계: 제품 상세 정보 수집 상태 업데이트
+ * 2/2단계: 제품 상세 정보 수집 상태 업데이트
  */
 export function updateProductDetailProgress(
     processedItems: number,

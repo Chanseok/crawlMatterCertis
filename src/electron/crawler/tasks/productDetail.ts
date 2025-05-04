@@ -87,7 +87,7 @@ export class ProductDetailCollector {
     this.newItems = 0;
     this.updatedItems = 0;
 
-    this.state.setStage('productDetail:init', '2단계: 제품 상세 정보 수집 준비 중');
+    this.state.setStage('productDetail:init', '2/2단계: 제품 상세 정보 수집 준비 중');
 
     // 진행 상태 업데이트
     this.state.updateProgress({
@@ -104,7 +104,7 @@ export class ProductDetailCollector {
     // 제품 상세 정보 작업 상태 초기화
     initializeProductTaskStates(products);
 
-    this.state.setStage('productDetail:fetching', '2단계: 제품 상세 정보 수집 중');
+    this.state.setStage('productDetail:fetching', '2/2단계: 제품 상세 정보 수집 중');
     debugLog(`Starting phase 2: crawling product details for ${products.length} products`);
 
     // 전체 크롤링 시작 메시지 이벤트
@@ -792,7 +792,7 @@ private cleanupResources(): void {
       currentItem: 0,
       totalItems: totalItems,
       stage: 'productDetail:fetching',
-      message: `2단계: 제품 상세 정보 수집 중 (0/${totalItems})`
+      message: `2/2단계: 제품 상세 정보 수집 중 (0/${totalItems})`
     });
     
     crawlerEvents.emit('crawlingProgress', {
@@ -882,7 +882,7 @@ private cleanupResources(): void {
     this.state.updateProgress({
       currentItem: processedItems,
       totalItems: totalItems,
-      message: `2단계: 제품 상세 정보 수집 완료 (${processedItems}/${totalItems})`,
+      message: `2/2단계: 제품 상세 정보 수집 완료 (${processedItems}/${totalItems})`,
       percentage: 100
     });
     this.state.updateParallelTasks(0, config.detailConcurrency);
