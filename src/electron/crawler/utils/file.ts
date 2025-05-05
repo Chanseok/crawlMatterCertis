@@ -29,9 +29,70 @@ function ensureOutputDir(outputDir: string): void {
         fs.mkdirSync(outputDir, { recursive: true });
     }
 }
+/**
+ * 객체의 필드를 지정된 순서로 재구성
+ */
+function reorderFields<T extends object>(object: T, fieldOrder: string[]): Record<string, any> {
+    const orderedObject: Record<string, any> = {};
+
+    // 지정된 순서대로 필드 복사
+    for (const field of fieldOrder) {
+        if (field in object) {
+            orderedObject[field] = (object as any)[field];
+        }
+    }
+
+    // 순서가 지정되지 않은 남은 필드들도 포함
+    for (const key in object) {
+        if (!fieldOrder.includes(key)) {
+            orderedObject[key] = (object as any)[key];
+        }
+    }
+
+    return orderedObject;
+}
+
+// Product 타입의 필드 순서 정의
+const PRODUCT_FIELD_ORDER = [
+    'url',
+    'manufacturer',
+    'model',
+    'certificateId',
+    'pageId',
+    'indexInPage',
+    'sitePageNumber',
+    'siteIndexInPage'
+];
+
+// MatterProduct 타입의 필드 순서 정의
+const MATTER_PRODUCT_FIELD_ORDER = [
+    'manufacturer',
+    'model',
+    'deviceType',
+    'certificateId',
+    'certificationId',
+    'certificationDate',
+    'softwareVersion',
+    'hardwareVersion',
+    'vid',
+    'pid',
+    'familySku',
+    'familyVariantSku',
+    'firmwareVersion',
+    'familyId',
+    'tisTrpTested',
+    'specificationVersion',
+    'transportInterface',
+    'primaryDeviceTypeId',
+    'applicationCategories',
+    'url',
+    'pageId',
+    'indexInPage',
+    'id'
+];
 
 /**
- * 크롤링 결과를 JSON 파일로 저장
+ * 크롤링 결과를 JSON 파일로 저장 (필드 순서 유지)
  */
 export function saveProductsToFile(products: Product[]): string {
     try {
@@ -40,8 +101,24 @@ export function saveProductsToFile(products: Product[]): string {
 
         ensureOutputDir(outputDir);
 
+        // 필드 순서가 지정된 새 객체 배열 생성
+        const orderedProducts = products.
+            sort((a, b) => {
+                const aPageId = a.pageId ?? 0;
+                const bPageId = b.pageId ?? 0;
+                if (aPageId !== bPageId) {
+                    return aPageId - bPageId;
+                }
+                const aIndexInPage = a.indexInPage ?? 0;
+                const bIndexInPage = b.indexInPage ?? 0;
+                return aIndexInPage - bIndexInPage;
+            }).
+            map(product =>
+                reorderFields(product, PRODUCT_FIELD_ORDER)
+            );
+
         const filePath = path.join(outputDir, filename);
-        fs.writeFileSync(filePath, JSON.stringify(products, null, 2), 'utf-8');
+        fs.writeFileSync(filePath, JSON.stringify(orderedProducts, null, 2), 'utf-8');
         console.log(`[Crawler] Products saved to ${filePath}`);
 
         const uniquePageIds = [...new Set(products.map(p => p.pageId).filter((id): id is number => id !== undefined))];
@@ -58,7 +135,7 @@ export function saveProductsToFile(products: Product[]): string {
 }
 
 /**
- * Matter 제품 상세 정보를 JSON 파일로 저장
+ * Matter 제품 상세 정보를 JSON 파일로 저장 (필드 순서 유지)
  */
 export function saveMatterProductsToFile(products: MatterProduct[]): string {
     try {
@@ -67,8 +144,13 @@ export function saveMatterProductsToFile(products: MatterProduct[]): string {
 
         ensureOutputDir(outputDir);
 
+        // 필드 순서가 지정된 새 객체 배열 생성
+        const orderedProducts = products.map(product =>
+            reorderFields(product, MATTER_PRODUCT_FIELD_ORDER)
+        );
+
         const filePath = path.join(outputDir, filename);
-        fs.writeFileSync(filePath, JSON.stringify(products, null, 2), 'utf-8');
+        fs.writeFileSync(filePath, JSON.stringify(orderedProducts, null, 2), 'utf-8');
         console.log(`[Crawler] Matter products saved to ${filePath}`);
         return filePath;
     } catch (err) {

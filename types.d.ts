@@ -34,7 +34,7 @@ export type MatterProduct = {
     transportInterface?: string;
     primaryDeviceTypeId?: string;
     applicationCategories?: string[];
-    isNewProduct?: boolean; // 신규 제품인지 여부를 나타내는 플래그 추가
+    // isNewProduct 필드 삭제됨
 };
 
 export type Product = {

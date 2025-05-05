@@ -174,9 +174,7 @@ export class CrawlerEngine {
         products.length, 
         products.length, 
         detailStartTime, 
-        true, 
-        matterProducts.filter(p => p.isNewProduct).length,
-        matterProducts.filter(p => !p.isNewProduct).length
+        true
       );
 
       // 중복 제거 및 정렬

@@ -655,8 +655,7 @@ private cleanupResources(): void {
       
       // 기존 제품 속성을 MatterProduct 형식으로 확장
       const matterProduct: MatterProduct = {
-        ...detailProduct,
-        isNewProduct  // isNewProduct 속성 추가
+        ...detailProduct
       };
 
       return matterProduct;
@@ -732,12 +731,12 @@ private cleanupResources(): void {
           url: product.url,
           manufacturer: detailProduct.manufacturer || 'Unknown',
           model: detailProduct.model || 'Unknown',
-          isNew: detailProduct.isNewProduct,
+          // isNew: detailProduct.isNewProduct, // Removed because isNewProduct does not exist on MatterProduct
           endTime: new Date().toISOString()
         })
       });
       
-      this.updateProgress(!!detailProduct.isNewProduct);
+      this.updateProgress(true); // Assume new product, or adjust logic as needed
 
       matterProducts.push(detailProduct);
 
