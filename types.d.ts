@@ -126,6 +126,9 @@ export interface CrawlerConfig {
     customUserAgent?: string;
     productsPerPage: number;
     
+    // 엑셀 내보내기 관련 설정
+    lastExcelExportPath?: string;  // 마지막으로 내보낸 엑셀 파일 경로
+    
     // 크롤러 코어 관련 설정 (선택적으로 만들어 호환성 유지)
     baseUrl?: string;
     matterFilterUrl?: string;

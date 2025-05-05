@@ -6,7 +6,8 @@ import {
   deleteRecordsByPageRange,
   searchProducts,
   exportToExcel,
-  configStore
+  configStore,
+  getDatabaseSummary
 } from '../stores';
 import type { MatterProduct } from '../../../types';
 import { format } from 'date-fns';
@@ -59,8 +60,9 @@ export const LocalDBTab: React.FC = () => {
   // 페이지 변경 시 제품 데이터 필터링
   useEffect(() => {
     if (products && products.length > 0) {
-      // 내림차순으로 정렬 후 현재 페이지의 제품들만 필터링
+      // 전체 제품 데이터를 내림차순으로 정렬
       const sortedProducts = [...products].sort((a, b) => {
+        // pageId와 indexInPage 조합으로 No. 값 계산
         const aIndex = (a.pageId || 0) * 100 + (a.indexInPage || 0);
         const bIndex = (b.pageId || 0) * 100 + (b.indexInPage || 0);
         return bIndex - aIndex; // 내림차순 정렬
@@ -71,7 +73,15 @@ export const LocalDBTab: React.FC = () => {
       const endIndex = startIndex + itemsPerPage;
       const pagedProducts = sortedProducts.slice(startIndex, endIndex);
       
-      setDisplayProducts(pagedProducts);
+      // 페이지 내에서 제품을 No. 기준 내림차순으로 다시 정렬
+      // (이미 전체 정렬되었으므로 이 단계는 중복일 수 있지만, 페이지 내 정렬 보장을 위해 추가)
+      const sortedPagedProducts = [...pagedProducts].sort((a, b) => {
+        const aNo = dbSummary.totalProducts - ((a.pageId || 0) * (config.productsPerPage || 12) + (a.indexInPage || 0));
+        const bNo = dbSummary.totalProducts - ((b.pageId || 0) * (config.productsPerPage || 12) + (b.indexInPage || 0));
+        return bNo - aNo; // No. 값 기준 내림차순 정렬
+      });
+      
+      setDisplayProducts(sortedPagedProducts);
       setTotalPages(Math.ceil(sortedProducts.length / itemsPerPage));
       
       // 최대 페이지 ID 찾기
@@ -92,14 +102,19 @@ export const LocalDBTab: React.FC = () => {
       setTotalPages(1);
       setTotalProductPages(0);
     }
-  }, [products, currentPage, itemsPerPage, config.productsPerPage]);
+  }, [products, currentPage, itemsPerPage, config.productsPerPage, dbSummary.totalProducts]);
 
   // 제품 데이터 로드 함수
   const loadProducts = async () => {
     try {
-      // 백엔드에서 이미 내림차순 정렬된 데이터를 가져옴
-      // 더 많은 데이터를 로드하여 모든 페이지를 계산할 수 있도록 함
-      await searchProducts('', 1, 5000); // 최대한 많은 데이터 로드 (백엔드에서 이미 내림차순 정렬됨)
+      console.log('제품 데이터 로드 시작');
+      // 백엔드에서 데이터를 가져옴 (내림차순 정렬 요청)
+      await searchProducts('', 1, 5000); // 최대한 많은 데이터 로드
+      
+      // 데이터베이스 요약 정보도 함께 갱신
+      await getDatabaseSummary();
+      
+      console.log('제품 데이터와 데이터베이스 요약 정보 갱신 완료');
     } catch (error) {
       console.error('제품 데이터 로딩 중 오류:', error);
     }
@@ -120,31 +135,74 @@ export const LocalDBTab: React.FC = () => {
     setDeleteModalVisible(false);
   };
   
-  // 시작 페이지 ID 변경 핸들러
-  const handleStartPageIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = Number(e.target.value);
-    // 시작 페이지 ID는 종료 페이지 ID보다 크거나 같고 최대 페이지 ID보다 작거나 같아야 함
-    if (value >= deleteRange.endPageId && value <= maxPageId) {
-      setDeleteRange(prev => ({ ...prev, startPageId: value }));
-    }
-  };
-  
-  // 종료 페이지 ID 변경 핸들러
-  const handleEndPageIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = Number(e.target.value);
-    // 종료 페이지 ID는 시작 페이지 ID보다 작거나 같아야 함
-    if (value <= deleteRange.startPageId) {
-      setDeleteRange(prev => ({ ...prev, endPageId: value }));
-    }
-  };
-  
   // 레코드 삭제 실행
   const handleDelete = async () => {
     const { startPageId, endPageId } = deleteRange;
-    await deleteRecordsByPageRange(startPageId, endPageId);
-    closeDeleteModal();
-    // 현재 페이지가 전체 페이지 수를 초과하는 경우 1페이지로 리셋
-    setCurrentPage(1);
+    try {
+      console.log(`레코드 삭제 요청: 페이지 범위 ${startPageId+1}~${endPageId+1}`);
+      
+      // 레코드 삭제 요청
+      await deleteRecordsByPageRange(startPageId, endPageId);
+      
+      // 모달 닫기
+      closeDeleteModal();
+      
+      // 제품 목록과 데이터베이스 요약 정보를 다시 로드하여 최신 상태 반영
+      await loadProducts();
+      
+      // 데이터가 로드된 후에 전체 제품 데이터 정렬 및 페이지 계산
+      const updatedProducts = productsStore.get();
+      
+      if (updatedProducts && updatedProducts.length > 0) {
+        // 내림차순으로 정렬
+        const sortedProducts = [...updatedProducts].sort((a, b) => {
+          const aIndex = (a.pageId || 0) * 100 + (a.indexInPage || 0);
+          const bIndex = (b.pageId || 0) * 100 + (b.indexInPage || 0);
+          return bIndex - aIndex; // 내림차순 정렬
+        });
+        
+        // 총 페이지 수 재계산
+        const calculatedTotalPages = Math.ceil(sortedProducts.length / itemsPerPage);
+        
+        console.log(`레코드 삭제 후 데이터 갱신 - 총 제품: ${updatedProducts.length}, 총 페이지: ${calculatedTotalPages}`);
+        
+        // 페이지당 제품 수를 기준으로 총 제품 페이지 수 재계산
+        const productsPerPage = config.productsPerPage || 12;
+        setTotalProductPages(Math.ceil(sortedProducts.length / productsPerPage));
+        
+        // 최신 데이터를 보여주기 위해 첫 페이지(가장 높은 페이지 번호)로 이동
+        // 완전히 새로운 상태로 갱신하기 위해 일관된 순서로 상태 업데이트
+        setTotalPages(calculatedTotalPages);
+        setCurrentPage(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
+        
+        // 최대 pageId 업데이트
+        if (sortedProducts.length > 0) {
+          const maxId = Math.max(...sortedProducts.map(p => p.pageId || 0));
+          setMaxPageId(maxId);
+          setDeleteRange({
+            startPageId: maxId,
+            endPageId: maxId
+          });
+        }
+      } else {
+        // 데이터가 없는 경우 초기값으로 설정
+        console.log('레코드 삭제 후 데이터가 없습니다.');
+        setDisplayProducts([]);
+        setCurrentPage(1);
+        setTotalPages(1);
+        setMaxPageId(0);
+        setTotalProductPages(0);
+        setDeleteRange({
+          startPageId: 0,
+          endPageId: 0
+        });
+      }
+      
+    } catch (error) {
+      console.error('레코드 삭제 중 오류:', error);
+      // 에러가 발생해도 모달은 닫기
+      closeDeleteModal();
+    }
   };
   
   // 엑셀 내보내기 핸들러
@@ -429,28 +487,38 @@ export const LocalDBTab: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  시작 페이지 ID (최대값)
+                  시작 페이지 (최신)
                 </label>
                 <input
                   type="number"
-                  value={deleteRange.startPageId}
-                  onChange={handleStartPageIdChange}
-                  min={deleteRange.endPageId}
-                  max={maxPageId}
+                  value={deleteRange.startPageId + 1}
+                  onChange={(e) => {
+                    const value = Number(e.target.value) - 1;
+                    if (value >= deleteRange.endPageId && value <= maxPageId) {
+                      setDeleteRange(prev => ({ ...prev, startPageId: value }));
+                    }
+                  }}
+                  min={deleteRange.endPageId + 1}
+                  max={maxPageId + 1}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                 />
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  종료 페이지 ID (최소값)
+                  종료 페이지 (오래된)
                 </label>
                 <input
                   type="number"
-                  value={deleteRange.endPageId}
-                  onChange={handleEndPageIdChange}
-                  min={0}
-                  max={deleteRange.startPageId}
+                  value={deleteRange.endPageId + 1}
+                  onChange={(e) => {
+                    const value = Number(e.target.value) - 1;
+                    if (value <= deleteRange.startPageId) {
+                      setDeleteRange(prev => ({ ...prev, endPageId: value }));
+                    }
+                  }}
+                  min={1}
+                  max={deleteRange.startPageId + 1}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                 />
               </div>

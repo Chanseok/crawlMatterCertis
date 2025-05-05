@@ -538,3 +538,23 @@ export async function checkCrawlingStatus(): Promise<void> {
     addLog(`상태 체크 중 오류: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
 }
+
+// 데이터베이스 요약 정보 가져오기 함수 추가
+export async function getDatabaseSummary(): Promise<void> {
+  try {
+    addLog('데이터베이스 요약 정보를 가져오는 중...', 'info');
+    
+    const dbSummary = await api.invokeMethod('getDatabaseSummary');
+    
+    if (dbSummary) {
+      databaseSummaryStore.set(dbSummary);
+      console.log('Database summary updated:', dbSummary);
+      return dbSummary;
+    } else {
+      addLog('데이터베이스 요약 정보를 가져오는데 실패했습니다.', 'error');
+    }
+  } catch (error) {
+    console.error('Error getting database summary:', error);
+    addLog(`데이터베이스 요약 정보 조회 중 오류: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}

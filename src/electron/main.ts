@@ -1,5 +1,8 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { isDev } from './util.js';
+import path from 'path';
+import fs from 'fs';
+import XLSX from 'xlsx';
 import { getStaticData, pollResources } from './resourceManager.js';
 import { getPreloadPath, getUIPath } from './pathResolver.js';
 import {
@@ -206,8 +209,164 @@ app.on('ready', async () => {
     ipcMain.handle(IPC_CHANNELS.EXPORT_TO_EXCEL, async (_event, args) => {
         console.log('[IPC] exportToExcel called with args:', args);
         try {
-            const path = args?.path || '/path/to/exported/file.xlsx';
-            return { success: true, path };
+            // 다운로드 폴더 기본 경로 가져오기
+            const userDownloadFolder = app.getPath('downloads');
+            const currentDate = new Date();
+            const dateStr = currentDate.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const defaultFileName = `matter-products_${dateStr}.xlsx`;
+            const defaultPath = path.join(userDownloadFolder, defaultFileName);
+            
+            // 설정에 저장된 경로 사용(있는 경우)
+            const config = configManager.getConfig();
+            let initialPath = defaultPath;
+            
+            if (config.lastExcelExportPath) {
+                const lastDir = path.dirname(config.lastExcelExportPath);
+                if (fs.existsSync(lastDir)) {
+                    initialPath = path.join(lastDir, defaultFileName);
+                }
+            }
+            
+            // 저장 대화상자 표시
+            const { canceled, filePath } = await dialog.showSaveDialog({
+                title: 'Excel로 내보내기',
+                defaultPath: initialPath,
+                filters: [{ name: 'Excel 파일', extensions: ['xlsx'] }]
+            });
+
+            if (canceled) {
+                return { success: false, message: '사용자가 내보내기를 취소했습니다.' };
+            }
+
+            if (!filePath) {
+                throw new Error('유효하지 않은 파일 경로입니다.');
+            }
+            
+            // 이 경로를 설정에 저장하여 다음에 사용
+            configManager.updateConfig({ lastExcelExportPath: filePath });
+
+            // 데이터베이스에서 모든 제품 가져오기
+            const { products } = await getProductsFromDb(1, 10000); // 대량의 제품을 가져오기 위해 높은 limit 설정
+            
+            if (!products || products.length === 0) {
+                throw new Error('내보낼 제품이 없습니다.');
+            }
+
+            console.log(`총 ${products.length}개의 제품 데이터 내보내기를 시작합니다.`);
+
+            // 모든 제품 데이터의 키 결합 (일부 제품에만 있는 필드도 포함하기 위해)
+            const allKeys = new Set<string>();
+            products.forEach(product => {
+                Object.keys(product).forEach(key => allKeys.add(key));
+            });
+
+            // 정렬된 헤더 배열 생성 (중요 필드가 앞에 오도록)
+            const priorityFields = ['manufacturer', 'model', 'deviceType', 'certificateId', 'certificationDate', 'url', 'pageId', 'vid', 'pid'];
+            const headers = Array.from(allKeys).sort((a, b) => {
+                const aIndex = priorityFields.indexOf(a);
+                const bIndex = priorityFields.indexOf(b);
+                
+                // 둘 다 우선 필드에 있으면 우선 필드 내 순서대로 정렬
+                if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+                // a만 우선 필드에 있으면 a가 먼저
+                if (aIndex !== -1) return -1;
+                // b만 우선 필드에 있으면 b가 먼저
+                if (bIndex !== -1) return 1;
+                // 둘 다 우선 필드가 아니면 알파벳 순서대로
+                return a.localeCompare(b);
+            });
+            
+            // 엑셀용 배열 형식으로 제품 데이터 변환
+            const worksheetData: any[][] = [];
+            
+            // 헤더 행 추가 (한글 번역 사용)
+            const headerMap: Record<string, string> = {
+                'manufacturer': '제조사',
+                'model': '모델명',
+                'deviceType': '장치 유형',
+                'certificateId': '인증 ID',
+                'certificationDate': '인증 날짜',
+                'url': 'URL',
+                'pageId': '페이지',
+                'indexInPage': '페이지 내 인덱스',
+                'vid': 'VID',
+                'pid': 'PID',
+                'familySku': '제품군 SKU',
+                'familyVariantSku': '제품 변형 SKU',
+                'firmwareVersion': '펌웨어 버전',
+                'familyId': '제품군 ID',
+                'tisTrpTested': 'TIS/TRP 테스트',
+                'specificationVersion': '규격 버전',
+                'transportInterface': '전송 인터페이스',
+                'primaryDeviceTypeId': '기본 장치 유형 ID',
+                'softwareVersion': '소프트웨어 버전',
+                'hardwareVersion': '하드웨어 버전',
+                'isNewProduct': '신규 제품 여부'
+            };
+            
+            worksheetData.push(headers.map(header => headerMap[header] || header));
+            
+            // 데이터 행 추가 (타입 안전성을 고려한 방식)
+            products.forEach(product => {
+                const row: any[] = [];
+                
+                headers.forEach(header => {
+                    let value: any = '';
+                    
+                    // 타입 안전하게 처리
+                    if (header in product) {
+                        value = (product as any)[header];
+                        
+                        // 특수 처리
+                        if (header === 'certificationDate' && value) {
+                            value = new Date(value).toISOString().split('T')[0];
+                        } else if (header === 'pageId' && typeof value === 'number') {
+                            value = value + 1; // UI와 일관되게 페이지 번호 표시
+                        } else if (header === 'isNewProduct' && typeof value === 'boolean') {
+                            value = value ? '예' : '아니오';
+                        } else if (header === 'applicationCategories' && Array.isArray(value)) {
+                            value = value.join(', ');
+                        }
+                    }
+                    
+                    row.push(value);
+                });
+                
+                worksheetData.push(row);
+            });
+
+            // xlsx 패키지로 엑셀 파일 생성
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+            
+            // 헤더에 볼드체 스타일 적용
+            const headerRange = XLSX.utils.decode_range(worksheet['!ref'] || "A1");
+            headerRange.e.r = 0; // 첫 행만
+            for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
+                const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
+                if (worksheet[cellRef]) {
+                    worksheet[cellRef].s = { font: { bold: true } };
+                }
+            }
+            
+            // 열 너비 자동 조정 (컨텐츠에 따라 조정)
+            const wscols = headers.map(header => {
+                const headerLength = (headerMap[header] || header).length;
+                // 헤더 길이를 기준으로 최소 너비 설정 (최소 8, 최대 30)
+                return { wch: Math.min(Math.max(headerLength * 1.5, 8), 30) };
+            });
+            worksheet['!cols'] = wscols;
+            
+            XLSX.utils.book_append_sheet(workbook, worksheet, '제품 데이터');
+            
+            try {
+                XLSX.writeFile(workbook, filePath);
+                console.log(`Excel 파일이 성공적으로 내보내졌습니다: ${filePath}`);
+                return { success: true, path: filePath };
+            } catch (writeError) {
+                console.error('[IPC] Error writing Excel file:', writeError);
+                return { success: false, error: `파일 저장 중 오류 발생: ${String(writeError)}` };
+            }
         } catch (error) {
             console.error('[IPC] Error exporting to Excel:', error);
             return { success: false, error: String(error) };
