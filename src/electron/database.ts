@@ -228,6 +228,87 @@ export async function markLastUpdatedInDb(count: number): Promise<void> {
     await writeSummary(summaryData);
 }
 
+/**
+ * 페이지 범위에 해당하는 제품 레코드 삭제
+ * @param startPageId 시작 페이지 ID (포함)
+ * @param endPageId 종료 페이지 ID (포함)
+ * @returns 삭제된 레코드 수
+ */
+export async function deleteProductsByPageRange(startPageId: number, endPageId: number): Promise<number> {
+    return new Promise((resolve, reject) => {
+        console.log(`시작 페이지: ${startPageId}, 종료 페이지: ${endPageId}`);
+
+        // 트랜잭션 시작
+        db.serialize(() => {
+            db.run('BEGIN TRANSACTION', (err) => {
+                if (err) {
+                    console.error('트랜잭션 시작 오류:', err);
+                    return reject(err);
+                }
+
+                // products 테이블에서 삭제
+                db.run(
+                    `DELETE FROM products WHERE pageId >= ? AND pageId <= ?`, 
+                    [endPageId, startPageId], 
+                    function(err) {
+                        if (err) {
+                            db.run('ROLLBACK', () => reject(err));
+                            return;
+                        }
+                        
+                        const productsDeleted = this.changes;
+                        console.log(`products 테이블에서 ${productsDeleted}개 레코드 삭제됨`);
+                        
+                        // product_details 테이블에서도 삭제
+                        db.run(
+                            `DELETE FROM product_details WHERE pageId >= ? AND pageId <= ?`, 
+                            [endPageId, startPageId], 
+                            function(err) {
+                                if (err) {
+                                    db.run('ROLLBACK', () => reject(err));
+                                    return;
+                                }
+
+                                const detailsDeleted = this.changes;
+                                console.log(`product_details 테이블에서 ${detailsDeleted}개 레코드 삭제됨`);
+                                
+                                // 트랜잭션 커밋
+                                db.run('COMMIT', (err) => {
+                                    if (err) {
+                                        db.run('ROLLBACK', () => reject(err));
+                                        return;
+                                    }
+                                    
+                                    // 삭제된 총 레코드 수 반환
+                                    resolve(productsDeleted);
+                                });
+                            }
+                        );
+                    }
+                );
+            });
+        });
+    });
+}
+
+/**
+ * 데이터베이스에서 가장 큰 pageId 값을 조회
+ * @returns 가장 큰 pageId 값
+ */
+export async function getMaxPageIdFromDb(): Promise<number> {
+    return new Promise((resolve, reject) => {
+        db.get(`SELECT MAX(pageId) as maxPageId FROM products`, (err, row: { maxPageId: number | null }) => {
+            if (err) {
+                return reject(err);
+            }
+            // maxPageId가 null인 경우(테이블이 비어있는 경우) 0 반환
+            const maxPageId = row.maxPageId !== null ? row.maxPageId : 0;
+            console.log(`현재 최대 pageId: ${maxPageId}`);
+            resolve(maxPageId);
+        });
+    });
+}
+
 // Close the database connection when the app quits
 app.on('quit', () => {
     db.close((err) => {

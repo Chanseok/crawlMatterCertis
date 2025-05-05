@@ -182,6 +182,8 @@ export type MethodParamsMapping = {
     'crawler:get-config': void;
     'crawler:update-config': Partial<CrawlerConfig>;
     'crawler:reset-config': void;
+    // 페이지 범위로 레코드 삭제 기능 추가
+    'deleteRecordsByPageRange': { startPageId: number; endPageId: number };
 };
 
 // 메서드 반환값 맵핑
@@ -189,7 +191,7 @@ export type MethodReturnMapping = {
     'startCrawling': { success: boolean };
     'stopCrawling': { success: boolean };
     'exportToExcel': { success: boolean; path?: string };
-    'getProducts': { products: MatterProduct[]; total: number };
+    'getProducts': { products: MatterProduct[]; total: number; maxPageId?: number };
     'getProductById': MatterProduct | null;
     'searchProducts': { products: MatterProduct[]; total: number };
     'getDatabaseSummary': DatabaseSummary;
@@ -200,6 +202,8 @@ export type MethodReturnMapping = {
     'crawler:get-config': { success: boolean; config?: CrawlerConfig; error?: string };
     'crawler:update-config': { success: boolean; config?: CrawlerConfig; error?: string };
     'crawler:reset-config': { success: boolean; config?: CrawlerConfig; error?: string };
+    // 페이지 범위로 레코드 삭제 기능 반환 타입 추가
+    'deleteRecordsByPageRange': { success: boolean; deletedCount: number; maxPageId?: number; error?: string };
 };
 
 export type UnsubscribeFunction = () => void;
@@ -248,6 +252,9 @@ export interface IElectronAPI extends IPlatformAPI {
     getConfig: () => Promise<MethodReturnMapping['crawler:get-config']>;
     updateConfig: (config: MethodParamsMapping['crawler:update-config']) => Promise<MethodReturnMapping['crawler:update-config']>;
     resetConfig: () => Promise<MethodReturnMapping['crawler:reset-config']>;
+    
+    // 페이지 범위로 레코드 삭제 메서드 추가
+    deleteRecordsByPageRange: (params: MethodParamsMapping['deleteRecordsByPageRange']) => Promise<MethodReturnMapping['deleteRecordsByPageRange']>;
 }
 
 // Window 인터페이스 확장은 글로벌로 유지

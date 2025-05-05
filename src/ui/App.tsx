@@ -4,6 +4,7 @@ import './App.css'
 import { ConcurrentTasksVisualizer } from './Charts';
 import { CrawlingSettings } from './components/CrawlingSettings';
 import { CrawlingDashboard } from './components/CrawlingDashboard';
+import { LocalDBTab } from './components/LocalDBTab';
 import {
   appModeStore,
   crawlingStatusStore,
@@ -448,71 +449,7 @@ function App() {
             
             {/* 로컬DB 탭 */}
             {activeTab === 'localDB' && (
-              <>
-                <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">로컬 데이터베이스(수정 필요)</h2>
-                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="text-center">
-                      <div className="text-gray-600 dark:text-gray-400 mb-2">현재 수집된 제품 수</div>
-                      <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">{products?.length?.toLocaleString() || '0'}</div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className="text-gray-600 dark:text-gray-400 mb-2">마지막 업데이트</div>
-                      <div className="text-lg text-gray-800 dark:text-gray-200">
-                        {statusSummary?.dbLastUpdated 
-                          ? format(new Date(statusSummary.dbLastUpdated), 'yyyy-MM-dd HH:mm:ss') 
-                          : '정보 없음'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {statusSummary && (
-                    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">데이터베이스 통계</div>
-                          <div className="space-y-2">
-                            <div className="flex justify-between">
-                              <span className="text-gray-600 dark:text-gray-400">총 제조사 수:</span>
-                              <span className="font-medium text-gray-800 dark:text-gray-200">
-                                {new Set(products?.map(p => p.manufacturer) || []).size.toLocaleString()}개
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600 dark:text-gray-400">총 기기 유형:</span>
-                              <span className="font-medium text-gray-800 dark:text-gray-200">
-                                {new Set(products?.map(p => p.deviceType) || []).size.toLocaleString()}개
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">사이트 비교</div>
-                          <div className="space-y-2">
-                            <div className="flex justify-between">
-                              <span className="text-gray-600 dark:text-gray-400">사이트 제품 수:</span>
-                              <span className="font-medium text-gray-800 dark:text-gray-200">
-                                {statusSummary?.siteProductCount?.toLocaleString() || '0'}개
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600 dark:text-gray-400">수집률:</span>
-                              <span className={`font-medium ${statusSummary?.siteProductCount > 0 ? 
-                                (products?.length / statusSummary.siteProductCount >= 0.95 ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400') : 
-                                'text-gray-800 dark:text-gray-200'}`}>
-                                {statusSummary?.siteProductCount > 0 ? 
-                                  `${Math.round((products?.length / statusSummary.siteProductCount) * 100)}%` : 
-                                  '정보 없음'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
+              <LocalDBTab />
             )}
           </div>
           
@@ -536,7 +473,7 @@ function App() {
 
         {/* 오른쪽 메인 콘텐츠 (데이터 표시) */}
         <div className="lg:col-span-2">
-          {activeTab === 'localDB' && (
+          {activeTab !== 'localDB' && (
             <ExpandableSection
               title="수집된 제품 정보"
               isExpanded={productsExpanded}
@@ -613,8 +550,6 @@ function App() {
               </div>
             </ExpandableSection>
           )}
-          
-
         </div>
       </main>
 

@@ -8,7 +8,9 @@ import {
     getProductByIdFromDb,
     searchProductsInDb,
     getDatabaseSummaryFromDb,
-    markLastUpdatedInDb
+    markLastUpdatedInDb,
+    deleteProductsByPageRange,
+    getMaxPageIdFromDb
 } from './database.js';
 import { startCrawling, stopCrawling, checkCrawlingStatus } from './crawler/index.js';
 import { crawlerEvents } from './crawler/utils/progress.js';
@@ -45,7 +47,10 @@ const IPC_CHANNELS = {
     // 설정 관련 채널 추가
     GET_CONFIG: 'crawler:get-config',
     UPDATE_CONFIG: 'crawler:update-config',
-    RESET_CONFIG: 'crawler:reset-config'
+    RESET_CONFIG: 'crawler:reset-config',
+    
+    // 레코드 삭제 채널 추가
+    DELETE_RECORDS_BY_PAGE_RANGE: 'deleteRecordsByPageRange'
 };
 
 app.on('ready', async () => {
@@ -251,6 +256,41 @@ app.on('ready', async () => {
         } catch (error) {
             console.error('[IPC] Error resetting config:', error);
             return { success: false, error: String(error) };
+        }
+    });
+    
+    // 페이지 범위로 레코드 삭제 핸들러 추가
+    ipcMain.handle(IPC_CHANNELS.DELETE_RECORDS_BY_PAGE_RANGE, async (_event, args) => {
+        console.log('[IPC] deleteRecordsByPageRange called with args:', args);
+        try {
+            const { startPageId, endPageId } = args || {};
+            
+            if (typeof startPageId !== 'number' || typeof endPageId !== 'number') {
+                throw new Error('시작 및 종료 페이지 ID가 숫자로 제공되어야 합니다.');
+            }
+            
+            if (startPageId < endPageId) {
+                throw new Error('시작 페이지 ID는 종료 페이지 ID보다 크거나 같아야 합니다.');
+            }
+            
+            // 데이터베이스에서 페이지 범위로 레코드 삭제 함수 호출
+            const deletedCount = await deleteProductsByPageRange(startPageId, endPageId);
+            
+            // 삭제 후 최대 페이지 ID 조회
+            const maxPageIdResult = await getMaxPageIdFromDb();
+            
+            return {
+                success: true,
+                deletedCount,
+                maxPageId: maxPageIdResult
+            };
+        } catch (error) {
+            console.error('[IPC] Error in deleteRecordsByPageRange:', error);
+            return {
+                success: false,
+                deletedCount: 0,
+                error: String(error)
+            };
         }
     });
 });

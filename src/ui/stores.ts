@@ -478,6 +478,27 @@ export function toggleAppMode(): void {
   addLog(`앱 모드가 ${newMode === 'development' ? '개발' : '실사용'} 모드로 변경되었습니다.`, 'info');
 }
 
+// 페이지 범위로 레코드 삭제 함수 추가
+export async function deleteRecordsByPageRange(startPageId: number, endPageId: number): Promise<void> {
+  try {
+    addLog(`레코드 삭제를 시작합니다. 페이지 범위: ${startPageId}~${endPageId}`, 'info');
+    
+    // API를 통해 레코드 삭제 실행
+    const { success, deletedCount, error } = await api.invokeMethod('deleteRecordsByPageRange', { startPageId, endPageId });
+    
+    if (success) {
+      addLog(`${deletedCount}개의 레코드가 성공적으로 삭제되었습니다.`, 'success');
+      
+      // 레코드 삭제 후 제품 목록 다시 로드
+      await searchProducts();
+    } else {
+      addLog(`레코드 삭제 실패: ${error}`, 'error');
+    }
+  } catch (error) {
+    addLog(`레코드 삭제 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
 // 크롤링 상태 체크 함수
 export async function checkCrawlingStatus(): Promise<void> {
   try {

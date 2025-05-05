@@ -78,7 +78,10 @@ const electronAPI: IElectronAPI = {
     // 설정 관련 API 추가
     getConfig: () => ipcRenderer.invoke('crawler:get-config'),
     updateConfig: (config: any) => ipcRenderer.invoke('crawler:update-config', config),
-    resetConfig: () => ipcRenderer.invoke('crawler:reset-config')
+    resetConfig: () => ipcRenderer.invoke('crawler:reset-config'),
+    
+    // 레코드 삭제 API 추가
+    deleteRecordsByPageRange: createMethodHandler('deleteRecordsByPageRange')
 };
 
 // contextBridge를 통해 안전하게 API 노출
