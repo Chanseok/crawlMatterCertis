@@ -60,12 +60,14 @@ export const LocalDBTab: React.FC = () => {
   // 페이지 변경 시 제품 데이터 필터링
   useEffect(() => {
     if (products && products.length > 0) {
-      // 전체 제품 데이터를 내림차순으로 정렬
+      console.log('[UI] 제품 정보 정렬 시작, 총 제품 수:', products.length);
+      
+      // 전체 제품 데이터를 내림차순으로 정렬 (pageId * 12 + indexInPage 기준)
       const sortedProducts = [...products].sort((a, b) => {
         // pageId와 indexInPage 조합으로 No. 값 계산
-        const aIndex = (a.pageId || 0) * 100 + (a.indexInPage || 0);
-        const bIndex = (b.pageId || 0) * 100 + (b.indexInPage || 0);
-        return bIndex - aIndex; // 내림차순 정렬
+        const aNo = (a.pageId || 0) * 12 + (a.indexInPage || 0);
+        const bNo = (b.pageId || 0) * 12 + (b.indexInPage || 0);
+        return bNo - aNo; // 내림차순 정렬
       });
       
       // 현재 페이지에 표시할 제품들 필터링
@@ -73,15 +75,15 @@ export const LocalDBTab: React.FC = () => {
       const endIndex = startIndex + itemsPerPage;
       const pagedProducts = sortedProducts.slice(startIndex, endIndex);
       
-      // 페이지 내에서 제품을 No. 기준 내림차순으로 다시 정렬
-      // (이미 전체 정렬되었으므로 이 단계는 중복일 수 있지만, 페이지 내 정렬 보장을 위해 추가)
-      const sortedPagedProducts = [...pagedProducts].sort((a, b) => {
-        const aNo = dbSummary.totalProducts - ((a.pageId || 0) * (config.productsPerPage || 12) + (a.indexInPage || 0));
-        const bNo = dbSummary.totalProducts - ((b.pageId || 0) * (config.productsPerPage || 12) + (b.indexInPage || 0));
-        return bNo - aNo; // No. 값 기준 내림차순 정렬
-      });
+      console.log(`[UI] 현재 페이지(${currentPage})의 제품 정보:`, 
+        pagedProducts.map(p => ({
+          no: (p.pageId || 0) * 12 + (p.indexInPage || 0) + 1,
+          pageId: p.pageId,
+          indexInPage: p.indexInPage
+        }))
+      );
       
-      setDisplayProducts(sortedPagedProducts);
+      setDisplayProducts(pagedProducts);
       setTotalPages(Math.ceil(sortedProducts.length / itemsPerPage));
       
       // 최대 페이지 ID 찾기
@@ -156,11 +158,11 @@ export const LocalDBTab: React.FC = () => {
       const updatedProducts = productsStore.get();
       
       if (updatedProducts && updatedProducts.length > 0) {
-        // 내림차순으로 정렬
+        // 내림차순으로 정렬 (pageId * 12 + indexInPage 기준)
         const sortedProducts = [...updatedProducts].sort((a, b) => {
-          const aIndex = (a.pageId || 0) * 100 + (a.indexInPage || 0);
-          const bIndex = (b.pageId || 0) * 100 + (b.indexInPage || 0);
-          return bIndex - aIndex; // 내림차순 정렬
+          const aNo = (a.pageId || 0) * 12 + (a.indexInPage || 0);
+          const bNo = (b.pageId || 0) * 12 + (b.indexInPage || 0);
+          return bNo - aNo; // 내림차순 정렬
         });
         
         // 총 페이지 수 재계산
@@ -440,7 +442,7 @@ export const LocalDBTab: React.FC = () => {
                       <tr key={`${product.pageId}-${product.indexInPage}`} className="hover:bg-gray-50 dark:hover:bg-gray-750">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200">
-                            {dbSummary.totalProducts - ((product.pageId || 0) * (config.productsPerPage || 12) + (product.indexInPage || 0))}
+                            {(product.pageId || 0) * 12 + (product.indexInPage || 0) + 1}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
