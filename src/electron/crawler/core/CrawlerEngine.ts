@@ -184,7 +184,7 @@ export class CrawlerEngine {
       validateDataConsistency(products, matterProducts);
 
       // 제품 상세 결과 저장 및 처리
-      this.handleDetailCrawlingResults(matterProducts);
+      await this.handleDetailCrawlingResults(matterProducts);
 
       console.log('[CrawlerEngine] Crawling process completed successfully.');
       this.state.setStage('completed', '크롤링이 성공적으로 완료되었습니다.');
@@ -344,7 +344,7 @@ export class CrawlerEngine {
   /**
    * 제품 상세 정보 크롤링 결과 처리 함수
    */
-  private handleDetailCrawlingResults(matterProducts: MatterProduct[]): void {
+  private async handleDetailCrawlingResults(matterProducts: MatterProduct[]): Promise<void> {
     // 제품 상세 정보 결과 파일로 저장
     try {
       saveMatterProductsToFile(matterProducts);
@@ -366,12 +366,54 @@ export class CrawlerEngine {
       crawlerEvents.emit('crawlingFailedProducts', failedReport);
     }
 
+    // 설정에 따라 자동으로 DB에 저장
+    const config = getConfig();
+    if (config.autoAddToLocalDB) {
+      try {
+        // 자동 저장 옵션이 켜져 있으면 DB에 저장
+        const { saveProductsToDb } = await import('../../database.js');
+        console.log('[CrawlerEngine] Automatically saving collected products to DB per user settings...');
+        
+        const saveResult = await saveProductsToDb(matterProducts);
+        
+        // 저장 결과 로그
+        console.log(`[CrawlerEngine] DB Save Result: ${saveResult.added} added, ${saveResult.updated} updated, ${saveResult.unchanged} unchanged, ${saveResult.failed} failed`);
+        
+        // 상태 이벤트 발생 - DB 저장 결과
+        crawlerEvents.emit('dbSaveComplete', {
+          success: true,
+          added: saveResult.added,
+          updated: saveResult.updated,
+          unchanged: saveResult.unchanged,
+          failed: saveResult.failed,
+          duplicateInfo: saveResult.duplicateInfo
+        });
+      } catch (err) {
+        console.error('[CrawlerEngine] Error saving products to DB:', err);
+        
+        // 오류 이벤트 발생
+        crawlerEvents.emit('dbSaveError', {
+          message: 'Failed to save products to DB',
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    } else {
+      console.log('[CrawlerEngine] Automatic DB save is disabled in settings. Products not saved to DB.');
+      
+      // 사용자에게 수동 저장이 필요함을 알리는 이벤트 발생
+      crawlerEvents.emit('dbSaveSkipped', {
+        message: '설정에 따라 제품이 DB에 자동 저장되지 않았습니다. 검토 후 수동으로 추가해주세요.',
+        count: matterProducts.length
+      });
+    }
+
     // 크롤링 결과 보고
     crawlerEvents.emit('crawlingComplete', {
       success: true,
       count: matterProducts.length,
       products: matterProducts,
-      failedReport
+      failedReport,
+      autoSavedToDb: config.autoAddToLocalDB // 자동 저장 여부도 포함
     });
   }
 

@@ -5,6 +5,7 @@ import { ConcurrentTasksVisualizer } from './Charts';
 import { CrawlingSettings } from './components/CrawlingSettings';
 import { CrawlingDashboard } from './components/CrawlingDashboard';
 import { LocalDBTab } from './components/LocalDBTab';
+import { CrawlingCompleteView } from './components/CrawlingCompleteView';
 import {
   appModeStore,
   crawlingStatusStore,
@@ -27,6 +28,7 @@ import {
 } from './stores'
 import { LogEntry } from './types'
 import { format } from 'date-fns'
+import { getPlatformApi } from './platform/api'
 
 // ExpandableSection 컴포넌트 - Hook 규칙을 준수하도록 별도 컴포넌트로 추출
 const ExpandableSection = ({
@@ -125,10 +127,50 @@ function App() {
   const [productsExpanded, setProductsExpanded] = useState<boolean>(true);
   const [logsExpanded, setLogsExpanded] = useState<boolean>(true);
   
+  // 크롤링 결과 관련 상태 추가
+  const [crawlingResults, setCrawlingResults] = useState<any[]>([]);
+  const [autoSavedToDb, setAutoSavedToDb] = useState<boolean | undefined>(undefined);
+  const [showCompleteView, setShowCompleteView] = useState<boolean>(false);
+  
   // API 초기화
   useEffect(() => {
     initializeApiSubscriptions();
     addLog('애플리케이션이 시작되었습니다.', 'info');
+    
+    // 크롤링 완료 이벤트 구독
+    const api = getPlatformApi();
+    const unsubscribe = api.subscribeToEvent('crawlingComplete', (data: any) => {
+      if (
+        data.success &&
+        Array.isArray(data.products) &&
+        data.products.length > 0
+      ) {
+        // 크롤링 결과 저장
+        setCrawlingResults(data.products);
+        // 자동 DB 저장 여부 설정
+        setAutoSavedToDb(data.autoSavedToDb);
+        // 완료 뷰 표시 활성화
+        setShowCompleteView(true);
+      }
+    });
+    
+    // 자동 DB 저장 결과 이벤트 구독
+    const unsubscribeDbSave = api.subscribeToEvent('dbSaveComplete', (data) => {
+      if (data.success) {
+        setAutoSavedToDb(true);
+      }
+    });
+    
+    // 자동 DB 저장 스킵 이벤트 구독
+    const unsubscribeDbSkip = api.subscribeToEvent('dbSaveSkipped', (_data) => {
+      setAutoSavedToDb(false);
+    });
+    
+    return () => {
+      unsubscribe();
+      unsubscribeDbSave();
+      unsubscribeDbSkip();
+    };
   }, []);
 
   // 검색어 변경시 검색 실행
@@ -492,6 +534,14 @@ function App() {
 
         {/* 오른쪽 메인 콘텐츠 (데이터 표시) */}
         <div className="lg:col-span-2">
+          {/* 크롤링 완료 시 결과 표시 */}
+          {activeTab === 'status' && showCompleteView && crawlingStatus === 'completed' && (
+            <CrawlingCompleteView 
+              products={crawlingResults} 
+              autoSavedToDb={autoSavedToDb}
+            />
+          )}
+          
           {activeTab !== 'localDB' && (
             <ExpandableSection
               title="수집된 제품 정보"

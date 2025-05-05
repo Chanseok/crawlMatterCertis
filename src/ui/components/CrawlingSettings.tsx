@@ -7,6 +7,7 @@ import { configStore, updateConfigSettings } from '../stores';
  * - 페이지 범위 설정
  * - 제품 목록 재시도 횟수 설정
  * - 제품 상세 재시도 횟수 설정
+ * - 자동 DB 추가 설정
  */
 export function CrawlingSettings() {
   const config = useStore(configStore);
@@ -15,6 +16,7 @@ export function CrawlingSettings() {
   const [pageLimit, setPageLimit] = useState(config.pageRangeLimit);
   const [productListRetry, setProductListRetry] = useState(config.productListRetryCount);
   const [productDetailRetry, setProductDetailRetry] = useState(config.productDetailRetryCount);
+  const [autoAddToDb, setAutoAddToDb] = useState(config.autoAddToLocalDB);
   
   // 파생 상태
   const [estimatedProducts, setEstimatedProducts] = useState(0);
@@ -25,6 +27,7 @@ export function CrawlingSettings() {
     setPageLimit(config.pageRangeLimit);
     setProductListRetry(config.productListRetryCount);
     setProductDetailRetry(config.productDetailRetryCount);
+    setAutoAddToDb(config.autoAddToLocalDB);
   }, [config]);
   
   // 페이지 수에 따른 예상 제품 수 및 시간 계산
@@ -56,7 +59,8 @@ export function CrawlingSettings() {
     await updateConfigSettings({
       pageRangeLimit: pageLimit,
       productListRetryCount: productListRetry,
-      productDetailRetryCount: productDetailRetry
+      productDetailRetryCount: productDetailRetry,
+      autoAddToLocalDB: autoAddToDb
     });
   };
   
@@ -149,6 +153,29 @@ export function CrawlingSettings() {
             }}
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
           />
+        </div>
+      </div>
+      
+      {/* DB 자동 저장 설정 */}
+      <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-100 dark:border-blue-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <label htmlFor="auto-add-db" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              제품 정보 수집 완료 시 자동으로 DB에 저장
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              비활성화 시 수집된 제품 정보를 검토 후 DB에 수동으로 추가할 수 있습니다
+            </p>
+          </div>
+          <div className="flex items-center">
+            <input
+              id="auto-add-db"
+              type="checkbox"
+              className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={autoAddToDb}
+              onChange={() => setAutoAddToDb(!autoAddToDb)}
+            />
+          </div>
         </div>
       </div>
       

@@ -11,10 +11,10 @@ export function CrawlingDashboard() {
   const status = useStore(crawlingStatusStore);
   const config = useStore(configStore);
   const statusSummary = useStore(crawlingStatusSummaryStore);
-  
+
   // 실제 수집 대상 페이지 수 계산 (상태 요약 정보에서 가져옴)
   const targetPageCount = statusSummary?.crawlingRange?.endPage || config.pageRangeLimit || progress.totalPages || 0;
-  
+
   // 애니메이션을 위한 상태
   const [animatedValues, setAnimatedValues] = useState({
     percentage: 0,
@@ -30,34 +30,40 @@ export function CrawlingDashboard() {
     elapsedTime: progress.elapsedTime || 0,
     remainingTime: progress.remainingTime || 0
   });
-  
+
   // 모래시계 애니메이션을 위한 상태
   const [flipTimer, setFlipTimer] = useState(0);
-  
+
   // 완료 상태 표시를 위한 상태
   const [showCompletion, setShowCompletion] = useState(false);
   const [isSuccess, setIsSuccess] = useState(true);
-  
+
   // 완료 상태 애니메이션을 위한 타이머
   const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+
   // 1초 단위로 시간 업데이트
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
-    
+
     if (status === 'running') {
       // 타이머 시작
       timer = setInterval(() => {
+        // 컴포넌트가 마운트 해제되었거나 상태가 더 이상 running이 아니면 타이머 중지
+        if (status !== 'running') {
+          if (timer) clearInterval(timer);
+          return;
+        }
         setLocalTime(prev => {
+
           // 현재 진행률에 따라 남은 시간 재계산
           let newRemainingTime = prev.remainingTime;
-          
+
           if (progress.currentStage === 1) {
             // 1단계에서 페이지 기준 예상 계산
             const totalPages = targetPageCount || 1;
             const currentPage = progress.currentPage || 0;
             const remainingPages = totalPages - currentPage;
-            
+
             if (currentPage > 0 && prev.elapsedTime > 0) {
               // 현재까지 처리한 페이지 당 평균 소요 시간 계산
               const avgTimePerPage = prev.elapsedTime / currentPage;
@@ -66,12 +72,12 @@ export function CrawlingDashboard() {
             }
           } else if (progress.currentStage === 2) {
             // 2단계에서 제품 기준 예상 계산
-            const totalItems = progress.totalItems || 
-                             statusSummary?.siteProductCount || 
-                             (targetPageCount * (config.productsPerPage || 12));
+            const totalItems = progress.totalItems ||
+              statusSummary?.siteProductCount ||
+              (targetPageCount * (config.productsPerPage || 12));
             const processedItems = progress.processedItems || 0;
             const remainingItems = totalItems - processedItems;
-            
+
             if (processedItems > 0 && prev.elapsedTime > 0) {
               // 현재까지 처리한 제품 당 평균 소요 시간 계산
               const avgTimePerItem = prev.elapsedTime / processedItems;
@@ -79,43 +85,49 @@ export function CrawlingDashboard() {
               newRemainingTime = Math.max(0, remainingItems * avgTimePerItem);
             }
           }
-          
+
           return {
             elapsedTime: prev.elapsedTime + 1000,
             remainingTime: newRemainingTime
           };
         });
-        
+
         // 10초 간격으로 모래시계 뒤집기
         setFlipTimer(prev => {
           const newValue = prev + 1;
           return newValue;
         });
       }, 1000);
+    } else {
+      // status가 running이 아닐 때, progress store의 최종 elapsedTime을 사용
+      setLocalTime(prev => ({
+        ...prev,
+        elapsedTime: progress.elapsedTime || prev.elapsedTime // progress store 값 우선
+      }));
     }
-    
+
+    // Cleanup 함수: 컴포넌트 언마운트 시 또는 status 변경 시 타이머 정리
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [status, progress.currentPage, progress.currentStage, progress.processedItems, progress.totalItems, targetPageCount, config.productsPerPage, statusSummary]);
-  
-  // 진행 상태가 업데이트되면 로컬 타이머 동기화
+  }, [status, progress.currentPage, progress.currentStage, progress.processedItems, progress.totalItems, targetPageCount, config.productsPerPage, statusSummary, progress.elapsedTime]);
+
+
+  // 진행 상태가 업데이트되면 로컬 타이머 동기화 (running 아닐 때만)
   useEffect(() => {
-    if (progress.elapsedTime !== undefined) {
-      setLocalTime(prev => ({
-        ...prev,
-        elapsedTime: progress.elapsedTime
-      }));
+    // status가 running이 아닐 때만 progress store 값으로 동기화
+    if (status !== 'running') {
+      if (progress.elapsedTime !== undefined) {
+        setLocalTime(prev => ({
+          ...prev,
+          elapsedTime: progress.elapsedTime
+        }));
+      }
+      // remainingTime은 계산 로직에 따라 업데이트되므로 여기서는 제외
     }
-    if (progress.remainingTime !== undefined) {
-      setLocalTime(prev => ({
-        ...prev,
-        // 명시적으로 타입 체크 후 할당
-        remainingTime: progress.remainingTime || 0
-      }));
-    }
-  }, [progress.elapsedTime, progress.remainingTime]);
-  
+  }, [progress.elapsedTime, status]); // status 추가
+
+
   // 상태 완료/실패 감지 및 애니메이션 처리
   useEffect(() => {
     // 상태가 완료로 변경된 경우
@@ -124,15 +136,15 @@ export function CrawlingDashboard() {
       const totalItems = progress.totalItems || statusSummary?.siteProductCount || (targetPageCount * (config.productsPerPage || 12));
       const processedItems = progress.processedItems || 0;
       const isCompleteSuccess = processedItems >= totalItems;
-      
+
       setIsSuccess(isCompleteSuccess);
       setShowCompletion(true);
-      
+
       // 애니메이션 표시를 위한 타이머 설정
       if (completionTimerRef.current) {
         clearTimeout(completionTimerRef.current);
       }
-      
+
       // 성공 시 10초, 실패 시 5초 동안 표시
       completionTimerRef.current = setTimeout(() => {
         setShowCompletion(false);
@@ -140,7 +152,7 @@ export function CrawlingDashboard() {
     } else {
       setShowCompletion(false);
     }
-    
+
     return () => {
       if (completionTimerRef.current) {
         clearTimeout(completionTimerRef.current);
@@ -158,19 +170,19 @@ export function CrawlingDashboard() {
   // 단계 전환 애니메이션을 위한 상태
   const [prevStage, setPrevStage] = useState<number | null>(null);
   const [stageTransition, setStageTransition] = useState(false);
-  
+
   // 단계 변경 감지 및 애니메이션 처리
   useEffect(() => {
     if (prevStage !== null && prevStage !== progress.currentStage) {
       // 단계 전환 애니메이션 시작
       setStageTransition(true);
-      
+
       // 애니메이션 종료 후 상태 리셋
       setTimeout(() => {
         setStageTransition(false);
       }, 1000); // 애니메이션 시간과 맞춤
     }
-    
+
     // 명시적으로 타입 체크 후 할당
     if (progress.currentStage !== undefined) {
       setPrevStage(progress.currentStage);
@@ -187,7 +199,7 @@ export function CrawlingDashboard() {
         setAnimatedDigits(prev => ({ ...prev, currentPage: true }));
         setTimeout(() => setAnimatedDigits(prev => ({ ...prev, currentPage: false })), 300);
       }
-      
+
       // 2단계: 제품 상세 수집 진행 상태
       if (progress.processedItems !== prevProgress.current.processedItems) {
         setAnimatedDigits(prev => ({ ...prev, processedItems: true }));
@@ -198,36 +210,36 @@ export function CrawlingDashboard() {
         setAnimatedDigits(prev => ({ ...prev, retryCount: true }));
         setTimeout(() => setAnimatedDigits(prev => ({ ...prev, retryCount: false })), 300);
       }
-      
+
       if (progress.elapsedTime !== prevProgress.current.elapsedTime) {
         setAnimatedDigits(prev => ({ ...prev, elapsedTime: true }));
         setTimeout(() => setAnimatedDigits(prev => ({ ...prev, elapsedTime: false })), 300);
       }
-      
+
       if (progress.remainingTime !== prevProgress.current.remainingTime) {
         setAnimatedDigits(prev => ({ ...prev, remainingTime: true }));
         setTimeout(() => setAnimatedDigits(prev => ({ ...prev, remainingTime: false })), 300);
       }
     }
-    
+
     prevProgress.current = progress;
   }, [progress]);
 
   // 애니메이션을 위한 참조
   const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  
+
   // 계산된 진행률 - 수집한 페이지 / 실제 수집 대상 총 페이지 수
-  const calculatedPercentage = targetPageCount > 0 ? 
-    (progress.currentPage || 0) / targetPageCount * 100 : 
+  const calculatedPercentage = targetPageCount > 0 ?
+    (progress.currentPage || 0) / targetPageCount * 100 :
     progress.percentage || 0;
-  
+
   // 애니메이션 효과
   useEffect(() => {
     // 이전 애니메이션 정리
     if (animationRef.current) {
       clearInterval(animationRef.current);
     }
-    
+
     // 목표값 설정
     const targetValues = {
       percentage: progress.currentStage === 1 ? calculatedPercentage : (progress.percentage || 0),
@@ -237,14 +249,14 @@ export function CrawlingDashboard() {
       updatedItems: progress.updatedItems || 0,
       retryCount: progress.retryCount || 0
     };
-    
+
     // 애니메이션 시작값
-    const startValues = {...animatedValues};
-    
+    const startValues = { ...animatedValues };
+
     // 애니메이션 단계 설정
     const steps = 8;
     let step = 0;
-    
+
     // 애니메이션 시작
     animationRef.current = setInterval(() => {
       step++;
@@ -253,10 +265,10 @@ export function CrawlingDashboard() {
         clearInterval(animationRef.current!);
         return;
       }
-      
+
       // 값 보간 (부드러운 전환을 위한 ease-out 효과 적용)
       const progress = 1 - Math.pow(1 - step / steps, 2); // ease-out 효과
-      
+
       const newValues = {
         percentage: startValues.percentage + (targetValues.percentage - startValues.percentage) * progress,
         currentPage: startValues.currentPage + (targetValues.currentPage - startValues.currentPage) * progress,
@@ -265,25 +277,25 @@ export function CrawlingDashboard() {
         updatedItems: startValues.updatedItems + Math.round((targetValues.updatedItems - startValues.updatedItems) * progress),
         retryCount: startValues.retryCount + Math.round((targetValues.retryCount - startValues.retryCount) * progress)
       };
-      
+
       setAnimatedValues(newValues);
     }, 40); // 더 부드러운 애니메이션을 위해 간격 축소
-    
+
     return () => {
       if (animationRef.current) {
         clearInterval(animationRef.current);
       }
     };
   }, [progress.percentage, progress.currentPage, progress.processedItems, progress.newItems, progress.updatedItems, progress.retryCount, calculatedPercentage]);
-  
+
   // 시간 형식 변환 함수
   const formatDuration = (milliseconds: number | undefined): string => {
     if (!milliseconds) return '0초';
-    
+
     const seconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
-    
+
     if (hours > 0) {
       return `${hours}시간 ${minutes % 60}분 ${seconds % 60}초`;
     } else if (minutes > 0) {
@@ -292,7 +304,7 @@ export function CrawlingDashboard() {
       return `${seconds}초`;
     }
   };
-  
+
   // 상태에 따른 배지 컬러 선택
   const getStatusBadgeColor = () => {
     switch (status) {
@@ -308,7 +320,7 @@ export function CrawlingDashboard() {
         return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
     }
   };
-  
+
   // 단계별 표시 헬퍼 함수
   const getStageBadge = () => {
     if (progress.currentStage === 1) {
@@ -330,15 +342,15 @@ export function CrawlingDashboard() {
       </span>
     );
   };
-  
+
   // 재시도 정보 표시
   const getRetryInfo = () => {
-    const hasRetryInfo = progress && 
-      (progress.retryCount !== undefined || 
-       progress.retryItem !== undefined);
-       
+    const hasRetryInfo = progress &&
+      (progress.retryCount !== undefined ||
+        progress.retryItem !== undefined);
+
     if (!hasRetryInfo) return null;
-    
+
     return (
       <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/30 rounded-md border border-yellow-200 dark:border-yellow-800">
         <div className="text-sm text-yellow-800 dark:text-yellow-300 flex justify-between">
@@ -355,11 +367,11 @@ export function CrawlingDashboard() {
       </div>
     );
   };
-  
+
   // 추정 시간 계산
   const getEstimatedEndTime = () => {
     if (!progress.estimatedEndTime) return null;
-    
+
     const endTime = new Date(progress.estimatedEndTime);
     return (
       <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -372,15 +384,15 @@ export function CrawlingDashboard() {
   const getPageInfoComponent = () => {
     const currentStage = progress.currentStage;
     const isCompleted = status === 'completed';
-    
+
     // 2단계가 완료되었을 때 레이블 특별히 처리
     if (currentStage === 2 && isCompleted) {
-      const totalItems = progress.totalItems || 
-                        statusSummary?.siteProductCount || 
-                        (targetPageCount * (config.productsPerPage || 12));
+      const totalItems = progress.totalItems ||
+        statusSummary?.siteProductCount ||
+        (targetPageCount * (config.productsPerPage || 12));
       const processedItems = progress.processedItems || 0;
       const isSuccessful = processedItems >= totalItems;
-      
+
       return (
         <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
           <div className={`text-xs ${isSuccessful ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400'} font-medium`}>
@@ -392,14 +404,14 @@ export function CrawlingDashboard() {
             {Math.round(processedItems)} <span className="text-sm text-gray-500">/ {totalItems}</span>
           </div>
           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {isSuccessful 
-              ? `모든 제품 정보가 성공적으로 수집되었습니다.` 
+            {isSuccessful
+              ? `모든 제품 정보가 성공적으로 수집되었습니다.`
               : `일부 제품 정보를 수집하지 못했습니다.`}
           </div>
         </div>
       );
     }
-    
+
     // 일반적인 상황 (진행 중이거나 1단계)
     return (
       <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
@@ -409,12 +421,12 @@ export function CrawlingDashboard() {
         <div className={`text-2xl font-bold font-digital mt-1 transition-all transform duration-300 ${animatedDigits.currentPage ? 'animate-flip' : ''}`} style={{
           color: animatedValues.currentPage > 0 ? '#3b82f6' : '#6b7280'
         }}>
-          {progress.currentStage === 1 
-            ? Math.round(animatedValues.currentPage) 
+          {progress.currentStage === 1
+            ? Math.round(animatedValues.currentPage)
             : Math.round(animatedValues.processedItems)}
           <span className="text-sm text-gray-500"> / {
-            progress.currentStage === 2 
-              ? progress.totalItems || statusSummary?.siteProductCount || (targetPageCount * (config.productsPerPage || 12)) 
+            progress.currentStage === 2
+              ? progress.totalItems || statusSummary?.siteProductCount || (targetPageCount * (config.productsPerPage || 12))
               : targetPageCount
           }</span>
         </div>
@@ -431,7 +443,7 @@ export function CrawlingDashboard() {
       </div>
     );
   };
-  
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-4">
       <div className="flex justify-between items-center mb-4">
@@ -446,13 +458,13 @@ export function CrawlingDashboard() {
           {status === 'initializing' && '초기화중'}
         </span>
       </div>
-      
+
       {/* 현재 단계 표시 */}
       <div className="mb-4 flex justify-between items-center">
         <span className="text-sm text-gray-600 dark:text-gray-400">현재 단계:</span>
         {getStageBadge()}
       </div>
-      
+
       <div className="mb-2">
         <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
           <span>{progress.currentStep || '대기 중...'}</span>
@@ -471,7 +483,7 @@ export function CrawlingDashboard() {
             </div>
           </div>
         </div>
-        
+
         {/* 단계별 부가 정보 */}
         {progress.currentStage === 1 && (
           <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -484,12 +496,12 @@ export function CrawlingDashboard() {
           </div>
         )}
       </div>
-      
+
       {/* 정보 그리드 */}
       <div className="grid grid-cols-2 gap-2 mt-4">
         {/* 페이지 정보 */}
         {getPageInfoComponent()}
-        
+
         {/* 재시도 정보 */}
         <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
           <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -499,7 +511,7 @@ export function CrawlingDashboard() {
             color: animatedValues.retryCount > 0 ? '#f59e0b' : '#6b7280'
           }}>
             {animatedValues.retryCount} <span className="text-sm text-gray-500">/ {
-              progress.currentStage === 1 
+              progress.currentStage === 1
                 ? config.productListRetryCount || progress.maxRetries || 0
                 : config.productDetailRetryCount || progress.maxRetries || 0
             }회</span>
@@ -510,22 +522,27 @@ export function CrawlingDashboard() {
             </div>
           )}
         </div>
-        
+
+
         {/* 소요 시간 */}
         <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
           <div className="text-xs text-gray-500 dark:text-gray-400">
             {progress.currentStage === 1 ? "1단계 소요 시간" : progress.currentStage === 2 ? "2단계 소요 시간" : "소요 시간"}
           </div>
           <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center justify-center">
-            {formatDuration(localTime.elapsedTime)}
-            <div className={`ml-2 ${flipTimer % 2 === 0 ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}>
-              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
+            {/* status가 running일 때는 localTime, 아닐 때는 progress store 값 사용 */}
+            {formatDuration(status === 'running' ? localTime.elapsedTime : progress.elapsedTime)}
+            {/* 모래시계 아이콘은 running 상태일 때만 표시 */}
+            {status === 'running' && (
+              <div className={`ml-2 ${flipTimer % 2 === 0 ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}>
+                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            )}
           </div>
         </div>
-        
+
         {/* 예상 남은 시간 */}
         <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
           <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -541,9 +558,9 @@ export function CrawlingDashboard() {
           </div>
         </div>
       </div>
-      
+
       {/* 수집 결과 요약 - 2단계(제품 상세 정보 수집)에서만 표시 */}
-      {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
+      {/* {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
         <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-md">
           <div className="text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">수집 결과</div>
           <div className="grid grid-cols-2 gap-2">
@@ -563,48 +580,48 @@ export function CrawlingDashboard() {
             </div>
           </div>
         </div>
-      )}
-      
+      )} */}
+
       {/* 재시도 정보 */}
       {getRetryInfo()}
-      
+
       {/* 예상 완료 시간 */}
       {getEstimatedEndTime()}
-      
+
       {/* 상태 메시지 */}
       {progress.message && (
         <div className="mt-4 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-100 dark:border-blue-800 text-sm text-blue-800 dark:text-blue-300">
-          {progress.currentStage === 1 && targetPageCount ? 
-            `${progress.message} (목표 페이지: ${targetPageCount}페이지)` : 
+          {progress.currentStage === 1 && targetPageCount ?
+            `${progress.message} (목표 페이지: ${targetPageCount}페이지)` :
             progress.message
           }
         </div>
       )}
-      
+
       {progress.criticalError && (
         <div className="mt-4 p-2 bg-red-50 dark:bg-red-900/20 rounded-md border border-red-100 dark:border-red-800 text-sm text-red-800 dark:text-red-300">
           오류: {progress.criticalError}
         </div>
       )}
-      
+
       {/* 모래시계 애니메이션 */}
       {status === 'running' && (
         <div className="mt-4 flex justify-center items-center">
           <div className={`relative w-8 h-12 ${flipTimer % 10 === 0 ? 'animate-flip-hourglass' : ''}`}>
             <div className="absolute top-0 left-0 right-0 h-1/2 bg-amber-200 dark:bg-amber-700 overflow-hidden rounded-t-lg">
-              <div className="absolute bottom-0 left-1/4 right-1/4 border-l-transparent border-r-transparent border-t-amber-400 dark:border-t-amber-500" 
-                   style={{ borderWidth: '8px 8px 0 8px', height: 0, width: 0 }}></div>
+              <div className="absolute bottom-0 left-1/4 right-1/4 border-l-transparent border-r-transparent border-t-amber-400 dark:border-t-amber-500"
+                style={{ borderWidth: '8px 8px 0 8px', height: 0, width: 0 }}></div>
             </div>
             <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-amber-200 dark:bg-amber-700 overflow-hidden rounded-b-lg">
-              <div className="absolute top-0 left-1/4 right-1/4 border-l-transparent border-r-transparent border-b-amber-400 dark:border-b-amber-500" 
-                   style={{ borderWidth: '0 8px 8px 8px', height: 0, width: 0 }}></div>
+              <div className="absolute top-0 left-1/4 right-1/4 border-l-transparent border-r-transparent border-b-amber-400 dark:border-b-amber-500"
+                style={{ borderWidth: '0 8px 8px 8px', height: 0, width: 0 }}></div>
               <div className="absolute top-1/3 left-0 right-0 bottom-0 bg-amber-300 dark:bg-amber-600 animate-sand-fall"></div>
             </div>
             <div className="absolute inset-0 border-2 border-amber-500 dark:border-amber-400 rounded-lg"></div>
           </div>
         </div>
       )}
-      
+
       {/* 2단계 완료 상태 애니메이션 */}
       {showCompletion && (
         <div className={`relative mt-4 p-4 rounded-md text-center ${isSuccess ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
@@ -616,7 +633,7 @@ export function CrawlingDashboard() {
                 const randomDelay = Math.random() * 3;
                 const randomColor = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'][Math.floor(Math.random() * 6)];
                 const randomSize = Math.random() * 10 + 5;
-                
+
                 return (
                   <div
                     key={i}
@@ -635,7 +652,7 @@ export function CrawlingDashboard() {
               })}
             </div>
           )}
-          
+
           <div className={isSuccess ? 'success-message animate-bounce-small' : 'failure-message animate-shake'}>
             <div className="text-lg font-bold mb-2 flex justify-center items-center">
               {isSuccess ? (
@@ -655,16 +672,16 @@ export function CrawlingDashboard() {
               )}
             </div>
             <div className={`text-base ${isSuccess ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-              {isSuccess ? 
-                <span>제품 상세 수집이 성공적으로 완료되었습니다.</span> : 
+              {isSuccess ?
+                <span>제품 상세 수집이 성공적으로 완료되었습니다.</span> :
                 <span>일부 제품 정보를 수집하지 못했습니다.</span>
               }
             </div>
             <div className="mt-4 inline-block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
               <div className="text-lg font-bold">
                 {Math.round(progress.processedItems || 0)} / {
-                  progress.totalItems || 
-                  statusSummary?.siteProductCount || 
+                  progress.totalItems ||
+                  statusSummary?.siteProductCount ||
                   (targetPageCount * (config.productsPerPage || 12))
                 } 제품 수집 완료
               </div>

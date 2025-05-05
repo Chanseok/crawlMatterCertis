@@ -651,7 +651,7 @@ private cleanupResources(): void {
 
       // 신규 제품인지 여부 결정 (개선된 로직 필요 시 이 부분을 수정)
       // 현재는 예시로 일부 속성을 활용한 조건문 제공
-      const isNewProduct = true; // 기본값을 true로 설정 (기존 코드와 호환성 유지)
+      // const isNewProduct = true; // 기본값을 true로 설정 (기존 코드와 호환성 유지)
       
       // 기존 제품 속성을 MatterProduct 형식으로 확장
       const matterProduct: MatterProduct = {

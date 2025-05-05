@@ -22,7 +22,8 @@ export async function getConfig(): Promise<CrawlerConfig> {
       pageRangeLimit: 10,
       productListRetryCount: 9,
       productDetailRetryCount: 9,
-      productsPerPage: 12  // 필수 필드 추가
+      productsPerPage: 12,  // 필수 필드 추가
+      autoAddToLocalDB: false // 기본값 추가
     };
   }
 }

@@ -10,6 +10,7 @@ const DEFAULT_CONFIG: CrawlerConfig = {
   productListRetryCount: 9,
   productDetailRetryCount: 9,
   productsPerPage: 12,
+  autoAddToLocalDB: true, // 수집 성공 시 자동으로 로컬DB에 추가 (기본값 true)
 };
 
 /**

@@ -53,7 +53,10 @@ const IPC_CHANNELS = {
     RESET_CONFIG: 'crawler:reset-config',
     
     // 레코드 삭제 채널 추가
-    DELETE_RECORDS_BY_PAGE_RANGE: 'deleteRecordsByPageRange'
+    DELETE_RECORDS_BY_PAGE_RANGE: 'deleteRecordsByPageRange',
+    
+    // 제품 수동 저장 채널 추가
+    SAVE_PRODUCTS_TO_DB: 'saveProductsToDB'
 };
 
 app.on('ready', async () => {
@@ -463,6 +466,36 @@ app.on('ready', async () => {
             };
         }
     });
+
+    // 제품 수동 저장 핸들러 추가
+    ipcMain.handle(IPC_CHANNELS.SAVE_PRODUCTS_TO_DB, async (_event, products) => {
+        console.log('[IPC] saveProductsToDB called with products count:', products?.length || 0);
+        try {
+            if (!products || !Array.isArray(products) || products.length === 0) {
+                return {
+                    success: false,
+                    error: '저장할 제품이 없습니다.'
+                };
+            }
+            
+            const { saveProductsToDb } = await import('./database.js');
+            const saveResult = await saveProductsToDb(products);
+            
+            console.log(`[IPC] Products saved to DB - Added: ${saveResult.added}, Updated: ${saveResult.updated}, Unchanged: ${saveResult.unchanged}, Failed: ${saveResult.failed}`);
+            
+            // 저장 결과 이벤트 발생 (UI 로 전달)
+            return {
+                success: true,
+                ...saveResult
+            };
+        } catch (error) {
+            console.error('[IPC] Error saving products to DB:', error);
+            return {
+                success: false,
+                error: String(error)
+            };
+        }
+    });
 });
 
 /**
@@ -497,6 +530,18 @@ function setupCrawlerEvents(mainWindow: BrowserWindow): void {
     // 크롤링 오류 이벤트
     crawlerEvents.on('crawlingError', (error: CrawlingError) => {
         mainWindow.webContents.send('crawlingError', error);
+    });
+    
+    // DB 저장 완료 이벤트 (추가)
+    crawlerEvents.on('dbSaveComplete', (data: any) => {
+        console.log('[MAIN] DB Save Complete event received:', data);
+        mainWindow.webContents.send('dbSaveComplete', data);
+    });
+    
+    // DB 저장 스킵 이벤트 (추가)
+    crawlerEvents.on('dbSaveSkipped', (data: any) => {
+        console.log('[MAIN] DB Save Skipped event received:', data);
+        mainWindow.webContents.send('dbSaveSkipped', data);
     });
 }
 

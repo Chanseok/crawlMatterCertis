@@ -57,7 +57,8 @@ export const defaultConfig: CrawlerConfig = {
   // constants.ts의 기본값 사용
   productListRetryCount: DEFAULT_PRODUCT_LIST_RETRY_COUNT,
   productDetailRetryCount: DEFAULT_PRODUCT_DETAIL_RETRY_COUNT,
-  pageRangeLimit: DEFAULT_PAGE_RANGE_LIMIT
+  pageRangeLimit: DEFAULT_PAGE_RANGE_LIMIT,
+  autoAddToLocalDB: false // 기본값 추가
 };
 
 // 현재 설정을 메모리에 유지

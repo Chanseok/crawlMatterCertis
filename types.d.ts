@@ -129,6 +129,9 @@ export interface CrawlerConfig {
     // 엑셀 내보내기 관련 설정
     lastExcelExportPath?: string;  // 마지막으로 내보낸 엑셀 파일 경로
     
+    // DB 관련 설정
+    autoAddToLocalDB: boolean;  // 수집 성공 시 자동으로 로컬DB에 추가 여부
+    
     // 크롤러 코어 관련 설정 (선택적으로 만들어 호환성 유지)
     baseUrl?: string;
     matterFilterUrl?: string;
@@ -167,6 +170,9 @@ export type EventPayloadMapping = {
     crawlingTaskStatus: ConcurrentCrawlingTask[];
     crawlingStopped: ConcurrentCrawlingTask[];
     crawlingFailedPages: { pageNumber: number; errors: string[] }[];
+    // 
+    dbSaveComplete: { success: boolean }; // <-- Add this line
+    dbSaveSkipped: any; // <-- Add this if you use 'dbSaveSkipped' elsewhere
 };
 
 // 메서드 매개변수 맵핑
@@ -187,6 +193,8 @@ export type MethodParamsMapping = {
     'crawler:reset-config': void;
     // 페이지 범위로 레코드 삭제 기능 추가
     'deleteRecordsByPageRange': { startPageId: number; endPageId: number };
+    // 제품 수동 저장 메서드 추가
+    'saveProductsToDB': MatterProduct[];
 };
 
 // 메서드 반환값 맵핑
@@ -207,6 +215,16 @@ export type MethodReturnMapping = {
     'crawler:reset-config': { success: boolean; config?: CrawlerConfig; error?: string };
     // 페이지 범위로 레코드 삭제 기능 반환 타입 추가
     'deleteRecordsByPageRange': { success: boolean; deletedCount: number; maxPageId?: number; error?: string };
+    // 제품 수동 저장 메서드 반환 타입 추가
+    'saveProductsToDB': { 
+        success: boolean; 
+        added?: number; 
+        updated?: number; 
+        unchanged?: number; 
+        failed?: number; 
+        error?: string;
+        duplicateInfo?: any;
+    };
 };
 
 export type UnsubscribeFunction = () => void;

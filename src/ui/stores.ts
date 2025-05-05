@@ -89,7 +89,8 @@ export const configStore = map<CrawlerConfig>({
   pageRangeLimit: 10,
   productListRetryCount: 9,
   productDetailRetryCount: 9,
-  productsPerPage: 12  // 필수 필드 추가
+  productsPerPage: 12,  // 필수 필드 추가
+  autoAddToLocalDB: false // 기본값 추가 (필요에 따라 true/false로 설정)
 });
 
 // API 참조
@@ -570,5 +571,34 @@ export async function getDatabaseSummary(): Promise<DatabaseSummary | void> {
   } catch (error) {
     console.error('Error getting database summary:', error);
     addLog(`데이터베이스 요약 정보 조회 중 오류: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+// 크롤링으로 수집한 제품을 수동으로 DB에 저장하는 함수
+export async function saveProductsToDB(products: any[]): Promise<void> {
+  try {
+    if (!products || products.length === 0) {
+      addLog('저장할 제품 정보가 없습니다.', 'warning');
+      return;
+    }
+    
+    addLog(`${products.length}개의 제품 정보를 DB에 저장하는 중...`, 'info');
+    
+    const result = await api.invokeMethod('saveProductsToDB', products);
+    
+    if (result.success) {
+      const { added, updated, unchanged, failed } = result;
+      addLog(`제품 정보 저장 완료: ${added}개 추가, ${updated}개 업데이트, ${unchanged}개 변동 없음, ${failed}개 실패`, 'success');
+      
+      // 저장 후 DB 요약 정보 갱신
+      await getDatabaseSummary();
+      
+      // 제품 목록 다시 로드
+      await searchProducts();
+    } else {
+      addLog(`제품 정보 저장 실패: ${result.error}`, 'error');
+    }
+  } catch (error) {
+    addLog(`제품 정보 저장 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
 }
