@@ -404,7 +404,7 @@ export function CrawlingDashboard() {
     return (
       <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
         <div className="text-xs text-gray-500 dark:text-gray-400">
-          {progress.currentStage === 1 ? "페이지 수집 현황" : "제품 상세 수집 현황"}
+          {progress.currentStage === 1 ? "페이지 수집 현황(Buggy)" : "제품 상세 수집 현황"}
         </div>
         <div className={`text-2xl font-bold font-digital mt-1 transition-all transform duration-300 ${animatedDigits.currentPage ? 'animate-flip' : ''}`} style={{
           color: animatedValues.currentPage > 0 ? '#3b82f6' : '#6b7280'

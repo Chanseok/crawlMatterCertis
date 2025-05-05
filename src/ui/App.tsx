@@ -22,7 +22,8 @@ import {
   crawlingStatusSummaryStore,
   lastCrawlingStatusSummaryStore,
   CrawlingStatusSummary,
-  crawlingProgressStore
+  crawlingProgressStore,
+  loadConfig
 } from './stores'
 import { LogEntry } from './types'
 import { format } from 'date-fns'
@@ -149,6 +150,18 @@ function App() {
     }
   }, [crawlingStatus]);
 
+  // 탭 변경 시 필요한 데이터 로드
+  const handleTabChange = (tab: 'settings' | 'status' | 'localDB') => {
+    // 이전 탭이 설정 탭이었고, 새 탭이 상태 & 제어 탭인 경우
+    if (activeTab === 'settings' && tab === 'status') {
+      // 설정 정보 리로드 (최신 설정을 확실히 반영)
+      loadConfig().then(() => {
+        addLog('탭 전환: 최신 설정 정보를 로드했습니다.', 'info');
+      });
+    }
+    setActiveTab(tab);
+  };
+
   // 크롤링 시작/중지 핸들러
   const handleCrawlToggle = () => {
     if (crawlingStatus === 'running') {
@@ -168,8 +181,11 @@ function App() {
   };
 
   // 크롤링 상태 체크 핸들러 
-  const handleCheckStatus = () => {
-    checkCrawlingStatus();
+  const handleCheckStatus = async () => {
+    // 상태 체크 전에 최신 설정을 로드 (설정 변경이 반영되도록)
+    // await loadConfig();
+    await checkCrawlingStatus();
+    
     // 상태 체크 시 UI 업데이트로 인한 중복 토글 방지
     // 이미 확장된 상태라면 토글하지 않음
     if (!compareExpanded) {
@@ -261,7 +277,7 @@ function App() {
                     ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
-                onClick={() => setActiveTab('settings')}
+                onClick={() => handleTabChange('settings')}
               >
                 설정
               </button>
@@ -271,7 +287,7 @@ function App() {
                     ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
-                onClick={() => setActiveTab('status')}
+                onClick={() => handleTabChange('status')}
               >
                 상태 & 제어
               </button>
@@ -281,7 +297,7 @@ function App() {
                     ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
-                onClick={() => setActiveTab('localDB')}
+                onClick={() => handleTabChange('localDB')}
               >
                 로컬DB
               </button>
@@ -362,7 +378,7 @@ function App() {
                 {/* 사이트 로컬 비교 섹션 */}
                 {statusSummary && Object.keys(statusSummary).length > 0 && (
                   <ExpandableSection
-                    title="사이트 로컬 비교"
+                    title="사이트 로컬 비교 (Buggy)"
                     isExpanded={compareExpanded}
                     onToggle={() => toggleSection('compare')}
                     defaultExpanded={false}
