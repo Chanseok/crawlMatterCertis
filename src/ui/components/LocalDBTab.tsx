@@ -5,22 +5,27 @@ import {
   databaseSummaryStore,
   deleteRecordsByPageRange,
   searchProducts,
-  exportToExcel
-  
+  exportToExcel,
+  configStore
 } from '../stores';
 import type { MatterProduct } from '../../../types';
+import { format } from 'date-fns';
 
 // LocalDBTab 컴포넌트
 export const LocalDBTab: React.FC = () => {
   // 상태 관리
   const products = useStore(productsStore);
   const dbSummary = useStore(databaseSummaryStore);
+  const config = useStore(configStore);
   
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(12);
   const [totalPages, setTotalPages] = useState(1);
   const [maxPageId, setMaxPageId] = useState(0);
   const [displayProducts, setDisplayProducts] = useState<MatterProduct[]>([]);
+  
+  // 실제 데이터베이스 통계 계산
+  const [totalProductPages, setTotalProductPages] = useState(0);
   
   // 섹션 접기/펼치기 상태
   const [dbSectionExpanded, setDbSectionExpanded] = useState(true);
@@ -33,9 +38,22 @@ export const LocalDBTab: React.FC = () => {
     endPageId: 0
   });
 
-  // 컴포넌트 마운트 시 제품 데이터 로드
+  // 컴포넌트 마운트 시 제품 데이터 로드 및 첫 페이지 설정
   useEffect(() => {
-    loadProducts();
+    loadProducts().then(() => {
+      // 데이터 로드 후 페이지 계산
+      if (products && products.length > 0) {
+        const productsPerPage = config.productsPerPage || 12;
+        const calculatedTotalPages = Math.ceil(products.length / itemsPerPage);
+        
+        // 최신 데이터 표시를 위해 첫 페이지를 가장 큰 페이지 번호로 설정
+        if (calculatedTotalPages > 0) {
+          setCurrentPage(calculatedTotalPages);
+          setTotalPages(calculatedTotalPages);
+          setTotalProductPages(Math.ceil(products.length / productsPerPage));
+        }
+      }
+    });
   }, []);
   
   // 페이지 변경 시 제품 데이터 필터링
@@ -64,17 +82,24 @@ export const LocalDBTab: React.FC = () => {
           startPageId: maxId,
           endPageId: maxId
         });
+        
+        // 총 제품 페이지 수 계산 (페이지당 12개 제품 기준)
+        const productsPerPage = config.productsPerPage || 12;
+        setTotalProductPages(Math.ceil(sortedProducts.length / productsPerPage));
       }
     } else {
       setDisplayProducts([]);
       setTotalPages(1);
+      setTotalProductPages(0);
     }
-  }, [products, currentPage, itemsPerPage]);
+  }, [products, currentPage, itemsPerPage, config.productsPerPage]);
 
   // 제품 데이터 로드 함수
   const loadProducts = async () => {
     try {
-      await searchProducts();
+      // 백엔드에서 이미 내림차순 정렬된 데이터를 가져옴
+      // 더 많은 데이터를 로드하여 모든 페이지를 계산할 수 있도록 함
+      await searchProducts('', 1, 5000); // 최대한 많은 데이터 로드 (백엔드에서 이미 내림차순 정렬됨)
     } catch (error) {
       console.error('제품 데이터 로딩 중 오류:', error);
     }
@@ -129,49 +154,94 @@ export const LocalDBTab: React.FC = () => {
 
   // 페이지네이션 렌더링
   const renderPagination = () => {
-    // 표시할 페이지 버튼의 최대 개수
-    const maxButtons = 5;
-    let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
-    const endPage = Math.min(totalPages, startPage + maxButtons - 1);
+    if (totalPages <= 1) return null;
     
-    // 페이지 버튼 배열 생성
-    startPage = Math.max(1, endPage - maxButtons + 1);
-    const pageButtons = [];
+    const pages = [];
     
-    for (let i = startPage; i <= endPage; i++) {
-      pageButtons.push(
-        <button
-          key={i}
-          onClick={() => handlePageChange(i)}
-          className={`px-3 py-2 ${
-            currentPage === i 
-            ? 'bg-blue-500 text-white' 
-            : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-          } rounded mx-1`}
-        >
-          {i}
-        </button>
-      );
+    // 항상 첫 페이지 표시 (높은 수부터 시작)
+    pages.push(totalPages);
+    
+    // 현재 페이지 기준 좌우로 2페이지씩만 표시 (역순 계산)
+    let startPage = Math.min(totalPages - 1, currentPage + 2);
+    let endPage = Math.max(2, currentPage - 2);
+    
+    // 첫 페이지와 시작 페이지 사이에 간격이 있으면 ... 표시
+    if (startPage < totalPages - 1) {
+      pages.push('...');
+    }
+    
+    // 중간 페이지들 추가 (역순)
+    for (let i = startPage; i >= endPage; i--) {
+      pages.push(i);
+    }
+    
+    // 끝 페이지와 마지막 표시 페이지 사이에 간격이 있으면 ... 표시
+    if (endPage > 2) {
+      pages.push('...');
+    }
+    
+    // 항상 마지막 페이지 표시 (1페이지가 아닌 경우)
+    if (totalPages > 1) {
+      pages.push(1);
     }
     
     return (
-      <div className="flex justify-center mt-4">
+      <div className="flex justify-center items-center mt-4 space-x-2">
+        {/* 맨 처음으로 버튼 (가장 높은 페이지) */}
         <button
-          onClick={() => handlePageChange(currentPage - 1)}
-          disabled={currentPage === 1}
-          className="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded mx-1 disabled:opacity-50"
+          onClick={() => handlePageChange(totalPages)}
+          disabled={currentPage === totalPages}
+          className="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded disabled:opacity-50"
+          title="맨 처음으로 (최신 데이터)"
         >
-          이전
+          &laquo;
         </button>
         
-        {pageButtons}
-        
+        {/* 이전 버튼 (숫자가 커지는 방향) */}
         <button
-          onClick={() => handlePageChange(currentPage + 1)}
+          onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage === totalPages}
-          className="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded mx-1 disabled:opacity-50"
+          className="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded disabled:opacity-50"
         >
-          다음
+          &lt;
+        </button>
+        
+        {/* 페이지 번호들 (역순으로 표시) */}
+        {pages.map((page, index) => (
+          page === '...' ? (
+            <span key={`ellipsis-${index}`} className="px-3 py-2">...</span>
+          ) : (
+            <button
+              key={`page-${page}`}
+              onClick={() => handlePageChange(page as number)}
+              className={`px-3 py-2 rounded ${
+                currentPage === page 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              {page}
+            </button>
+          )
+        ))}
+        
+        {/* 다음 버튼 (숫자가 작아지는 방향) */}
+        <button
+          onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded disabled:opacity-50"
+        >
+          &gt;
+        </button>
+        
+        {/* 맨 끝으로 버튼 (가장 낮은 페이지) */}
+        <button
+          onClick={() => handlePageChange(1)}
+          disabled={currentPage === 1}
+          className="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded disabled:opacity-50"
+          title="맨 마지막으로 (오래된 데이터)"
+        >
+          &raquo;
         </button>
       </div>
     );
@@ -205,7 +275,7 @@ export const LocalDBTab: React.FC = () => {
           }}
         >
           <div className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
                 <div className="text-gray-600 dark:text-gray-400 mb-2">현재 수집된 제품 수</div>
                 <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
@@ -214,10 +284,20 @@ export const LocalDBTab: React.FC = () => {
               </div>
               
               <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
+                <div className="text-gray-600 dark:text-gray-400 mb-2">총 페이지 수</div>
+                <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                  {totalProductPages?.toLocaleString() || '0'}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  (페이지당 {config.productsPerPage || 12}개 제품 기준)
+                </div>
+              </div>
+              
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
                 <div className="text-gray-600 dark:text-gray-400 mb-2">최근 업데이트</div>
                 <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
                   {dbSummary.lastUpdated 
-                    ? new Date(dbSummary.lastUpdated).toLocaleString() 
+                    ? format(new Date(dbSummary.lastUpdated), 'yyyy-MM-dd HH:mm') 
                     : '없음'}
                 </div>
               </div>
@@ -226,13 +306,13 @@ export const LocalDBTab: React.FC = () => {
             <div className="flex justify-end space-x-3 mt-4">
               <button
                 onClick={openDeleteModal}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors duration-200"
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors duration-200 shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow border border-red-700 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-opacity-50"
               >
                 레코드 삭제
               </button>
               <button
                 onClick={handleExportToExcel}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors duration-200"
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors duration-200 shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow border border-green-700 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-50"
               >
                 엑셀 내보내기
               </button>
@@ -291,7 +371,7 @@ export const LocalDBTab: React.FC = () => {
                       <tr key={`${product.pageId}-${product.indexInPage}`} className="hover:bg-gray-50 dark:hover:bg-gray-750">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200">
-                            {(product.pageId || 0) * 12 + (product.indexInPage || 0) + 1}
+                            {(product.pageId || 0) * (config.productsPerPage || 12) + (product.indexInPage || 0) + 1}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -316,7 +396,7 @@ export const LocalDBTab: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200">
-                            {product.pageId !== undefined ? product.pageId : '-'}
+                            {product.pageId !== undefined ? product.pageId + 1 : '-'}
                           </div>
                         </td>
                       </tr>
@@ -327,11 +407,11 @@ export const LocalDBTab: React.FC = () => {
             </div>
             
             {/* 페이지네이션 */}
-            <div className="flex justify-between items-center mt-4">
-              <div className="text-sm text-gray-500 dark:text-gray-400">
+            <div className="flex flex-col md:flex-row justify-between items-center mt-4">
+              <div className="text-sm text-gray-500 dark:text-gray-400 mb-2 md:mb-0">
                 총 {products?.length?.toLocaleString() || '0'}개 항목
               </div>
-              {totalPages > 1 && renderPagination()}
+              {renderPagination()}
             </div>
           </div>
         </div>

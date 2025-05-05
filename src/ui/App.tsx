@@ -170,8 +170,11 @@ function App() {
   // 크롤링 상태 체크 핸들러 
   const handleCheckStatus = () => {
     checkCrawlingStatus();
-    // 상태 체크 시 자동 확장
-    setCompareExpanded(true);
+    // 상태 체크 시 UI 업데이트로 인한 중복 토글 방지
+    // 이미 확장된 상태라면 토글하지 않음
+    if (!compareExpanded) {
+      setCompareExpanded(true);
+    }
   };
 
   // 섹션 토글 핸들러

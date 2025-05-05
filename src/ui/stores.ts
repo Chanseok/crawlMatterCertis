@@ -444,18 +444,27 @@ export async function exportToExcel(path?: string): Promise<void> {
 }
 
 // 제품 검색 함수
-export async function searchProducts(query: string = '', page: number = 1, limit: number = 100): Promise<void> {
+export async function searchProducts(query: string = '', page: number = 1, limit: number = 5000): Promise<void> {
   try {
-    const { products, total } = await api.invokeMethod('getProducts', { 
+    // 로딩 시작 로그
+    if (!query) {
+      addLog(`제품 데이터 로드 중... (최대 ${limit}개)`, 'info');
+    }
+    
+    const response = await api.invokeMethod('getProducts', { 
       search: query,
       page,
       limit 
     });
     
+    const { products, total } = response;
+    
     productsStore.set(products);
     
     if (query) {
       addLog(`검색 결과: ${products.length}개 항목 (총 ${total}개 중)`, 'info');
+    } else if (products.length > 0) {
+      addLog(`제품 데이터 로드 완료: ${products.length}개 항목 (총 ${total}개 중)`, 'info');
     }
   } catch (error) {
     addLog(`제품 검색 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');

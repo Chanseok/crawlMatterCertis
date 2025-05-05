@@ -90,7 +90,8 @@ export async function initializeDatabase(): Promise<void> {
 export async function getProductsFromDb(page: number = 1, limit: number = 20): Promise<{ products: MatterProduct[], total: number }> {
     return new Promise((resolve, reject) => {
         const offset = (page - 1) * limit;
-        const query = `SELECT * FROM products LIMIT ? OFFSET ?`;
+        // 수정: pageId와 indexInPage 기준으로 내림차순 정렬 적용
+        const query = `SELECT * FROM products ORDER BY pageId DESC, indexInPage DESC LIMIT ? OFFSET ?`;
         const countQuery = `SELECT COUNT(*) as total FROM products`;
 
         db.get(countQuery, (err, row: { total: number }) => {
@@ -143,6 +144,7 @@ export async function searchProductsInDb(query: string, page: number = 1, limit:
         const sql = `
             SELECT * FROM products 
             WHERE manufacturer LIKE ? OR model LIKE ? OR deviceType LIKE ? OR certificationId LIKE ?
+            ORDER BY pageId DESC, indexInPage DESC
             LIMIT ? OFFSET ?
         `;
         const countSql = `
