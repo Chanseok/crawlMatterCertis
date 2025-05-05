@@ -4,7 +4,7 @@
  */
 
 import { chromium } from 'playwright-chromium';
-import { getDatabaseSummaryFromDb } from '../../database.js';
+// import { getDatabaseSummaryFromDb } from '../../database.js';
 import { getRandomDelay, delay } from '../utils/delay.js';
 import { CrawlerState } from '../core/CrawlerState.js';
 import {
@@ -12,10 +12,12 @@ import {
 } from '../utils/concurrency.js';
 
 import type { CrawlResult } from '../utils/types.js';
-import type { Product } from '../../../../types.d.ts';
+import type { Product } from '../../../../types.js';
 import { debugLog } from '../../util.js';
 import { getConfig } from '../core/config.js';
 import { crawlerEvents, updateRetryStatus, logRetryError } from '../utils/progress.js';
+import { PageIndexManager } from '../utils/page-index-manager.js';
+
 
 // 캐시
 let cachedTotalPages: number | null = null;
@@ -29,6 +31,10 @@ export class ProductListCollector {
   private abortController: AbortController;
   private progressCallback: ProgressCallback | null = null;
   private processedPages: number = 0;
+
+  // 마지막 페이지 제품 수를 저장하는 캐시 변수
+  private static lastPageProductCount: number | null = null;
+  
 
   constructor(state: CrawlerState, abortController: AbortController) {
     this.state = state;
@@ -62,15 +68,21 @@ export class ProductListCollector {
       this.state.setStage('productList:init', '1단계: 제품 목록 페이지 수 파악 중');
       this.processedPages = 0;
   
-      // 총 페이지 수 파악
-      const totalPages = await this.getTotalPagesCached();
+      // 총 페이지 수와 마지막 페이지 제품 수 가져오기
+      const { totalPages, lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached();
+      debugLog(`Total pages: ${totalPages}, Last page product count: ${lastPageProductCount}`);
       
-      // 크롤링 범위 결정 (사용자 설정 적용)
-      const { startPage, endPage } = await this.determineCrawlingRange(totalPages, userPageLimit);
+      // 크롤링 범위 결정 (마지막 페이지 제품 수도 함께 전달)
+      const { startPage, endPage } = await PageIndexManager.calculateCrawlingRange(
+        totalPages, 
+        lastPageProductCount,
+        userPageLimit
+      );
+      debugLog(`Crawling range: ${startPage} to ${endPage}`);
       
       // 사용자 설정 페이지 수에 따른 범위 계산
-      const pageNumbers = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
-      
+      const pageNumbers = Array.from({ length: startPage - endPage + 1 }, (_, i) => endPage + i).reverse();
+      debugLog(`Page numbers to crawl: ${pageNumbers}`);
       // 설정값 가져오기
       const config = getConfig();
       
@@ -85,7 +97,8 @@ export class ProductListCollector {
           startPage,
           endPage,
           pageCount: pageNumbers.length,
-          estimatedProductCount: pageNumbers.length * config.productsPerPage
+          estimatedProductCount: pageNumbers.length * config.productsPerPage,
+          lastPageProductCount // 마지막 페이지 제품 수 추가
         })
       });
   
@@ -252,234 +265,272 @@ export class ProductListCollector {
   // 예: browser.close() 관련 코드
   }
 
-  /**
-   * 캐시된 페이지 정보 반환 또는 최신화
-   */
-  public async getTotalPagesCached(force = false): Promise<number> {
-    return ProductListCollector.fetchTotalPagesCached(force);
+/**
+ * 캐시된 페이지 정보 반환 또는 최신화
+ */
+public async getTotalPagesCached(force = false): Promise<number> {
+  const { totalPages } = await ProductListCollector.fetchTotalPagesCached(force);
+  return totalPages;
+}
+/**
+ * 정적 메서드: 캐시된 전체 페이지 수와 마지막 페이지 제품 수를 가져오거나 최신화
+ * 외부 모듈에서 쉽게 접근할 수 있는 간단한 API 제공
+ */
+public static async fetchTotalPagesCached(force = false): Promise<{
+  totalPages: number;
+  lastPageProductCount: number;
+}> {
+  const config = getConfig();
+  const now = Date.now();
+  // Provide a default TTL of 1 hour (3600000 ms) if not configured
+  const cacheTtl = config.cacheTtlMs ?? 3600000; 
+  
+  if (!force && 
+      cachedTotalPages && 
+      ProductListCollector.lastPageProductCount !== null &&
+      cachedTotalPagesFetchedAt && 
+      (now - cachedTotalPagesFetchedAt < cacheTtl)) {
+    return {
+      totalPages: cachedTotalPages,
+      lastPageProductCount: ProductListCollector.lastPageProductCount!
+    };
   }
 
-  /**
-   * 정적 메서드: 캐시된 전체 페이지 수를 가져오거나 최신화
-   * 외부 모듈에서 쉽게 접근할 수 있는 간단한 API 제공
-   */
-  public static async fetchTotalPagesCached(force = false): Promise<number> {
-    const config = getConfig();
-    const now = Date.now();
-    // Provide a default TTL of 1 hour (3600000 ms) if not configured
-    const cacheTtl = config.cacheTtlMs ?? 3600000; 
-    if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < cacheTtl)) {
-      return cachedTotalPages;
+  const result = await ProductListCollector.fetchTotalPages();
+  cachedTotalPages = result.totalPages;
+  ProductListCollector.lastPageProductCount = result.lastPageProductCount;
+  cachedTotalPagesFetchedAt = now;
+  
+  
+  return result;
+}
+
+/**
+ * 정적 메서드: 총 페이지 수와 마지막 페이지의 제품 수를 가져오는 함수
+ */
+private static async fetchTotalPages(): Promise<{ totalPages: number; lastPageProductCount: number }> {
+  const config = getConfig();
+  const browser = await chromium.launch({ headless: true });
+  let totalPages = 0;
+  let lastPageProductCount = 0;
+
+  try {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    if (!config.matterFilterUrl) {
+      throw new Error('Configuration error: matterFilterUrl is not defined.');
     }
 
-    const totalPages = await ProductListCollector.fetchTotalPages();
-    cachedTotalPages = totalPages;
-    cachedTotalPagesFetchedAt = now;
-    return totalPages;
-  }
+    console.log(`[ProductListCollector] Navigating to ${config.matterFilterUrl}`);
+    await page.goto(config.matterFilterUrl, { waitUntil: 'domcontentloaded' });
 
-  /**
-   * 정적 메서드: 총 페이지 수를 가져오는 함수
-   */
-  private static async fetchTotalPages(): Promise<number> {
-    const config = getConfig();
-    const browser = await chromium.launch({ headless: true });
-    let totalPages = 0;
+    // 페이지네이션 정보 추출
+    const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
+    if (pageElements.length > 0) {
+      const pageNumbers = await Promise.all(
+        pageElements.map(async (el) => {
+          const text = await el.textContent();
+          return text ? parseInt(text.trim(), 10) : 0;
+        })
+      );
 
-    try {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
-      if (!config.matterFilterUrl) {
-        throw new Error('Configuration error: matterFilterUrl is not defined.');
-      }
-
-      console.log(`[ProductListCollector] Navigating to ${config.matterFilterUrl}`);
-      await page.goto(config.matterFilterUrl, { waitUntil: 'domcontentloaded' });
-
-      // 페이지네이션 정보 추출
-      const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
-      if (pageElements.length > 0) {
-        const pageNumbers = await Promise.all(
-          pageElements.map(async (el) => {
-            const text = await el.textContent();
-            return text ? parseInt(text.trim(), 10) : 0;
-          })
-        );
-
-        totalPages = Math.max(...pageNumbers.filter(n => !isNaN(n)));
-      }
-      console.log(`[ProductListCollector] Found ${totalPages} total pages`);
-    } catch (error: unknown) {
-      console.error('[ProductListCollector] Error getting total pages:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to get total pages: ${errorMessage}`);
-    } finally {
-      await browser.close();
+      totalPages = Math.max(...pageNumbers.filter(n => !isNaN(n)));
     }
-
-    return totalPages;
-  }
-
-  /**
-   * 크롤링해야 할 페이지 범위를 결정하는 함수
-   * @param totalPages 총 페이지 수
-   * @param userPageLimit 사용자가 설정한 페이지 수 제한 (선택적)
-   */
-  private async determineCrawlingRange(totalPages: number, userPageLimit: number = 0): Promise<{ startPage: number; endPage: number }> {
-    const config = getConfig();
-    const dbSummary = await getDatabaseSummaryFromDb();
-
-    if (dbSummary.productCount === 0) {
-      console.log('[ProductListCollector] Database is empty. Need to crawl all pages.');
-      const endPage = userPageLimit > 0 ? Math.min(userPageLimit, totalPages) : totalPages;
-      return { startPage: 1, endPage };
-    }
-
-    // 이미 수집된 페이지 수 계산 
-    const collectedPages = Math.floor(dbSummary.productCount / config.productsPerPage);
-    const endPage = Math.max(1, totalPages - collectedPages);
-    const startPage = 1;
-
-    // 사용자 설정 페이지 수 제한 적용
-    const adjustedEndPage = userPageLimit > 0 ? Math.min(endPage, userPageLimit) : endPage;
-
-    console.log(`[ProductListCollector] Database has ${dbSummary.productCount} products. Will crawl from page ${startPage} to ${adjustedEndPage}.`);
-    return { startPage, endPage: adjustedEndPage };
-  }
-
-  /**
-   * 정적 메서드: 크롤링 범위를 결정하는 함수
-   * 특정 인스턴스 없이도 크롤링 범위를 파악할 수 있음
-   * @param totalPages 총 페이지 수
-   * @param userPageLimit 사용자가 설정한 페이지 수 제한 (선택적)
-   */
-  public static async determineCrawlingRange(totalPages: number, userPageLimit: number = 0): Promise<{ startPage: number; endPage: number }> {
-    const config = getConfig();
-    const dbSummary = await getDatabaseSummaryFromDb();
-
-    if (dbSummary.productCount === 0) {
-      console.log('[ProductListCollector] Database is empty. Need to crawl all pages.');
-      const endPage = userPageLimit > 0 ? Math.min(userPageLimit, totalPages) : totalPages;
-      return { startPage: 1, endPage };
-    }
-
-    // 이미 수집된 페이지 수 계산
-    const collectedPages = Math.floor(dbSummary.productCount / config.productsPerPage);
-    const endPage = Math.max(1, totalPages - collectedPages);
-    const startPage = 1;
+    console.log(`[ProductListCollector] Found ${totalPages} total pages`);
     
-    // 사용자 설정 페이지 수 제한 적용
-    const adjustedEndPage = userPageLimit > 0 ? Math.min(endPage, userPageLimit) : endPage;
-
-    console.log(`[ProductListCollector] Database has ${dbSummary.productCount} products. Will crawl from page ${startPage} to ${adjustedEndPage}.`);
-    return { startPage, endPage: adjustedEndPage };
+    // 마지막 페이지로 이동하여 제품 수 확인
+    if (totalPages > 0) {
+      const lastPageUrl = `${config.matterFilterUrl}&paged=${totalPages}`;
+      console.log(`[ProductListCollector] Navigating to last page: ${lastPageUrl}`);
+      await page.goto(lastPageUrl, { waitUntil: 'domcontentloaded' });
+      
+      // 제품 개수 계산
+      lastPageProductCount = await page.evaluate(() => {
+        return document.querySelectorAll('div.post-feed article').length;
+      });
+      
+      console.log(`[ProductListCollector] Last page ${totalPages} has ${lastPageProductCount} products`);
+    }
+  } catch (error: unknown) {
+    console.error('[ProductListCollector] Error getting total pages:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to get total pages: ${errorMessage}`);
+  } finally {
+    await browser.close();
   }
 
-  /**
+  return { totalPages, lastPageProductCount };
+}
+
+
+/**
+ * 정적 메서드: 크롤링 범위를 결정하는 함수
+ * 특정 인스턴스 없이도 크롤링 범위를 파악할 수 있음
+ * @param totalPages 총 페이지 수
+ * @param userPageLimit 사용자가 설정한 페이지 수 제한 (선택적)
+ */
+public static async determineCrawlingRange(totalPages: number, userPageLimit: number = 0): Promise<{ startPage: number; endPage: number }> {
+  // 마지막 페이지 제품 수 가져오기
+  const { lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached();
+  
+  // PageIndexManager를 사용하여 크롤링 범위 계산
+  return await PageIndexManager.calculateCrawlingRange(totalPages, lastPageProductCount, userPageLimit);
+}
+
+/**
+ * 마지막 페이지의 제품 수를 가져오는 함수
+ * 이 정보는 옵셋 계산에 사용됨
+ */
+public async getLastPageProductCount(force = false): Promise<number> {
+  // fetchTotalPagesCached 함수를 활용하여 마지막 페이지의 제품 수를 가져옴
+  const { lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached(force);
+  return lastPageProductCount;
+}
+
+/**
  * 특정 페이지의 제품 정보 목록을 크롤링하는 함수
  */
-  private async crawlProductsFromPage(pageNumber: number, totalPages: number, signal: AbortSignal): Promise<Product[]> {
-    const config = getConfig();
-    
-    // 서버 과부하 방지를 위한 무작위 지연 시간 적용
-    const delayTime = getRandomDelay(config.minRequestDelayMs ?? 1000, config.maxRequestDelayMs ?? 3000);
-    await delay(delayTime);
+private async crawlProductsFromPage(pageNumber: number, totalPages: number, signal: AbortSignal): Promise<Product[]> {
+  const config = getConfig();
+  
+  // 서버 과부하 방지를 위한 무작위 지연 시간 적용
+  const delayTime = getRandomDelay(config.minRequestDelayMs ?? 1000, config.maxRequestDelayMs ?? 3000);
+  await delay(delayTime);
 
-    // 중단 확인
+  // 중단 확인
+  if (signal.aborted) {
+    throw new Error('Aborted');
+  }
+
+  const pageUrl = `${config.matterFilterUrl}&paged=${pageNumber}`;
+  const browser = await chromium.launch({ headless: true });
+
+  try {
+    // 중단 신호 확인 - 브라우저 생성 직후
     if (signal.aborted) {
       throw new Error('Aborted');
     }
 
-    const pageUrl = `${config.matterFilterUrl}&paged=${pageNumber}`;
-    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
 
-    try {
-      // 중단 신호 확인 - 브라우저 생성 직후
-      if (signal.aborted) {
-        throw new Error('Aborted');
-      }
+    // 중단 시 브라우저 작업을 취소하기 위한 이벤트 리스너
+    const abortListener = () => {
+      if (!browser.isConnected()) return;
+      browser.close().catch(e => console.error('Error closing browser after abort:', e));
+    };
+    signal.addEventListener('abort', abortListener);
 
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    // 페이지 로드를 시작하기 전에 중단 신호 확인
+    if (signal.aborted) {
+      throw new Error('Aborted');
+    }
 
-      // 중단 시 브라우저 작업을 취소하기 위한 이벤트 리스너
-      const abortListener = () => {
-        if (!browser.isConnected()) return;
-        browser.close().catch(e => console.error('Error closing browser after abort:', e));
-      };
-      signal.addEventListener('abort', abortListener);
+    await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
 
-      // 페이지 로드를 시작하기 전에 중단 신호 확인
-      if (signal.aborted) {
-        throw new Error('Aborted');
-      }
+    // 중단 신호 확인 - 페이지 이동 직후
+    if (signal.aborted) {
+      throw new Error('Aborted');
+    }
 
-      await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
+    // 마지막 페이지의 제품 수 확인 (캐시 사용)
+    const lastPageProductCount = await this.getLastPageProductCount();
+    
+    // sitePageNumber 계산 (새로운 제품일수록 숫자가 작아짐)
+    const sitePageNumber = PageIndexManager.toSitePageNumber(pageNumber, totalPages);
+    
+    // 옵셋 계산
+    const offset = PageIndexManager.calculateOffset(lastPageProductCount);
+    
+    console.log(`[ProductListCollector] 페이지 ${pageNumber} 크롤링 (sitePageNumber: ${sitePageNumber}, lastPageProductCount: ${lastPageProductCount}, offset: ${offset})`);
 
-      // 중단 신호 확인 - 페이지 이동 직후
-      if (signal.aborted) {
-        throw new Error('Aborted');
-      }
-
-      const pageId = totalPages - pageNumber;
-
-      // 제품 정보 추출
-      const products: Product[] = await page.evaluate((pageId) => {
-        const articles = Array.from(document.querySelectorAll('div.post-feed article'));
-        return articles.reverse().map((article, idx) => {
-          const link = article.querySelector('a');
-          const manufacturerEl = article.querySelector('p.entry-company.notranslate');
-          const modelEl = article.querySelector('h3.entry-title');
-          const certificateIdEl = article.querySelector('span.entry-cert-id');
-          const certificateIdPEl = article.querySelector('p.entry-certificate-id');
-          let certificateId: string | undefined = undefined;
-          if (certificateIdPEl && certificateIdPEl.textContent) {
-            const text = certificateIdPEl.textContent.trim();
-            if (text.startsWith('Certificate ID: ')) {
-              certificateId = text.replace('Certificate ID: ', '').trim();
-            } else {
-              certificateId = text;
-            }
-          } else if (certificateIdEl && certificateIdEl.textContent) {
-            certificateId = certificateIdEl.textContent.trim();
+    // 제품 정보 추출 - 기본 정보와 페이지 내 인덱스만 가져오고 인덱싱은 서버 측에서 처리
+    const rawProducts = await page.evaluate(() => {
+      const articles = Array.from(document.querySelectorAll('div.post-feed article'));
+      
+      // 최신순으로 정렬된 제품 리스트를 가져옴
+      return articles.reverse().map((article, siteIndexInPage) => {
+        // 제품 기본 정보 추출
+        const link = article.querySelector('a');
+        const manufacturerEl = article.querySelector('p.entry-company.notranslate');
+        const modelEl = article.querySelector('h3.entry-title');
+        const certificateIdEl = article.querySelector('span.entry-cert-id');
+        const certificateIdPEl = article.querySelector('p.entry-certificate-id');
+        let certificateId;
+        
+        if (certificateIdPEl && certificateIdPEl.textContent) {
+          const text = certificateIdPEl.textContent.trim();
+          if (text.startsWith('Certificate ID: ')) {
+            certificateId = text.replace('Certificate ID: ', '').trim();
+          } else {
+            certificateId = text;
           }
-          return {
-            url: link && link.href ? link.href : '',
-            manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
-            model: modelEl ? modelEl.textContent?.trim() : undefined,
-            certificateId,
-            pageId,
-            indexInPage: idx,
-          };
-        });
-      }, pageId);
-
-      if (products.length == 0) {
-        debugLog(`[Extracted ${products.length} products on page ${pageNumber}`);
-        throw new Error(`Failed to crawl page ${pageNumber}: No products found`);
-      }
-
-      return products;
-    } catch (error: unknown) {
-      if (signal.aborted) {
-        throw new Error(`Aborted crawling for page ${pageNumber}`);
-      }
-      console.error(`[ProductListCollector] Error crawling page ${pageNumber}:`, error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to crawl page ${pageNumber}: ${errorMessage}`);
-    } finally {
-      try {
-        // 중단 여부와 상관없이 항상 브라우저 종료 시도
-        if (browser.isConnected()) {
-          await browser.close();
+        } else if (certificateIdEl && certificateIdEl.textContent) {
+          certificateId = certificateIdEl.textContent.trim();
         }
-      } catch (e) {
-        console.error(`Error while closing browser for page ${pageNumber}:`, e);
+        
+        return {
+          url: link && link.href ? link.href : '',
+          manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
+          model: modelEl ? modelEl.textContent?.trim() : undefined,
+          certificateId,
+          siteIndexInPage  // 페이지 내 인덱스만 반환
+        };
+      });
+    });
+
+    // 서버 측에서 PageIndexManager의 mapToLocalIndexing 함수를 활용하여 페이지 ID와 인덱스 계산
+    const products: Product[] = rawProducts
+      .map((product) => {
+      const { siteIndexInPage } = product;
+      
+      // PageIndexManager의 mapToLocalIndexing 함수 활용
+      const { pageId, indexInPage } = PageIndexManager.mapToLocalIndexing(
+        sitePageNumber, 
+        siteIndexInPage, 
+        offset
+      );
+      
+      return {
+        ...product,
+        pageId,
+        indexInPage,
+        sitePageNumber,  // 디버깅용 추가 정보
+        siteIndexInPage  // 디버깅용 추가 정보
+      };
+      })
+      .sort((a, b) => {
+      if (a.pageId !== b.pageId) {
+        return a.pageId - b.pageId;
       }
+      return a.indexInPage - b.indexInPage;
+      });
+
+    if (products.length == 0) {
+      debugLog(`[Extracted ${products.length} products on page ${pageNumber}`);
+      throw new Error(`Failed to crawl page ${pageNumber}: No products found`);
+    }
+
+    return products;
+  } catch (error: unknown) {
+    if (signal.aborted) {
+      throw new Error(`Aborted crawling for page ${pageNumber}`);
+    }
+    console.error(`[ProductListCollector] Error crawling page ${pageNumber}:`, error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to crawl page ${pageNumber}: ${errorMessage}`);
+  } finally {
+    try {
+      // 중단 여부와 상관없이 항상 브라우저 종료 시도
+      if (browser.isConnected()) {
+        await browser.close();
+      }
+    } catch (e) {
+      console.error(`Error while closing browser for page ${pageNumber}:`, e);
     }
   }
-
+}
   /**
   * 타임아웃 처리가 있는 페이지 크롤링 함수
   */

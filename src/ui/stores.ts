@@ -444,7 +444,7 @@ export async function exportToExcel(path?: string): Promise<void> {
 }
 
 // 제품 검색 함수
-export async function searchProducts(query: string = '', page: number = 1, limit: number = 5000): Promise<void> {
+export async function searchProducts(query: string = '', page: number = 1, limit: number = 8000): Promise<void> {
   try {
     // 로딩 시작 로그
     if (!query) {
