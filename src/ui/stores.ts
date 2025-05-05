@@ -135,10 +135,19 @@ export function initializeApiSubscriptions() {
   unsubscribeFunctions.push(unsubProgress);
 
   // 크롤링 완료 이벤트 구독
-  const unsubComplete = api.subscribeToEvent('crawlingComplete', ({ success, count }) => {
+  const unsubComplete = api.subscribeToEvent('crawlingComplete', ({ success, count, autoSavedToDb }: { success: boolean; count: number; autoSavedToDb?: boolean }) => {
     if (success) {
       crawlingStatusStore.set('completed');
       addLog(`크롤링이 완료되었습니다. 총 ${count}개의 항목이 수집되었습니다.`, 'success');
+      
+      // 자동 저장 상태 표시 (추가)
+      if (autoSavedToDb !== undefined) {
+        if (autoSavedToDb) {
+          addLog('설정에 따라 수집된 제품 정보가 자동으로 DB에 저장되었습니다.', 'info');
+        } else {
+          addLog('자동 DB 저장이 비활성화되어 있습니다. 필요한 경우 수동으로 DB에 추가하세요.', 'warning');
+        }
+      }
     } else {
       crawlingStatusStore.set('error');
       addLog('크롤링 중 오류가 발생했습니다.', 'error');
@@ -167,6 +176,37 @@ export function initializeApiSubscriptions() {
     productsStore.set(products);
   });
   unsubscribeFunctions.push(unsubProducts);
+
+  // DB 저장 완료 이벤트 구독 (추가)
+  const unsubDbSaveComplete = api.subscribeToEvent(
+    'dbSaveComplete',
+    (data: { success: boolean; added?: number; updated?: number; unchanged?: number; failed?: number; error?: string }) => {
+      console.log('[UI] DB 저장 완료 이벤트 수신:', data);
+      if (data.success) {
+        const { added = 0, updated = 0, unchanged = 0, failed = 0 } = data;
+        addLog(`제품 정보 DB 저장 완료: ${added}개 추가, ${updated}개 업데이트, ${unchanged}개 변동 없음, ${failed}개 실패`, 'success');
+        // 저장 후 DB 요약 정보 갱신
+        getDatabaseSummary().catch(err => console.error('DB 요약 정보 갱신 실패:', err));
+      } else {
+        addLog(`제품 정보 DB 저장 실패: ${data.error || '알 수 없는 오류'}`, 'error');
+      }
+    }
+  );
+  unsubscribeFunctions.push(unsubDbSaveComplete);
+  
+  // DB 저장 건너뛰기 이벤트 구독 (추가)
+  const unsubDbSaveSkipped = api.subscribeToEvent('dbSaveSkipped', (data) => {
+    console.log('[UI] DB 저장 건너뛰기 이벤트 수신:', data);
+    addLog(data.message || '제품 정보가 DB에 저장되지 않았습니다.', 'warning');
+  });
+  unsubscribeFunctions.push(unsubDbSaveSkipped);
+  
+  // DB 저장 오류 이벤트 구독 (추가)
+  const unsubDbSaveError = api.subscribeToEvent('dbSaveError', (data) => {
+    console.error('[UI] DB 저장 오류 이벤트 수신:', data);
+    addLog(`제품 정보 DB 저장 실패: ${data.error || '알 수 없는 오류'}`, 'error');
+  });
+  unsubscribeFunctions.push(unsubDbSaveError);
 
   // 동시 작업 상태 실시간 구독
   const unsubConcurrentTasks = api.subscribeToEvent('crawlingTaskStatus', (taskStatus) => {

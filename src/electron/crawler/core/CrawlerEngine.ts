@@ -10,7 +10,7 @@ import {
   updateProductDetailProgress,
   CRAWLING_STAGE
 } from '../utils/progress.js';
-import { getDatabaseSummaryFromDb } from '../../database.js';
+import { getDatabaseSummaryFromDb, saveProductsToDb } from '../../database.js';
 import { getConfig } from './config.js';
 import { CrawlerState } from './CrawlerState.js';
 import { ProductListCollector } from '../tasks/productList.js';
@@ -28,6 +28,7 @@ import type {
 } from '../utils/types.js';
 import type { Product, MatterProduct } from '../../../../types.js';
 import { debugLog } from '../../util.js';
+import { configManager } from '../../ConfigManager.js';
 
 export class CrawlerEngine {
   private state: CrawlerState;
@@ -345,6 +346,8 @@ export class CrawlerEngine {
    * 제품 상세 정보 크롤링 결과 처리 함수
    */
   private async handleDetailCrawlingResults(matterProducts: MatterProduct[]): Promise<void> {
+    console.log(`[CrawlerEngine] handleDetailCrawlingResults called with ${matterProducts.length} products`);
+    
     // 제품 상세 정보 결과 파일로 저장
     try {
       saveMatterProductsToFile(matterProducts);
@@ -367,29 +370,74 @@ export class CrawlerEngine {
     }
 
     // 설정에 따라 자동으로 DB에 저장
+    // ConfigManager에서 설정을 직접 가져오기
+    try {
+      console.log('[CrawlerEngine] Fetching latest config from ConfigManager');
+      
+      const managerConfig = configManager.getConfig();
+      console.log(`[CrawlerEngine] ConfigManager autoAddToLocalDB setting: ${managerConfig.autoAddToLocalDB}`);
+    } catch (err) {
+      console.error('[CrawlerEngine] Error accessing ConfigManager:', err);
+    }
+    
+    // 로컬 설정 가져오기
     const config = getConfig();
-    if (config.autoAddToLocalDB) {
+    console.log('[CrawlerEngine] Auto DB save setting from local config:', config.autoAddToLocalDB);
+    
+    // 설정파일 재로드 시도
+    try {
+      console.log('[CrawlerEngine] Attempting to reload config before DB save decision');
+      const { updateConfig } = await import('./config.js');
+      // ConfigManager에서 최신 설정을 가져와 강제 업데이트
+      
+      const latestConfig = configManager.getConfig();
+      
+      // 기존 설정과 최신 설정의 autoAddToLocalDB 값 비교
+      if (latestConfig.autoAddToLocalDB !== config.autoAddToLocalDB) {
+        console.log(`[CrawlerEngine] Config mismatch detected! Updating autoAddToLocalDB from ${config.autoAddToLocalDB} to ${latestConfig.autoAddToLocalDB}`);
+        updateConfig({ autoAddToLocalDB: latestConfig.autoAddToLocalDB });
+      }
+    } catch (err) {
+      console.error('[CrawlerEngine] Error during config reload:', err);
+    }
+    
+    // 최종 설정 다시 가져오기
+    const finalConfig = getConfig();
+    console.log(`[CrawlerEngine] FINAL autoAddToLocalDB setting: ${finalConfig.autoAddToLocalDB}`);
+    
+    if (finalConfig.autoAddToLocalDB) {
       try {
         // 자동 저장 옵션이 켜져 있으면 DB에 저장
-        const { saveProductsToDb } = await import('../../database.js');
         console.log('[CrawlerEngine] Automatically saving collected products to DB per user settings...');
         
-        const saveResult = await saveProductsToDb(matterProducts);
-        
-        // 저장 결과 로그
-        console.log(`[CrawlerEngine] DB Save Result: ${saveResult.added} added, ${saveResult.updated} updated, ${saveResult.unchanged} unchanged, ${saveResult.failed} failed`);
-        
-        // 상태 이벤트 발생 - DB 저장 결과
-        crawlerEvents.emit('dbSaveComplete', {
-          success: true,
-          added: saveResult.added,
-          updated: saveResult.updated,
-          unchanged: saveResult.unchanged,
-          failed: saveResult.failed,
-          duplicateInfo: saveResult.duplicateInfo
-        });
+        if (matterProducts.length === 0) {
+          console.log('[CrawlerEngine] No products to save to DB.');
+          crawlerEvents.emit('dbSaveSkipped', {
+            message: '저장할 제품 정보가 없습니다.',
+            count: 0
+          });
+        } else {
+          
+          console.log(`[CrawlerEngine] Calling saveProductsToDb with ${matterProducts.length} products`);
+          
+          const saveResult = await saveProductsToDb(matterProducts);
+          
+          // 저장 결과 로그
+          console.log(`[CrawlerEngine] DB Save Result: ${saveResult.added} added, ${saveResult.updated} updated, ${saveResult.unchanged} unchanged, ${saveResult.failed} failed`);
+          
+          // 상태 이벤트 발생 - DB 저장 결과
+          crawlerEvents.emit('dbSaveComplete', {
+            success: true,
+            added: saveResult.added,
+            updated: saveResult.updated,
+            unchanged: saveResult.unchanged,
+            failed: saveResult.failed,
+            duplicateInfo: saveResult.duplicateInfo
+          });
+        }
       } catch (err) {
         console.error('[CrawlerEngine] Error saving products to DB:', err);
+        console.error('[CrawlerEngine] Error details:', err instanceof Error ? err.stack : String(err));
         
         // 오류 이벤트 발생
         crawlerEvents.emit('dbSaveError', {
@@ -413,7 +461,7 @@ export class CrawlerEngine {
       count: matterProducts.length,
       products: matterProducts,
       failedReport,
-      autoSavedToDb: config.autoAddToLocalDB // 자동 저장 여부도 포함
+      autoSavedToDb: finalConfig.autoAddToLocalDB // 자동 저장 여부도 포함
     });
   }
 

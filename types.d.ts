@@ -170,7 +170,7 @@ export type EventPayloadMapping = {
     crawlingTaskStatus: ConcurrentCrawlingTask[];
     crawlingStopped: ConcurrentCrawlingTask[];
     crawlingFailedPages: { pageNumber: number; errors: string[] }[];
-    // 
+    dbSaveError: { error?: string }; 
     dbSaveComplete: { success: boolean }; // <-- Add this line
     dbSaveSkipped: any; // <-- Add this if you use 'dbSaveSkipped' elsewhere
 };

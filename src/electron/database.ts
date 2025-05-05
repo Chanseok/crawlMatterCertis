@@ -4,6 +4,7 @@ import fs from 'fs';
 import { app } from 'electron';
 import type { DatabaseSummary, ProductDetail } from '../ui/types.js'; // Import Product type from your types file
 import type { MatterProduct, Product } from '../../types.js'; // Import MatterProduct type from your types file
+import { debugLog } from './util.js';
 
 const dbPath = path.join(app.getPath('userData'), 'dev-database.sqlite');
 const db = new sqlite3.Database(dbPath);
@@ -369,196 +370,253 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
   failed: number;
   duplicateInfo: Array<{url: string, changes: string[]}>; // 중복 제품 중 정보가 다른 경우의 세부 정보
 }> {
-  return new Promise((resolve, reject) => {
-    if (!products || products.length === 0) {
-      return resolve({ added: 0, updated: 0, unchanged: 0, failed: 0, duplicateInfo: [] });
-    }
+  debugLog(`[DB] saveProductsToDb called with ${products.length} products`);
+  
+  if (!products || products.length === 0) {
+    return { added: 0, updated: 0, unchanged: 0, failed: 0, duplicateInfo: [] };
+  }
 
+  return new Promise((resolve, reject) => {
     let added = 0;
     let updated = 0;
     let unchanged = 0;
     let failed = 0;
     const duplicateInfo: Array<{url: string, changes: string[]}> = [];
     
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
+    // 비동기 처리를 위한 카운터
+    let processedCount = 0;
 
-      const stmt = db.prepare(`
-        INSERT INTO product_details (
-          url, pageId, indexInPage, id, manufacturer, model, deviceType, certificationId,
-          certificationDate, softwareVersion, hardwareVersion, vid, pid, familySku,
-          familyVariantSku, firmwareVersion, familyId, tisTrpTested, specificationVersion,
-          transportInterface, primaryDeviceTypeId, applicationCategories
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(url) DO UPDATE SET
-          pageId=excluded.pageId,
-          indexInPage=excluded.indexInPage,
-          id=excluded.id,
-          manufacturer=excluded.manufacturer,
-          model=excluded.model,
-          deviceType=excluded.deviceType,
-          certificationId=excluded.certificationId,
-          certificationDate=excluded.certificationDate,
-          softwareVersion=excluded.softwareVersion,
-          hardwareVersion=excluded.hardwareVersion,
-          vid=excluded.vid,
-          pid=excluded.pid,
-          familySku=excluded.familySku,
-          familyVariantSku=excluded.familyVariantSku,
-          firmwareVersion=excluded.firmwareVersion,
-          familyId=excluded.familyId,
-          tisTrpTested=excluded.tisTrpTested,
-          specificationVersion=excluded.specificationVersion,
-          transportInterface=excluded.transportInterface,
-          primaryDeviceTypeId=excluded.primaryDeviceTypeId,
-          applicationCategories=excluded.applicationCategories
-      `);
-
-      const checkStmt = db.prepare('SELECT * FROM product_details WHERE url = ?');
-      
-      let completed = 0;
-
-      for (const product of products) {
-        try {
-          // 먼저 기존 제품 정보가 있는지 확인
-          checkStmt.get([product.url], (err, existingProduct: any) => {
-            if (err) {
-              console.error(`[DB] 제품 조회 중 오류 (URL: ${product.url}):`, err);
-              failed++;
-            } else {
-              try {
-                // applicationCategories 문자열로 변환 (JSON)
-                const applicationCategoriesStr = JSON.stringify(product.applicationCategories || []);
-                
-                // 날짜 형식 처리 (Date 객체를 ISO 문자열로)
-                const certificationDate = product.certificationDate instanceof Date 
-                  ? product.certificationDate.toISOString() 
-                  : product.certificationDate;
-                
-                if (existingProduct) {
-                  // 기존 제품이 있는 경우, 변경된 필드 확인
-                  const changes: string[] = [];
-                  
-                  // 모든 필드 비교 (applicationCategories는 문자열로 변환 후 비교)
-                  const fieldsToCompare = [
-                    'manufacturer', 'model', 'deviceType', 'certificationId', 'vid', 'pid',
-                    'softwareVersion', 'hardwareVersion', 'familySku', 'familyVariantSku',
-                    'firmwareVersion', 'familyId', 'tisTrpTested', 'specificationVersion',
-                    'transportInterface', 'primaryDeviceTypeId'
-                  ];
-                  
-                  for (const field of fieldsToCompare) {
-                    if (product[field as keyof MatterProduct] !== (existingProduct as any)[field]) {
-                      changes.push(`${field}: ${(existingProduct as any)[field]} → ${product[field as keyof MatterProduct]}`);
-                    }
-                  }
-                  
-                  // applicationCategories는 별도 처리 (JSON 문자열 비교)
-                  const existingCategoriesStr = existingProduct.applicationCategories;
-                  if (applicationCategoriesStr !== existingCategoriesStr) {
-                    changes.push(`applicationCategories: ${existingCategoriesStr} → ${applicationCategoriesStr}`);
-                  }
-                  
-                  // 날짜 비교는 추가 처리 필요 (포맷이 다를 수 있음)
-                  if (certificationDate !== existingProduct.certificationDate) {
-                    changes.push(`certificationDate: ${existingProduct.certificationDate} → ${certificationDate}`);
-                  }
-                  
-                  if (changes.length > 0) {
-                    // 변경사항이 있으면 업데이트로 처리
-                    duplicateInfo.push({ url: product.url, changes });
-                    updated++;
-                  } else {
-                    // 변경사항이 없으면 그대로 유지
-                    unchanged++;
-                  }
-                } else {
-                  // 새 제품 추가
-                  added++;
-                }
-                
-                // Insert 또는 Update 실행
-                stmt.run([
-                  product.url,
-                  product.pageId,
-                  product.indexInPage,
-                  product.id,
-                  product.manufacturer,
-                  product.model,
-                  product.deviceType,
-                  product.certificateId,
-                  certificationDate,
-                  product.softwareVersion,
-                  product.hardwareVersion,
-                  product.vid,
-                  product.pid,
-                  product.familySku,
-                  product.familyVariantSku,
-                  product.firmwareVersion,
-                  product.familyId,
-                  product.tisTrpTested,
-                  product.specificationVersion,
-                  product.transportInterface,
-                  product.primaryDeviceTypeId,
-                  applicationCategoriesStr
-                ]);
-                
-                // 모든 제품 처리 완료 확인
-                completed++;
-                if (completed === products.length) {
-                  finalize();
-                }
-              } catch (error) {
-                console.error(`[DB] 제품 저장 중 오류 (URL: ${product.url}):`, error);
-                failed++;
-                
-                completed++;
-                if (completed === products.length) {
-                  finalize();
-                }
-              }
-            }
-          });
-        } catch (error) {
-          console.error(`[DB] 제품 처리 중 오류 (URL: ${product.url}):`, error);
-          failed++;
-          
-          completed++;
-          if (completed === products.length) {
-            finalize();
-          }
-        }
+    // 작업 완료 체크 함수
+    const checkCompletion = () => {
+      processedCount++;
+      if (processedCount >= products.length) {
+        finalize();
       }
+    };
 
-      function finalize() {
-        stmt.finalize();
-        checkStmt.finalize();
+    // 모든 작업 완료 후 트랜잭션 종료 및 결과 반환
+    const finalize = () => {
+      db.run('COMMIT', (err) => {
+        if (err) {
+          console.error('[DB] 트랜잭션 커밋 실패:', err);
+          db.run('ROLLBACK', () => {
+            reject(err);
+          });
+          return;
+        }
         
-        // 요약 정보 업데이트 (마지막 업데이트 시간, 신규 추가 항목 수)
+        console.log(`[DB] 제품 저장 완료: ${added}개 추가, ${updated}개 업데이트, ${unchanged}개 변동 없음, ${failed}개 실패`);
+        
+        // 신규 추가된 제품이 있으면 요약 정보 업데이트
         if (added > 0) {
           markLastUpdatedInDb(added).catch(err => {
             console.error('[DB] 마지막 업데이트 정보 저장 중 오류:', err);
           });
         }
         
-        db.run('COMMIT', (err) => {
+        resolve({
+          added,
+          updated,
+          unchanged,
+          failed,
+          duplicateInfo
+        });
+      });
+    };
+    
+    // 트랜잭션 시작
+    db.run('BEGIN TRANSACTION', (err) => {
+      if (err) {
+        console.error('[DB] 트랜잭션 시작 실패:', err);
+        return reject(err);
+      }
+      
+      // 1. 먼저 기본 products 테이블에 정보 저장 (테이블 동기화)
+      const basicProducts: Product[] = products.map(p => ({
+        url: p.url,
+        manufacturer: p.manufacturer,
+        model: p.model, 
+        certificateId: p.certificateId,
+        pageId: p.pageId,
+        indexInPage: p.indexInPage
+      }));
+      
+      const basicStmt = db.prepare(`
+        INSERT INTO products (url, manufacturer, model, certificateId, pageId, indexInPage)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(url) DO UPDATE SET
+          manufacturer=excluded.manufacturer,
+          model=excluded.model,
+          certificateId=excluded.certificateId,
+          pageId=excluded.pageId,
+          indexInPage=excluded.indexInPage
+      `);
+      
+      // 기본 products 테이블 업데이트
+      basicProducts.forEach(product => {
+        basicStmt.run([
+          product.url,
+          product.manufacturer,
+          product.model,
+          product.certificateId,
+          product.pageId,
+          product.indexInPage
+        ], function(err) {
           if (err) {
-            console.error('[DB] 트랜잭션 커밋 실패:', err);
-            db.run('ROLLBACK', () => {
-              reject(err);
-            });
-            return;
+            console.error(`[DB] products 테이블 업데이트 실패 (URL: ${product.url}):`, err);
           }
-          
-          console.log(`[DB] 제품 저장 완료: ${added}개 추가, ${updated}개 업데이트, ${unchanged}개 변동 없음, ${failed}개 실패`);
-          resolve({
-            added,
-            updated,
-            unchanged,
-            failed,
-            duplicateInfo
+        });
+      });
+      
+      basicStmt.finalize();
+      
+      // 2. 제품 상세 정보 처리
+      if (products.length > 0) {
+        // 각 제품별로 처리
+        products.forEach(product => {
+          // 기존 제품 정보 확인
+          db.get('SELECT * FROM product_details WHERE url = ?', [product.url], (err, existingProduct: any) => {
+            if (err) {
+              console.error(`[DB] 제품 조회 중 오류 (URL: ${product.url}):`, err);
+              failed++;
+              checkCompletion();
+              return;
+            }
+            
+            try {
+              // applicationCategories 문자열로 변환
+              const applicationCategoriesStr = JSON.stringify(product.applicationCategories || []);
+              
+              // 날짜 형식 처리
+              const certificationDate = product.certificationDate instanceof Date 
+                ? product.certificationDate.toISOString() 
+                : product.certificationDate;
+              
+              // 중요: 실제로 레코드가 있는지 확인 (URL 필드 확인)
+              const recordExists = existingProduct && existingProduct.url === product.url;
+              
+              if (recordExists) {
+                // 디버그: 기존 레코드 발견
+                console.log(`[DB] 기존 제품 발견: ${product.url}`);
+                
+                // 변경사항 확인
+                const changes: string[] = [];
+                const fieldsToCompare = [
+                  'manufacturer', 'model', 'deviceType', 'certificationId',
+                  'softwareVersion', 'hardwareVersion', 'vid', 'pid', 
+                  'familySku', 'familyVariantSku', 'firmwareVersion', 'familyId',
+                  'tisTrpTested', 'specificationVersion', 'transportInterface',
+                  'primaryDeviceTypeId'
+                ];
+                
+                for (const field of fieldsToCompare) {
+                  const key = field as keyof MatterProduct;
+                  if (product[key] !== existingProduct[field]) {
+                    changes.push(`${field}: ${existingProduct[field]} → ${product[key]}`);
+                  }
+                }
+                
+                // 특수 필드 비교
+                // applicationCategories 비교 (JSON 문자열)
+                const existingCategoriesStr = existingProduct.applicationCategories || '[]';
+                if (applicationCategoriesStr !== existingCategoriesStr) {
+                  changes.push(`applicationCategories: ${existingCategoriesStr} → ${applicationCategoriesStr}`);
+                }
+                
+                // 날짜 비교
+                if (certificationDate !== existingProduct.certificationDate) {
+                  changes.push(`certificationDate: ${existingProduct.certificationDate} → ${certificationDate}`);
+                }
+                
+                if (changes.length > 0) {
+                  // 변경된 내용이 있으면 업데이트
+                  console.log(`[DB] 제품 업데이트: ${product.url} (${changes.length}개 필드 변경)`);
+                  duplicateInfo.push({ url: product.url, changes });
+                  updated++;
+                } else {
+                  // 변경 없음
+                  console.log(`[DB] 제품 변경 없음: ${product.url}`);
+                  unchanged++;
+                }
+              } else {
+                // 새 제품 추가
+                console.log(`[DB] 새 제품 추가: ${product.url}`);
+                added++;
+              }
+              
+              // 제품 상세 정보 저장/업데이트
+              const stmt = db.prepare(`
+                INSERT INTO product_details (
+                  url, pageId, indexInPage, id, manufacturer, model, deviceType, certificationId,
+                  certificationDate, softwareVersion, hardwareVersion, vid, pid, familySku,
+                  familyVariantSku, firmwareVersion, familyId, tisTrpTested, specificationVersion,
+                  transportInterface, primaryDeviceTypeId, applicationCategories
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(url) DO UPDATE SET
+                  pageId=excluded.pageId,
+                  indexInPage=excluded.indexInPage,
+                  id=excluded.id,
+                  manufacturer=excluded.manufacturer,
+                  model=excluded.model,
+                  deviceType=excluded.deviceType,
+                  certificationId=excluded.certificationId,
+                  certificationDate=excluded.certificationDate,
+                  softwareVersion=excluded.softwareVersion,
+                  hardwareVersion=excluded.hardwareVersion,
+                  vid=excluded.vid,
+                  pid=excluded.pid,
+                  familySku=excluded.familySku,
+                  familyVariantSku=excluded.familyVariantSku,
+                  firmwareVersion=excluded.firmwareVersion,
+                  familyId=excluded.familyId,
+                  tisTrpTested=excluded.tisTrpTested,
+                  specificationVersion=excluded.specificationVersion,
+                  transportInterface=excluded.transportInterface,
+                  primaryDeviceTypeId=excluded.primaryDeviceTypeId,
+                  applicationCategories=excluded.applicationCategories
+              `);
+              
+              stmt.run([
+                product.url,
+                product.pageId,
+                product.indexInPage,
+                product.id,
+                product.manufacturer,
+                product.model,
+                product.deviceType,
+                product.certificateId,
+                certificationDate,
+                product.softwareVersion,
+                product.hardwareVersion,
+                product.vid,
+                product.pid,
+                product.familySku,
+                product.familyVariantSku,
+                product.firmwareVersion,
+                product.familyId,
+                product.tisTrpTested,
+                product.specificationVersion,
+                product.transportInterface,
+                product.primaryDeviceTypeId,
+                applicationCategoriesStr
+              ], function(err) {
+                if (err) {
+                  console.error(`[DB] 제품 상세 정보 저장 실패 (URL: ${product.url}):`, err);
+                  failed++;
+                }
+                stmt.finalize();
+                checkCompletion();
+              });
+            } catch (error) {
+              console.error(`[DB] 제품 처리 중 오류 (URL: ${product.url}):`, error);
+              failed++;
+              checkCompletion();
+            }
           });
         });
+      } else {
+        // 제품이 없는 경우 바로 종료
+        finalize();
       }
     });
   });

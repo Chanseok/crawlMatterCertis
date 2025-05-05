@@ -159,7 +159,6 @@ app.on('ready', async () => {
         // 매개변수 디버깅 로깅 추가
         console.log('[IPC] startCrawling called with args (raw):', args);
         console.log('[IPC] startCrawling args type:', typeof args);
-        console.log('[IPC] startCrawling JSON args:', JSON.stringify(args));
         
         // 안전한 매개변수 처리
         let mode: AppMode = 'development'; // 기본값
@@ -173,20 +172,20 @@ app.on('ready', async () => {
                 // 설정 데이터 추출
                 if ('config' in args && args.config) {
                     config = args.config;
-                    // 설정 업데이트
-                    if (config.pageRangeLimit) {
-                        configManager.updateConfig({
-                            pageRangeLimit: config.pageRangeLimit
-                        });
-                    }
                     console.log('[IPC] Using config from UI:', JSON.stringify(config));
+                    
+                    // autoAddToLocalDB 값 명시적 로깅
+                    console.log(`[IPC] autoAddToLocalDB setting: ${config.autoAddToLocalDB}`);
+                    
+                    // 설정 업데이트
+                    configManager.updateConfig(config);
                 }
             }
         } catch (err) {
             console.error('[IPC] Error parsing startCrawling args:', err);
         }
         
-        console.log(`[IPC] Start crawling requested in ${mode} mode with pageLimit: ${config?.pageRangeLimit || 'default'}`);
+        console.log(`[IPC] Start crawling requested in ${mode} mode with config:`, config);
         
         try {
             // 설정 전달하여 크롤링 시작
