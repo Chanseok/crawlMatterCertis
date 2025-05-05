@@ -16,6 +16,7 @@
     "preview": "vite preview",
     "transpile:electron": "tsc --project src/electron/tsconfig.json",
     "populate-dev-db": "ts-node-esm ./scripts/populateDevDb.ts",
+    "query-db": "ts-node-esm ./scripts/queryDb.ts",
     "convert-device-data": "ts-node-esm ./scripts/convertDeviceData.ts",
     "merge-device-data": "ts-node-esm ./scripts/mergeDeviceFiles.ts",
     "merge-matter-devices": "ts-node-esm ./scripts/mergeMatterDevFiles.ts",

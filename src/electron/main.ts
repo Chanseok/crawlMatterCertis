@@ -420,23 +420,34 @@ app.on('ready', async () => {
     
     // 페이지 범위로 레코드 삭제 핸들러 추가
     ipcMain.handle(IPC_CHANNELS.DELETE_RECORDS_BY_PAGE_RANGE, async (_event, args) => {
-        console.log('[IPC] deleteRecordsByPageRange called with args:', args);
+        console.log('[BACKEND-IPC] deleteRecordsByPageRange 호출됨, args:', JSON.stringify(args));
         try {
             const { startPageId, endPageId } = args || {};
             
             if (typeof startPageId !== 'number' || typeof endPageId !== 'number') {
+                console.error('[BACKEND-IPC] 오류: 시작 및 종료 페이지 ID가 숫자가 아님');
                 throw new Error('시작 및 종료 페이지 ID가 숫자로 제공되어야 합니다.');
             }
             
+            console.log(`[BACKEND-IPC] 삭제 범위 검증: startPageId=${startPageId}, endPageId=${endPageId}`);
+            
             if (startPageId < endPageId) {
+                console.error('[BACKEND-IPC] 오류: 시작 페이지가 종료 페이지보다 작음');
                 throw new Error('시작 페이지 ID는 종료 페이지 ID보다 크거나 같아야 합니다.');
+            }
+            
+            // 특별 케이스: 마지막 한 페이지 남은 경우 (startPageId === endPageId) 로그 추가
+            if (startPageId === endPageId) {
+                console.log(`[BACKEND-IPC] 마지막 한 페이지 삭제 시도 감지: pageId=${startPageId}`);
             }
             
             // 데이터베이스에서 페이지 범위로 레코드 삭제 함수 호출
             const deletedCount = await deleteProductsByPageRange(startPageId, endPageId);
+            console.log(`[BACKEND-IPC] 데이터베이스에서 ${deletedCount}개 레코드 삭제됨`);
             
             // 삭제 후 최대 페이지 ID 조회
             const maxPageIdResult = await getMaxPageIdFromDb();
+            console.log(`[BACKEND-IPC] 삭제 후 최대 페이지 ID: ${maxPageIdResult}`);
             
             return {
                 success: true,
@@ -444,7 +455,7 @@ app.on('ready', async () => {
                 maxPageId: maxPageIdResult
             };
         } catch (error) {
-            console.error('[IPC] Error in deleteRecordsByPageRange:', error);
+            console.error(`[BACKEND-IPC] deleteRecordsByPageRange 오류:`, error);
             return {
                 success: false,
                 deletedCount: 0,

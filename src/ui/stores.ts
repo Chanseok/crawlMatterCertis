@@ -490,20 +490,34 @@ export function toggleAppMode(): void {
 // 페이지 범위로 레코드 삭제 함수 추가
 export async function deleteRecordsByPageRange(startPageId: number, endPageId: number): Promise<void> {
   try {
+    console.log(`[STORE] 레코드 삭제 시작 - 페이지 범위: ${startPageId}~${endPageId}`);
     addLog(`레코드 삭제를 시작합니다. 페이지 범위: ${startPageId}~${endPageId}`, 'info');
     
     // API를 통해 레코드 삭제 실행
-    const { success, deletedCount, error } = await api.invokeMethod('deleteRecordsByPageRange', { startPageId, endPageId });
+    const response = await api.invokeMethod('deleteRecordsByPageRange', { startPageId, endPageId });
+    console.log(`[STORE] 레코드 삭제 응답:`, response);
+    
+    const { success, deletedCount, error, maxPageId } = response;
     
     if (success) {
       addLog(`${deletedCount}개의 레코드가 성공적으로 삭제되었습니다.`, 'success');
+      console.log(`[STORE] 레코드 삭제 성공 - ${deletedCount}개 삭제됨, 새 maxPageId: ${maxPageId}`);
       
       // 레코드 삭제 후 제품 목록 다시 로드
+      console.log(`[STORE] 레코드 삭제 후 제품 목록 다시 로드 시작`);
       await searchProducts();
+      console.log(`[STORE] 레코드 삭제 후 제품 목록 다시 로드 완료`);
+      
+      // 데이터베이스 요약 정보 갱신
+      console.log(`[STORE] 레코드 삭제 후 DB 요약 정보 갱신 시작`);
+      await getDatabaseSummary();
+      console.log(`[STORE] 레코드 삭제 후 DB 요약 정보 갱신 완료`);
     } else {
+      console.error(`[STORE] 레코드 삭제 실패: ${error}`);
       addLog(`레코드 삭제 실패: ${error}`, 'error');
     }
   } catch (error) {
+    console.error(`[STORE] 레코드 삭제 중 예외 발생:`, error);
     addLog(`레코드 삭제 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
 }
@@ -540,7 +554,7 @@ export async function checkCrawlingStatus(): Promise<void> {
 }
 
 // 데이터베이스 요약 정보 가져오기 함수 추가
-export async function getDatabaseSummary(): Promise<void> {
+export async function getDatabaseSummary(): Promise<DatabaseSummary | void> {
   try {
     addLog('데이터베이스 요약 정보를 가져오는 중...', 'info');
     

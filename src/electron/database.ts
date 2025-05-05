@@ -238,28 +238,61 @@ export async function markLastUpdatedInDb(count: number): Promise<void> {
  */
 export async function deleteProductsByPageRange(startPageId: number, endPageId: number): Promise<number> {
     return new Promise((resolve, reject) => {
-        console.log(`시작 페이지: ${startPageId}, 종료 페이지: ${endPageId}`);
+        console.log(` ${startPageId}, 종료 페이지: ${endPageId}`);
+
+        // 삭제 전 레코드 개수 확인 (디버깅용)
+        db.get(`SELECT COUNT(*) as count FROM products WHERE pageId >= ? AND pageId <= ?`, 
+               [endPageId, startPageId], 
+               (err, row: { count: number }) => {
+            if (err) {
+                console.error('[DB] 삭제 전 레코드 개수 확인 실패:', err);
+            } else {
+                console.log(`[DB] 삭제 대상 레코드 개수: ${row.count}`);
+                
+                // 마지막 한 페이지 남은 경우 특별 로깅
+                if (startPageId === endPageId) {
+                    console.log(`[DB] 마지막 한 페이지(${startPageId}) 삭제 시도 - 예상 레코드 수: ${row.count}`);
+                    
+                    // 삭제할 페이지 ID에 실제 데이터가 있는지 확인
+                    db.all(`SELECT * FROM products WHERE pageId = ?`, [startPageId], (err, rows) => {
+                        if (err) {
+                            console.error(`[DB] 페이지 ID ${startPageId}의 제품 조회 실패:`, err);
+                        } else {
+                            console.log(`[DB] 페이지 ID ${startPageId}의 제품 개수: ${rows.length}`);
+                            if (rows.length === 0) {
+                                console.warn(`[DB] 경고: 페이지 ID ${startPageId}에 제품이 없습니다.`);
+                            } else {
+                                console.log(`[DB] 페이지 ID ${startPageId}의 첫 번째 제품:`, JSON.stringify(rows[0]));
+                            }
+                        }
+                    });
+                }
+            }
+        });
 
         // 트랜잭션 시작
         db.serialize(() => {
             db.run('BEGIN TRANSACTION', (err) => {
                 if (err) {
-                    console.error('트랜잭션 시작 오류:', err);
+                    console.error('[DB] 트랜잭션 시작 오류:', err);
                     return reject(err);
                 }
 
+                console.log(`[DB] 삭제 쿼리 실행: DELETE FROM products WHERE pageId >= ${endPageId} AND pageId <= ${startPageId}`);
+                
                 // products 테이블에서 삭제
                 db.run(
                     `DELETE FROM products WHERE pageId >= ? AND pageId <= ?`, 
                     [endPageId, startPageId], 
                     function(err) {
                         if (err) {
+                            console.error('[DB] products 테이블 삭제 실패:', err);
                             db.run('ROLLBACK', () => reject(err));
                             return;
                         }
                         
                         const productsDeleted = this.changes;
-                        console.log(`products 테이블에서 ${productsDeleted}개 레코드 삭제됨`);
+                        console.log(`[DB] products 테이블에서 ${productsDeleted}개 레코드 삭제됨`);
                         
                         // product_details 테이블에서도 삭제
                         db.run(
@@ -267,19 +300,32 @@ export async function deleteProductsByPageRange(startPageId: number, endPageId: 
                             [endPageId, startPageId], 
                             function(err) {
                                 if (err) {
+                                    console.error('[DB] product_details 테이블 삭제 실패:', err);
                                     db.run('ROLLBACK', () => reject(err));
                                     return;
                                 }
 
                                 const detailsDeleted = this.changes;
-                                console.log(`product_details 테이블에서 ${detailsDeleted}개 레코드 삭제됨`);
+                                console.log(`[DB] product_details 테이블에서 ${detailsDeleted}개 레코드 삭제됨`);
                                 
                                 // 트랜잭션 커밋
                                 db.run('COMMIT', (err) => {
                                     if (err) {
+                                        console.error('[DB] 트랜잭션 커밋 실패:', err);
                                         db.run('ROLLBACK', () => reject(err));
                                         return;
                                     }
+                                    
+                                    console.log(`[DB] 삭제 트랜잭션 성공적으로 커밋됨, 총 ${productsDeleted}개 레코드 삭제`);
+                                    
+                                    // 삭제 후 레코드 개수 확인 (디버깅용)
+                                    db.get(`SELECT COUNT(*) as count FROM products`, [], (err, row: { count: number }) => {
+                                        if (err) {
+                                            console.error('[DB] 삭제 후 전체 레코드 개수 확인 실패:', err);
+                                        } else {
+                                            console.log(`[DB] 삭제 후 남은 전체 레코드 개수: ${row.count}`);
+                                        }
+                                    });
                                     
                                     // 삭제된 총 레코드 수 반환
                                     resolve(productsDeleted);

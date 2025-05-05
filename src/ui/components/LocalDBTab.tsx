@@ -139,7 +139,9 @@ export const LocalDBTab: React.FC = () => {
   const handleDelete = async () => {
     const { startPageId, endPageId } = deleteRange;
     try {
-      console.log(`레코드 삭제 요청: 페이지 범위 ${startPageId+1}~${endPageId+1}`);
+      console.log(`[UI] 레코드 삭제 요청: 페이지 범위 ${startPageId+1}~${endPageId+1}, 실제 pageId: ${startPageId}~${endPageId}`);
+      console.log(`[UI] 삭제 전 상태 - maxPageId: ${maxPageId}, 현재 페이지: ${currentPage}, 총 페이지: ${totalPages}`);
+      console.log(`[UI] 제품 수: ${products?.length}`);
       
       // 레코드 삭제 요청
       await deleteRecordsByPageRange(startPageId, endPageId);
@@ -164,7 +166,7 @@ export const LocalDBTab: React.FC = () => {
         // 총 페이지 수 재계산
         const calculatedTotalPages = Math.ceil(sortedProducts.length / itemsPerPage);
         
-        console.log(`레코드 삭제 후 데이터 갱신 - 총 제품: ${updatedProducts.length}, 총 페이지: ${calculatedTotalPages}`);
+        console.log(`[UI] 레코드 삭제 후 데이터 갱신 - 총 제품: ${updatedProducts.length}, 총 페이지: ${calculatedTotalPages}`);
         
         // 페이지당 제품 수를 기준으로 총 제품 페이지 수 재계산
         const productsPerPage = config.productsPerPage || 12;
@@ -178,15 +180,24 @@ export const LocalDBTab: React.FC = () => {
         // 최대 pageId 업데이트
         if (sortedProducts.length > 0) {
           const maxId = Math.max(...sortedProducts.map(p => p.pageId || 0));
+          console.log(`[UI] 삭제 후 새로운 maxPageId: ${maxId}`);
           setMaxPageId(maxId);
           setDeleteRange({
             startPageId: maxId,
             endPageId: maxId
           });
+        } else {
+          // 남은 데이터가 없는 경우
+          console.log('[UI] 삭제 후 남은 데이터가 없음, maxPageId를 0으로 설정');
+          setMaxPageId(0);
+          setDeleteRange({
+            startPageId: 0,
+            endPageId: 0
+          });
         }
       } else {
         // 데이터가 없는 경우 초기값으로 설정
-        console.log('레코드 삭제 후 데이터가 없습니다.');
+        console.log('[UI] 레코드 삭제 후 데이터가 없습니다.');
         setDisplayProducts([]);
         setCurrentPage(1);
         setTotalPages(1);
@@ -199,7 +210,7 @@ export const LocalDBTab: React.FC = () => {
       }
       
     } catch (error) {
-      console.error('레코드 삭제 중 오류:', error);
+      console.error('[UI] 레코드 삭제 중 오류:', error);
       // 에러가 발생해도 모달은 닫기
       closeDeleteModal();
     }
@@ -494,11 +505,16 @@ export const LocalDBTab: React.FC = () => {
                   value={deleteRange.startPageId + 1}
                   onChange={(e) => {
                     const value = Number(e.target.value) - 1;
-                    if (value >= deleteRange.endPageId && value <= maxPageId) {
+                    console.log(`[UI] 시작 페이지 변경 시도: ${value + 1}, 현재 endPageId: ${deleteRange.endPageId + 1}, maxPageId: ${maxPageId + 1}`);
+                    // 시작 페이지는 종료 페이지보다 같거나 커야 함
+                    if (value >= 0 && value >= deleteRange.endPageId && value <= maxPageId) {
+                      console.log(`[UI] 시작 페이지 변경 성공`);
                       setDeleteRange(prev => ({ ...prev, startPageId: value }));
+                    } else {
+                      console.log(`[UI] 시작 페이지 변경 실패: 조건 미충족`);
                     }
                   }}
-                  min={deleteRange.endPageId + 1}
+                  min={Math.max(1, deleteRange.endPageId + 1)}
                   max={maxPageId + 1}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                 />
@@ -513,11 +529,16 @@ export const LocalDBTab: React.FC = () => {
                   value={deleteRange.endPageId + 1}
                   onChange={(e) => {
                     const value = Number(e.target.value) - 1;
-                    if (value <= deleteRange.startPageId) {
+                    console.log(`[UI] 종료 페이지 변경 시도: ${value + 1}, 현재 startPageId: ${deleteRange.startPageId + 1}`);
+                    // 종료 페이지는 시작 페이지보다 같거나 작아야 함
+                    if (value >= 0 && value <= deleteRange.startPageId) {
+                      console.log(`[UI] 종료 페이지 변경 성공`);
                       setDeleteRange(prev => ({ ...prev, endPageId: value }));
+                    } else {
+                      console.log(`[UI] 종료 페이지 변경 실패: 조건 미충족`);
                     }
                   }}
-                  min={1}
+                  min={0}
                   max={deleteRange.startPageId + 1}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                 />
