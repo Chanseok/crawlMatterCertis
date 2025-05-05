@@ -371,7 +371,7 @@ export const LocalDBTab: React.FC = () => {
                       <tr key={`${product.pageId}-${product.indexInPage}`} className="hover:bg-gray-50 dark:hover:bg-gray-750">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200">
-                            {(product.pageId || 0) * (config.productsPerPage || 12) + (product.indexInPage || 0) + 1}
+                            {dbSummary.totalProducts - ((product.pageId || 0) * (config.productsPerPage || 12) + (product.indexInPage || 0))}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
