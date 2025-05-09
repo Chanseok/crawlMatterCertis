@@ -4,7 +4,6 @@
  */
 
 import { getDatabaseSummaryFromDb } from "../../database.js";
-import { debugLog } from "../../util.js";
 import { getConfig } from "../core/config.js";
 
 /**
