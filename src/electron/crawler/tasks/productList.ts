@@ -34,11 +34,13 @@ export class ProductListCollector {
 
   // 마지막 페이지 제품 수를 저장하는 캐시 변수
   private static lastPageProductCount: number | null = null;
-
+  // 페이지별로 수집된 제품을 임시 저장하는 캐시
+  private productCache: Map<number, Product[]>;
 
   constructor(state: CrawlerState, abortController: AbortController) {
     this.state = state;
     this.abortController = abortController;
+    this.productCache = new Map(); // 제품 캐시 초기화
   }
 
   /**
@@ -64,29 +66,24 @@ export class ProductListCollector {
    * @param userPageLimit 사용자가 설정한 페이지 수 제한
    */
   public async collect(userPageLimit: number = 0): Promise<Product[]> {
-    try {
-      this.state.setStage('productList:init', '1단계: 제품 목록 페이지 수 파악 중');
-      this.processedPages = 0;
+    this.productCache.clear();
+    this.state.setStage('productList:init', '1단계: 제품 목록 페이지 수 파악 중');
+    this.processedPages = 0;
 
-      // 총 페이지 수와 마지막 페이지 제품 수 가져오기
+    try {
       const { totalPages, lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached();
       debugLog(`Total pages: ${totalPages}, Last page product count: ${lastPageProductCount}`);
+      ProductListCollector.lastPageProductCount = lastPageProductCount;
 
-      // 크롤링 범위 결정 (마지막 페이지 제품 수도 함께 전달)
       const { startPage, endPage } = await PageIndexManager.calculateCrawlingRange(
-        totalPages,
-        lastPageProductCount,
-        userPageLimit
+        totalPages, lastPageProductCount, userPageLimit
       );
       debugLog(`Crawling range: ${startPage} to ${endPage}`);
 
-      // 사용자 설정 페이지 수에 따른 범위 계산
-      const pageNumbers = Array.from({ length: startPage - endPage + 1 }, (_, i) => endPage + i).reverse();
-      debugLog(`Page numbers to crawl: ${pageNumbers}`);
-      // 설정값 가져오기
-      const config = getConfig();
+      const pageNumbersToCrawl = Array.from({ length: startPage - endPage + 1 }, (_, i) => endPage + i).reverse();
+      debugLog(`Page numbers to crawl: ${pageNumbersToCrawl.join(', ')}`);
 
-      // 수집할 페이지 범위 정보 이벤트 발송
+      const config = getConfig();
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'list-range',
         status: 'running',
@@ -96,17 +93,14 @@ export class ProductListCollector {
           totalPages,
           startPage,
           endPage,
-          pageCount: pageNumbers.length,
-          estimatedProductCount: pageNumbers.length * config.productsPerPage,
-          lastPageProductCount // 마지막 페이지 제품 수 추가
+          pageCount: pageNumbersToCrawl.length,
+          estimatedProductCount: pageNumbersToCrawl.length * config.productsPerPage,
+          lastPageProductCount
         })
       });
 
-      // 수집해야할 페이지가 없는 경우
-      if (pageNumbers.length === 0) {
-        console.log('[ProductListCollector] No new pages to crawl. Database is up to date.');
-
-        // 상태 업데이트
+      if (pageNumbersToCrawl.length === 0) {
+        console.log('[ProductListCollector] No new pages to crawl.');
         crawlerEvents.emit('crawlingTaskStatus', {
           taskId: 'list-range',
           status: 'success',
@@ -117,132 +111,87 @@ export class ProductListCollector {
             totalPages
           })
         });
-
         return [];
       }
 
-      // 진행 상태 업데이트
       this.state.updateProgress({
         totalPages,
         currentPage: 0,
-        totalItems: pageNumbers.length * config.productsPerPage,
+        totalItems: pageNumbersToCrawl.length * config.productsPerPage,
         currentItem: 0
       });
-
       this.state.setStage('productList:fetching', '1/2단계: 제품 목록 수집 중');
-      debugLog(`Total pages to crawl: ${pageNumbers.length} (range: ${startPage}~${endPage}, total site pages: ${totalPages})`);
+      initializeTaskStates(pageNumbersToCrawl);
 
-      const productsResults: Product[] = [];
-      const failedPages: number[] = [];
-      const failedPageErrors: Record<number, string[]> = {};
+      const incompletePagesAfterInitialCrawl: number[] = [];
+      const allPageErrors: Record<string, string[]> = {};
 
-      // 작업 상태 초기화
-      initializeTaskStates(pageNumbers);
-
-      // 페이지 범위 정보 로그
-      console.log(`[ProductListCollector] Preparing to crawl pages ${pageNumbers[0]} to ${pageNumbers[pageNumbers.length - 1]}, total: ${pageNumbers.length} pages`);
-
-      // 초기 페이지 수집 상태 추적
-      const pageCollectionStatus = new Map<number, boolean>();
-      pageNumbers.forEach(pageNumber => {
-        pageCollectionStatus.set(pageNumber, false);
-      });
-
-      // 1차 병렬 크롤링 실행
-      debugLog(`Starting phase 1: crawling product lists from page ${pageNumbers[0]} to ${pageNumbers[pageNumbers.length - 1]}`);
-
+      debugLog(`Starting initial crawl for ${pageNumbersToCrawl.length} pages.`);
       await this.executeParallelCrawling(
-        pageNumbers,
+        pageNumbersToCrawl,
         totalPages,
-        productsResults,
-        failedPages,
-        failedPageErrors,
-        config.initialConcurrency ?? 5 // Provide a default value if undefined
+        incompletePagesAfterInitialCrawl,
+        allPageErrors,
+        config.initialConcurrency ?? 5,
+        false,
+        1
       );
 
-      // 중단 여부 처리
       if (this.abortController.signal.aborted) {
-        console.log('[ProductListCollector] Crawling was stopped during product list collection.');
-        return productsResults;
+        console.log('[ProductListCollector] Crawling stopped after initial list collection.');
+        return this.finalizeCollectedProducts(pageNumbersToCrawl);
       }
 
-      // 1차 수집 후 성공한 페이지들 상태 업데이트
-      pageNumbers.forEach(pageNumber => {
-        if (!failedPages.includes(pageNumber)) {
-          pageCollectionStatus.set(pageNumber, true);
+      if (incompletePagesAfterInitialCrawl.length > 0) {
+        console.log(`[ProductListCollector] ${incompletePagesAfterInitialCrawl.length} pages incomplete after initial crawl. Retrying...`);
+        await this.retryFailedPages(
+          incompletePagesAfterInitialCrawl,
+          totalPages,
+          allPageErrors
+        );
+      }
+
+      if (this.abortController.signal.aborted) {
+        console.log('[ProductListCollector] Crawling stopped during/after retries.');
+        return this.finalizeCollectedProducts(pageNumbersToCrawl);
+      }
+
+      const finalProducts = this.finalizeCollectedProducts(pageNumbersToCrawl);
+
+      let finalFailedCount = 0;
+      pageNumbersToCrawl.forEach(pNum => {
+        const sitePNum = PageIndexManager.toSitePageNumber(pNum, totalPages);
+        const target = sitePNum === 0 ? (ProductListCollector.lastPageProductCount ?? config.productsPerPage) : config.productsPerPage;
+        const cached = this.productCache.get(pNum) || [];
+        if (cached.length < target) {
+          finalFailedCount++;
+          if (!this.state.getFailedPages().includes(pNum)) {
+            const errors = allPageErrors[pNum.toString()] || ['Failed to meet target product count'];
+            this.state.addFailedPage(pNum, errors.join('; '));
+          }
         }
       });
 
-      // 실패한 페이지 재시도
-      const initialFailedPages = [...failedPages];
-      if (failedPages.length > 0) {
-        console.log(`[ProductListCollector] Retrying ${failedPages.length} failed pages.`);
-        await this.retryFailedPages(
-          failedPages,
-          totalPages,
-          productsResults,
-          failedPageErrors
-        );
+      const successPagesCount = pageNumbersToCrawl.length - finalFailedCount;
+      const successRate = pageNumbersToCrawl.length > 0 ? (successPagesCount / pageNumbersToCrawl.length) : 1;
 
-        // 재시도 후 성공한 페이지들 상태 업데이트
-        debugLog(`${failedPages.length} pages failed after retrying.`);
-        initialFailedPages.forEach(pageNumber => {
-          if (!failedPages.includes(pageNumber)) {
-            pageCollectionStatus.set(pageNumber, true);
-          }
-        });
-      }
+      console.log(`[ProductListCollector] Final collection: ${successPagesCount}/${pageNumbersToCrawl.length} pages fully collected. Total products: ${finalProducts.length}`);
 
-      // 중단 여부 처리
-      if (this.abortController.signal.aborted) {
-        console.log('[ProductListCollector] Crawling was stopped during product list collection.');
-        return productsResults;
-      }
-
-      // 최종 수집 실패율 계산
-      const totalPagesToFetch = pageNumbers.length;
-      const totalFailedPages = failedPages.length;
-      const failureRate = totalFailedPages / totalPagesToFetch;
-
-      // 실패율 로깅
-      const initialFailRate = initialFailedPages.length / totalPagesToFetch;
-      const finalFailRate = failureRate;
-      console.log(`[ProductListCollector] Initial failure rate: ${(initialFailRate * 100).toFixed(1)}% (${initialFailedPages.length}/${totalPagesToFetch})`);
-      console.log(`[ProductListCollector] Final failure rate after retries: ${(finalFailRate * 100).toFixed(1)}% (${totalFailedPages}/${totalPagesToFetch})`);
-
-      // 실패 상태 기록
-      failedPages.forEach(pageNumber => {
-        const errors = failedPageErrors[pageNumber] || ['Unknown error'];
-        this.state.addFailedPage(pageNumber, errors.join('; '));
-      });
-
-      // 수집 성공률 통계
-      const successPages = pageNumbers.length - totalFailedPages;
-      const successRate = successPages / totalPagesToFetch;
-      console.log(`[ProductListCollector] Collection success rate: ${(successRate * 100).toFixed(1)}% (${successPages}/${totalPagesToFetch})`);
-
-      // 수집 완료 상태 이벤트 발송
       crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: 'list-complete',
-        status: 'success',
+        taskId: 'list-complete', status: 'success',
         message: JSON.stringify({
-          stage: 1,
-          type: 'complete',
-          totalPages,
-          processedPages: successPages,
-          collectedProducts: productsResults.length,
-          failedPages: totalFailedPages,
+          stage: 1, type: 'complete', totalPages,
+          processedPages: successPagesCount,
+          collectedProducts: finalProducts.length,
+          failedPages: finalFailedCount,
           successRate: parseFloat((successRate * 100).toFixed(1))
         })
       });
 
-      // 제품 목록 반환
       this.state.setStage('productList:processing', '수집된 제품 목록 처리 중');
-      this.state.addProducts(productsResults);
+      return finalProducts;
 
-      return productsResults;
     } finally {
-      // 리소스 정리
       this.cleanupResources();
     }
   }
@@ -252,17 +201,6 @@ export class ProductListCollector {
    */
   private cleanupResources(): void {
     console.log('[ProductListCollector] Cleaning up resources...');
-
-    // 열려있는 브라우저 인스턴스나 기타 리소스 정리
-    // 단, abortController는 호출하지 않음 - 이것은 CrawlerEngine의 책임
-
-    // 기존 코드:
-    // if (!this.abortController.signal.aborted) {
-    //   this.abortController.abort();
-    // }
-
-    // 모든 인스턴스 관련 정리 코드만 유지
-    // 예: browser.close() 관련 코드
   }
 
   /**
@@ -272,6 +210,7 @@ export class ProductListCollector {
     const { totalPages } = await ProductListCollector.fetchTotalPagesCached(force);
     return totalPages;
   }
+
   /**
    * 정적 메서드: 캐시된 전체 페이지 수와 마지막 페이지 제품 수를 가져오거나 최신화
    * 외부 모듈에서 쉽게 접근할 수 있는 간단한 API 제공
@@ -282,7 +221,6 @@ export class ProductListCollector {
   }> {
     const config = getConfig();
     const now = Date.now();
-    // Provide a default TTL of 1 hour (3600000 ms) if not configured
     const cacheTtl = config.cacheTtlMs ?? 3600000;
 
     if (!force &&
@@ -300,7 +238,6 @@ export class ProductListCollector {
     cachedTotalPages = result.totalPages;
     ProductListCollector.lastPageProductCount = result.lastPageProductCount;
     cachedTotalPagesFetchedAt = now;
-
 
     return result;
   }
@@ -325,7 +262,6 @@ export class ProductListCollector {
       console.log(`[ProductListCollector] Navigating to ${config.matterFilterUrl}`);
       await page.goto(config.matterFilterUrl, { waitUntil: 'domcontentloaded' });
 
-      // 페이지네이션 정보 추출
       const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
       if (pageElements.length > 0) {
         const pageNumbers = await Promise.all(
@@ -339,13 +275,11 @@ export class ProductListCollector {
       }
       console.log(`[ProductListCollector] Found ${totalPages} total pages`);
 
-      // 마지막 페이지로 이동하여 제품 수 확인
       if (totalPages > 0) {
         const lastPageUrl = `${config.matterFilterUrl}&paged=${totalPages}`;
         console.log(`[ProductListCollector] Navigating to last page: ${lastPageUrl}`);
         await page.goto(lastPageUrl, { waitUntil: 'domcontentloaded' });
 
-        // 제품 개수 계산
         lastPageProductCount = await page.evaluate(() => {
           return document.querySelectorAll('div.post-feed article').length;
         });
@@ -363,29 +297,260 @@ export class ProductListCollector {
     return { totalPages, lastPageProductCount };
   }
 
-
   /**
-   * 정적 메서드: 크롤링 범위를 결정하는 함수
-   * 특정 인스턴스 없이도 크롤링 범위를 파악할 수 있음
-   * @param totalPages 총 페이지 수
-   * @param userPageLimit 사용자가 설정한 페이지 수 제한 (선택적)
+   * 단일 페이지 크롤링 작업을 처리하는 함수
    */
-  public static async determineCrawlingRange(totalPages: number, userPageLimit: number = 0): Promise<{ startPage: number; endPage: number }> {
-    // 마지막 페이지 제품 수 가져오기
-    const { lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached();
+  private async processPageCrawl(
+    pageNumber: number,
+    totalPages: number,
+    failedPagesOutput: number[],
+    failedPageErrors: Record<string, string[]>,
+    signal: AbortSignal,
+    attempt: number = 1
+  ): Promise<CrawlResult | null> {
+    const config = getConfig();
+    const sitePageNumber = PageIndexManager.toSitePageNumber(pageNumber, totalPages);
 
-    // PageIndexManager를 사용하여 크롤링 범위 계산
-    return await PageIndexManager.calculateCrawlingRange(totalPages, lastPageProductCount, userPageLimit);
+    const actualLastPageProductCount = ProductListCollector.lastPageProductCount ?? 0;
+    const targetProductCount = sitePageNumber === 0 ? actualLastPageProductCount : config.productsPerPage;
+
+    if (signal.aborted) {
+      updateTaskStatus(pageNumber, 'stopped');
+      const cachedProducts = this.productCache.get(pageNumber) || [];
+      return {
+        pageNumber,
+        products: cachedProducts,
+        error: 'Aborted',
+        isComplete: cachedProducts.length >= targetProductCount
+      };
+    }
+
+    crawlerEvents.emit('crawlingTaskStatus', {
+      taskId: `page-${pageNumber}`,
+      status: 'running',
+      message: JSON.stringify({
+        stage: 1, type: 'page', pageNumber,
+        url: `${config.matterFilterUrl}&paged=${pageNumber}`,
+        attempt: attempt, startTime: new Date().toISOString()
+      })
+    });
+    updateTaskStatus(pageNumber, 'running');
+
+    let newlyFetchedProducts: Product[] = [];
+    let currentProductsOnPage: Product[] = this.productCache.get(pageNumber) || [];
+    let pageErrorMessage: string | undefined;
+    let isComplete = currentProductsOnPage.length >= targetProductCount;
+
+    try {
+      newlyFetchedProducts = await Promise.race([
+        this.crawlPageWithTimeout(pageNumber, totalPages, signal),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout')), config.pageTimeoutMs)
+        )
+      ]);
+
+      currentProductsOnPage = this.mergePageProducts(pageNumber, newlyFetchedProducts);
+      isComplete = currentProductsOnPage.length >= targetProductCount;
+
+      this.state.updateProgress({ currentPage: pageNumber });
+      this.updateProgress();
+
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: `page-${pageNumber}`, status: 'success',
+        message: JSON.stringify({
+          stage: 1, type: 'page', pageNumber,
+          productsCount: currentProductsOnPage.length,
+          newlyFetchedCount: newlyFetchedProducts.length,
+          isComplete,
+          targetCount: targetProductCount,
+          endTime: new Date().toISOString()
+        })
+      });
+      updateTaskStatus(pageNumber, 'success');
+
+    } catch (err) {
+      pageErrorMessage = err instanceof Error ? err.message : String(err);
+      const status = signal.aborted ? 'stopped' : 'error';
+      updateTaskStatus(pageNumber, status, pageErrorMessage);
+
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: `page-${pageNumber}`, status: 'error',
+        message: JSON.stringify({
+          stage: 1, type: 'page', pageNumber,
+          error: pageErrorMessage, attempt: attempt,
+          endTime: new Date().toISOString()
+        })
+      });
+      isComplete = currentProductsOnPage.length >= targetProductCount;
+
+      if (!failedPageErrors[pageNumber.toString()]) {
+        failedPageErrors[pageNumber.toString()] = [];
+      }
+      const attemptPrefix = attempt > 1 ? `Attempt ${attempt}: ` : '';
+      failedPageErrors[pageNumber.toString()].push(`${attemptPrefix}${pageErrorMessage}`);
+    }
+
+    if (!isComplete) {
+      if (!failedPagesOutput.includes(pageNumber)) {
+        failedPagesOutput.push(pageNumber);
+      }
+    } else {
+      const index = failedPagesOutput.indexOf(pageNumber);
+      if (index > -1) {
+        failedPagesOutput.splice(index, 1);
+      }
+    }
+
+    return {
+      pageNumber,
+      products: currentProductsOnPage,
+      error: pageErrorMessage,
+      isComplete
+    };
   }
 
   /**
-   * 마지막 페이지의 제품 수를 가져오는 함수
-   * 이 정보는 옵셋 계산에 사용됨
+   * 병렬 크롤링 실행
    */
-  public async getLastPageProductCount(force = false): Promise<number> {
-    // fetchTotalPagesCached 함수를 활용하여 마지막 페이지의 제품 수를 가져옴
-    const { lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached(force);
-    return lastPageProductCount;
+  private async executeParallelCrawling(
+    pageNumbersToCrawl: number[],
+    totalPages: number,
+    incompletePagesOutput: number[],
+    failedPageErrors: Record<string, string[]>,
+    concurrency: number,
+    isRetryAttempt: boolean = false,
+    currentAttemptNumber: number = 1
+  ): Promise<void> {
+    if (!isRetryAttempt) {
+      incompletePagesOutput.length = 0;
+    }
+
+    await promisePool(
+      pageNumbersToCrawl,
+      async (pageNumber, signal) => {
+        return this.processPageCrawl(
+          pageNumber, totalPages, incompletePagesOutput, failedPageErrors, signal, currentAttemptNumber
+        );
+      },
+      concurrency,
+      this.abortController
+    );
+
+    debugLog(`[ExecuteParallelCrawling attempt ${currentAttemptNumber}] Completed batch. ${incompletePagesOutput.length} pages remain incomplete.`);
+  }
+
+  /**
+   * 실패한 페이지를 재시도하는 함수
+   */
+  private async retryFailedPages(
+    pagesToRetryInitially: number[],
+    totalPages: number,
+    failedPageErrors: Record<string, string[]>
+  ): Promise<void> {
+    const config = getConfig();
+    const productListRetryCount = config.productListRetryCount ?? 3;
+    const retryConcurrency = config.retryConcurrency ?? 1;
+
+    if (productListRetryCount <= 0) {
+      debugLog(`[RETRY] Product list retries disabled.`);
+      pagesToRetryInitially.forEach(pageNumber => {
+        const sitePNum = PageIndexManager.toSitePageNumber(pageNumber, totalPages);
+        const lastPageProdCount = ProductListCollector.lastPageProductCount ?? 0;
+        const target = sitePNum === 0 ? lastPageProdCount : config.productsPerPage;
+        const cached = this.productCache.get(pageNumber) || [];
+        if (cached.length < target) {
+          if (!this.state.getFailedPages().includes(pageNumber)) {
+            const errors = failedPageErrors[pageNumber.toString()] || ['Failed to meet target product count, retries disabled'];
+            this.state.addFailedPage(pageNumber, errors.join('; '));
+          }
+        }
+      });
+      return;
+    }
+
+    let currentIncompletePages = [...pagesToRetryInitially];
+    const retryStartAttemptNumber = 1;
+
+    for (let attempt = retryStartAttemptNumber; attempt <= productListRetryCount && currentIncompletePages.length > 0; attempt++) {
+      if (this.abortController.signal.aborted) {
+        debugLog(`[RETRY] Aborted during retry loop for product list.`);
+        break;
+      }
+
+      const pagesForThisAttempt = [...currentIncompletePages];
+      currentIncompletePages.length = 0;
+
+      updateRetryStatus('list-retry', {
+        stage: 'productList',
+        currentAttempt: attempt,
+        maxAttempt: productListRetryCount,
+        remainingItems: pagesForThisAttempt.length,
+        totalItems: pagesToRetryInitially.length,
+        startTime: Date.now(),
+        itemIds: pagesForThisAttempt.map(p => p.toString())
+      });
+
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'list-retry', status: 'running',
+        message: `Product list retry attempt ${attempt}/${productListRetryCount}: ${pagesForThisAttempt.length} pages`
+      });
+      debugLog(`[RETRY] Product list attempt ${attempt}/${productListRetryCount} for pages: ${pagesForThisAttempt.join(', ')}`);
+
+      await this.executeParallelCrawling(
+        pagesForThisAttempt,
+        totalPages,
+        currentIncompletePages,
+        failedPageErrors,
+        retryConcurrency,
+        true,
+        attempt
+      );
+
+      pagesForThisAttempt.forEach(pageNumber => {
+        if (currentIncompletePages.includes(pageNumber)) {
+          const errorsForPage = failedPageErrors[pageNumber.toString()] || [];
+          const lastError = errorsForPage.length > 0 ? errorsForPage[errorsForPage.length - 1] : "Unknown error during retry";
+          logRetryError('productList', pageNumber.toString(), lastError, attempt);
+        } else {
+          console.log(`[RETRY][${attempt}/${productListRetryCount}] Page ${pageNumber} successfully completed.`);
+        }
+      });
+
+      updateRetryStatus('list-retry', {
+        remainingItems: currentIncompletePages.length,
+        itemIds: currentIncompletePages.map(p => p.toString())
+      });
+
+      if (currentIncompletePages.length === 0) {
+        debugLog(`[RETRY] All product list pages successfully completed after attempt ${attempt}.`);
+        crawlerEvents.emit('crawlingTaskStatus', {
+          taskId: 'list-retry', status: 'success',
+          message: `Product list retry successful after attempt ${attempt}.`
+        });
+        break;
+      }
+    }
+
+    if (currentIncompletePages.length > 0) {
+      debugLog(`[RETRY] After ${productListRetryCount} retries, ${currentIncompletePages.length} pages remain incomplete: ${currentIncompletePages.join(', ')}`);
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'list-retry', status: 'error',
+        message: `Product list retry finished: ${currentIncompletePages.length} pages still incomplete.`
+      });
+      currentIncompletePages.forEach(pageNumber => {
+        const errors = failedPageErrors[pageNumber.toString()] || ['Unknown error after max retries'];
+        this.state.addFailedPage(pageNumber, errors.join('; '));
+        console.error(`[RETRY] Page ${pageNumber} ultimately failed to complete: ${errors.join('; ')}`);
+      });
+    } else {
+      debugLog(`[RETRY] All product list pages completed within retry attempts.`);
+      if (productListRetryCount > 0 && pagesToRetryInitially.length > 0) {
+        crawlerEvents.emit('crawlingTaskStatus', {
+          taskId: 'list-retry', status: 'success',
+          message: 'Product list retry successful: All initially incomplete pages completed.'
+        });
+      }
+    }
   }
 
   /**
@@ -394,11 +559,9 @@ export class ProductListCollector {
   private async crawlProductsFromPage(pageNumber: number, totalPages: number, signal: AbortSignal): Promise<Product[]> {
     const config = getConfig();
 
-    // 서버 과부하 방지를 위한 무작위 지연 시간 적용
     const delayTime = getRandomDelay(config.minRequestDelayMs ?? 1000, config.maxRequestDelayMs ?? 3000);
     await delay(delayTime);
 
-    // 중단 확인
     if (signal.aborted) {
       throw new Error('Aborted');
     }
@@ -407,7 +570,6 @@ export class ProductListCollector {
     const browser = await chromium.launch({ headless: true });
 
     try {
-      // 중단 신호 확인 - 브라우저 생성 직후
       if (signal.aborted) {
         throw new Error('Aborted');
       }
@@ -415,43 +577,33 @@ export class ProductListCollector {
       const context = await browser.newContext();
       const page = await context.newPage();
 
-      // 중단 시 브라우저 작업을 취소하기 위한 이벤트 리스너
       const abortListener = () => {
         if (!browser.isConnected()) return;
         browser.close().catch(e => console.error('Error closing browser after abort:', e));
       };
       signal.addEventListener('abort', abortListener);
 
-      // 페이지 로드를 시작하기 전에 중단 신호 확인
       if (signal.aborted) {
         throw new Error('Aborted');
       }
 
       await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
 
-      // 중단 신호 확인 - 페이지 이동 직후
       if (signal.aborted) {
         throw new Error('Aborted');
       }
 
-      // 마지막 페이지의 제품 수 확인 (캐시 사용)
-      const lastPageProductCount = await this.getLastPageProductCount();
+      const actualLastPageProductCount = ProductListCollector.lastPageProductCount ?? 0;
 
-      // sitePageNumber 계산 (새로운 제품일수록 숫자가 작아짐)
       const sitePageNumber = PageIndexManager.toSitePageNumber(pageNumber, totalPages);
+      const offset = PageIndexManager.calculateOffset(actualLastPageProductCount);
 
-      // 옵셋 계산
-      const offset = PageIndexManager.calculateOffset(lastPageProductCount);
+      console.log(`[ProductListCollector] 페이지 ${pageNumber} 크롤링 (sitePageNumber: ${sitePageNumber}, lastPageProductCount: ${actualLastPageProductCount}, offset: ${offset})`);
 
-      console.log(`[ProductListCollector] 페이지 ${pageNumber} 크롤링 (sitePageNumber: ${sitePageNumber}, lastPageProductCount: ${lastPageProductCount}, offset: ${offset})`);
-
-      // 제품 정보 추출 - 기본 정보와 페이지 내 인덱스만 가져오고 인덱싱은 서버 측에서 처리
       const rawProducts = await page.evaluate(() => {
         const articles = Array.from(document.querySelectorAll('div.post-feed article'));
 
-        // 최신순으로 정렬된 제품 리스트를 가져옴
         return articles.reverse().map((article, siteIndexInPage) => {
-          // 제품 기본 정보 추출
           const link = article.querySelector('a');
           const manufacturerEl = article.querySelector('p.entry-company.notranslate');
           const modelEl = article.querySelector('h3.entry-title');
@@ -475,24 +627,21 @@ export class ProductListCollector {
             manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
             model: modelEl ? modelEl.textContent?.trim() : undefined,
             certificateId,
-            siteIndexInPage  // 페이지 내 인덱스만 반환
+            siteIndexInPage
           };
         });
       });
 
-      // 서버 측에서 PageIndexManager의 mapToLocalIndexing 함수를 활용하여 페이지 ID와 인덱스 계산
       const products: Product[] = rawProducts
         .map((product) => {
           const { siteIndexInPage } = product;
 
-          // PageIndexManager의 mapToLocalIndexing 함수 활용
           const { pageId, indexInPage } = PageIndexManager.mapToLocalIndexing(
             sitePageNumber,
             siteIndexInPage,
             offset
           );
 
-          // siteIndexInPage는 Product 타입에 포함되지 않으므로 제외
           const { siteIndexInPage: _, ...rest } = product;
           return {
             ...rest,
@@ -501,9 +650,8 @@ export class ProductListCollector {
           };
         });
 
-      if (products.length == 0) {
-        debugLog(`[Extracted ${products.length} products on page ${pageNumber}`);
-        throw new Error(`Failed to crawl page ${pageNumber}: No products found`);
+      if (products.length === 0) {
+        debugLog(`[ProductListCollector] Extracted 0 products on page ${pageNumber}.`);
       }
 
       return products;
@@ -516,7 +664,6 @@ export class ProductListCollector {
       throw new Error(`Failed to crawl page ${pageNumber}: ${errorMessage}`);
     } finally {
       try {
-        // 중단 여부와 상관없이 항상 브라우저 종료 시도
         if (browser.isConnected()) {
           await browser.close();
         }
@@ -525,290 +672,61 @@ export class ProductListCollector {
       }
     }
   }
+
   /**
-  * 타임아웃 처리가 있는 페이지 크롤링 함수
-  */
+   * 새로 가져온 제품과 캐시된 제품을 병합하고 캐시를 업데이트합니다.
+   * @param pageNumber 대상 페이지 번호
+   * @param newProducts 새로 가져온 제품 목록
+   * @returns 병합되고 URL 기준으로 중복 제거된 제품 목록
+   */
+  private mergePageProducts(pageNumber: number, newProducts: Product[]): Product[] {
+    const existingProducts = this.productCache.get(pageNumber) || [];
+    const productMap = new Map<string, Product>();
+
+    for (const product of existingProducts) {
+      if (product.url) {
+        productMap.set(product.url, product);
+      }
+    }
+    for (const product of newProducts) {
+      if (product.url) {
+        productMap.set(product.url, product);
+      }
+    }
+    const mergedProducts = Array.from(productMap.values());
+    this.productCache.set(pageNumber, mergedProducts);
+    return mergedProducts;
+  }
+
+  /**
+   * 수집된 제품들을 최종적으로 정리하여 반환합니다.
+   * @param pageNumbersToCrawl 크롤링 대상이었던 페이지 번호 목록
+   * @returns 모든 페이지에서 수집된 제품의 통합 목록
+   */
+  private finalizeCollectedProducts(pageNumbersToCrawl: number[]): Product[] {
+    let allProducts: Product[] = [];
+    for (const pageNum of pageNumbersToCrawl) {
+      const productsOnPage = this.productCache.get(pageNum) || [];
+      allProducts = allProducts.concat(productsOnPage);
+    }
+    // TODO: Consider sorting or other final processing if necessary
+    return allProducts;
+  }
+
+  /**
+   * 타임아웃 처리가 있는 페이지 크롤링 함수
+   */
   private async crawlPageWithTimeout(
     pageNumber: number,
     totalPages: number,
-    productsResults: Product[],
     signal: AbortSignal
   ): Promise<Product[]> {
-    const pageId = totalPages - pageNumber;
-
-    // 중단 확인
     if (signal.aborted) {
       throw new Error('Aborted');
     }
 
-    const hasDuplicatePage = productsResults.some(product => product.pageId === pageId);
-
-    if (hasDuplicatePage) {
-      console.log(`[ProductListCollector] Skipping duplicate page ${pageNumber} (pageId: ${pageId})`);
-      return [];
-    }
-
-    // signal을 crawlProductsFromPage에 전달
     const products = await this.crawlProductsFromPage(pageNumber, totalPages, signal);
 
-    if (products && products.length > 0) {
-      productsResults.push(...products);
-      console.log(`[ProductListCollector] Added ${products.length} products from page ${pageNumber} (pageId: ${pageId})`);
-    }
-
     return products;
-  }
-
-  /**
- * 단일 페이지 크롤링 작업을 처리하는 함수
- */
-  private async processPageCrawl(
-    pageNumber: number,
-    totalPages: number,
-    productsResults: Product[],
-    failedPages: number[],
-    failedPageErrors: Record<number, string[]>,
-    signal: AbortSignal,
-    attempt: number = 1
-  ): Promise<CrawlResult | null> {
-    const config = getConfig();
-
-    if (signal.aborted) {
-      updateTaskStatus(pageNumber, 'stopped');
-      return null;
-    }
-
-    // 상세 작업 상태 이벤트 발송 (JSON 구조화)
-    crawlerEvents.emit('crawlingTaskStatus', {
-      taskId: `page-${pageNumber}`,
-      status: 'running',
-      message: JSON.stringify({
-        stage: 1,
-        type: 'page',
-        pageNumber,
-        url: `${config.matterFilterUrl}&paged=${pageNumber}`,
-        attempt: attempt,
-        startTime: new Date().toISOString()
-      })
-    });
-
-    updateTaskStatus(pageNumber, 'running');
-
-    try {
-      // signal을 crawlPageWithTimeout에 전달
-      const products = await Promise.race([
-        this.crawlPageWithTimeout(pageNumber, totalPages, productsResults, signal),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), config.pageTimeoutMs)
-        )
-      ]);
-
-      // 진행 상태 업데이트
-      this.state.updateProgress({
-        currentPage: pageNumber
-      });
-
-      // 페이지 성공적으로 처리했으면 진행 상황 업데이트
-      this.updateProgress();
-
-      // 상세 작업 완료 이벤트 발송 (JSON 구조화)
-      crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: `page-${pageNumber}`,
-        status: 'success',
-        message: JSON.stringify({
-          stage: 1,
-          type: 'page',
-          pageNumber,
-          productsCount: products?.length || 0,
-          endTime: new Date().toISOString()
-        })
-      });
-
-      updateTaskStatus(pageNumber, 'success');
-      return { pageNumber, products };
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      const status = signal.aborted ? 'stopped' : 'error';
-      updateTaskStatus(pageNumber, status, errorMsg);
-
-      // 실패 이벤트 발송 (JSON 구조화)
-      crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: `page-${pageNumber}`,
-        status: 'error',
-        message: JSON.stringify({
-          stage: 1,
-          type: 'page',
-          pageNumber,
-          error: errorMsg,
-          attempt: attempt,
-          endTime: new Date().toISOString()
-        })
-      });
-
-      failedPages.push(pageNumber);
-      if (!failedPageErrors[pageNumber]) {
-        failedPageErrors[pageNumber] = [];
-      }
-
-      const attemptPrefix = attempt > 1 ? `Attempt ${attempt}: ` : '';
-      failedPageErrors[pageNumber].push(`${attemptPrefix}${errorMsg}`);
-
-      return { pageNumber, products: null, error: errorMsg };
-    }
-  }
-
-  /**
-   * 병렬 크롤링 실행
-   */
-  private async executeParallelCrawling(
-    pageNumbers: number[],
-    totalPages: number,
-    productsResults: Product[],
-    failedPages: number[],
-    failedPageErrors: Record<number, string[]>,
-    concurrency: number
-  ): Promise<void> {
-    await promisePool(
-      pageNumbers,
-      async (pageNumber, signal) => this.processPageCrawl(
-        pageNumber, totalPages, productsResults, failedPages, failedPageErrors, signal
-      ),
-      concurrency,
-      this.abortController
-    );
-  }
-
-  /**
-   * 실패한 페이지를 재시도하는 함수
-   */
-  private async retryFailedPages(
-    failedPages: number[],
-    totalPages: number,
-    productsResults: Product[],
-    failedPageErrors: Record<number, string[]>
-  ): Promise<void> {
-    // 재시도 설정 가져오기
-    const config = getConfig();
-    const productListRetryCount = config.productListRetryCount ?? 3; // Default to 3 retries
-
-    // 재시도 횟수가 0이면 재시도 하지 않음
-    if (productListRetryCount <= 0) {
-      debugLog(`[RETRY] 재시도 횟수가 0으로 설정되어 페이지 재시도를 건너뜁니다.`);
-      return;
-    }
-
-    // 재시도 최대 횟수 계산 (retryStart는 첫 번째 재시도 회차)
-    const retryStart = config.retryStart ?? 1; // Default to starting from attempt 1
-    const maxRetry = retryStart + productListRetryCount - 1;
-
-    // 재시도 시작 전 상태 초기화 (UI-STATUS-001)
-    updateRetryStatus('list-retry', {
-      stage: 'productList',
-      currentAttempt: 1,
-      maxAttempt: productListRetryCount,
-      remainingItems: failedPages.length,
-      totalItems: failedPages.length,
-      startTime: Date.now(),
-      itemIds: failedPages.map(page => page.toString())
-    });
-
-    for (let attempt = retryStart; attempt <= maxRetry && failedPages.length > 0; attempt++) {
-      const retryPages = [...failedPages];
-      failedPages.length = 0;
-
-      // 현재 재시도 회차 상태 업데이트 (UI-STATUS-001)
-      updateRetryStatus('list-retry', {
-        currentAttempt: attempt - retryStart + 1,
-        remainingItems: retryPages.length,
-        itemIds: retryPages.map(page => page.toString())
-      });
-
-      // 재시도 상태 이벤트 발송 - 이제 기본 상태 메시지와 함께 상세 정보도 제공
-      crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: 'list-retry',
-        status: 'running',
-        message: `페이지 목록 재시도 중 (${attempt - retryStart + 1}/${productListRetryCount}): ${retryPages.length}개 페이지`
-      });
-
-      debugLog(`[RETRY] 페이지 재시도 중 (${attempt - retryStart + 1}/${productListRetryCount}): ${retryPages.join(', ')}`);
-
-      await promisePool(
-        retryPages,
-        async (pageNumber, signal) => {
-          const result = await this.processPageCrawl(
-            pageNumber, totalPages, productsResults, failedPages, failedPageErrors, signal, attempt
-          );
-
-          // 페이지 처리 결과에 따라 상세 로깅 (UI-STATUS-001)
-          if (result) {
-            if (result.error) {
-              // 오류 정보 로깅
-              logRetryError(
-                'productList',
-                pageNumber.toString(),
-                result.error,
-                attempt - retryStart + 1
-              );
-            } else {
-              // 성공 정보 로깅
-              console.log(`[RETRY][${attempt - retryStart + 1}/${productListRetryCount}] 페이지 ${pageNumber} 재시도 성공`);
-            }
-
-            // 재시도 상태 업데이트 - 남은 항목 수 등
-            updateRetryStatus('list-retry', {
-              remainingItems: failedPages.length,
-              itemIds: failedPages.map(page => page.toString())
-            });
-          }
-
-          return result;
-        },
-        config.retryConcurrency ?? 1, // Provide a default value if undefined
-        this.abortController
-      );
-
-      if (failedPages.length === 0) {
-        debugLog('[RETRY] 모든 페이지 재시도 성공');
-
-        // 성공 상태 이벤트 발송
-        crawlerEvents.emit('crawlingTaskStatus', {
-          taskId: 'list-retry',
-          status: 'success',
-          message: '페이지 목록 재시도 완료: 모든 페이지 성공'
-        });
-
-        // 최종 성공 상태 업데이트 (UI-STATUS-001)
-        updateRetryStatus('list-retry', {
-          remainingItems: 0,
-          itemIds: [],
-          currentAttempt: attempt - retryStart + 1
-        });
-
-        break;
-      }
-    }
-
-    if (failedPages.length > 0) {
-      debugLog(`[RETRY] ${productListRetryCount}회 재시도 후에도 실패한 페이지: ${failedPages.join(', ')}`);
-
-      // 실패 상태 이벤트 발송
-      crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: 'list-retry',
-        status: 'error',
-        message: `페이지 목록 재시도 완료: ${failedPages.length}개 페이지 실패`
-      });
-
-      // 최종 실패 상태 업데이트 (UI-STATUS-001)
-      updateRetryStatus('list-retry', {
-        remainingItems: failedPages.length,
-        itemIds: failedPages.map(page => page.toString())
-      });
-
-      // 최종 실패 항목들 로깅
-      failedPages.forEach(pageNumber => {
-        const errors = failedPageErrors[pageNumber] || ['Unknown error'];
-        console.error(`[RETRY] 페이지 ${pageNumber} 재시도 최종 실패: ${errors.join('; ')}`);
-      });
-    }
   }
 }

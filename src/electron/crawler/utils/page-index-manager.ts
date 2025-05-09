@@ -4,6 +4,7 @@
  */
 
 import { getDatabaseSummaryFromDb } from "../../database.js";
+import { debugLog } from "../../util.js";
 import { getConfig } from "../core/config.js";
 
 /**
@@ -58,10 +59,8 @@ export class PageIndexManager {
     
     // 절대 위치 계산: 12*sitePageNumber + siteIndexInPage - offset
     let absolutePosition = (productsPerPage * sitePageNumber) + siteIndexInPage - offset;
-    
-    // 음수가 나오지 않도록 보정
-    if (absolutePosition < 0) {
-      absolutePosition = siteIndexInPage;
+    if (sitePageNumber === 0 ) {
+      absolutePosition = siteIndexInPage;      
     }
     
     // pageId와 indexInPage 계산

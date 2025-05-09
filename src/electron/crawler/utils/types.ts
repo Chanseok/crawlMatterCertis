@@ -13,6 +13,7 @@ export interface CrawlResult {
     pageNumber: number;
     products: Product[] | null;
     error?: string;
+    isComplete?: boolean; // Added for tracking page completion status
 }
 
 export interface DetailCrawlResult {

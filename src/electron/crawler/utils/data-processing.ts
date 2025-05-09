@@ -15,32 +15,33 @@ export function deduplicateAndSortProducts(productsResults: Product[]): void {
     // 중복 제거를 위한 Map 생성 (pageId-indexInPage 조합을 키로 사용)
     const uniqueProductsMap = new Map<string, Product>();
     productsResults.forEach(product => {
-        const key = `${product.pageId}-${product.indexInPage}`;
+        const key = `${product.pageId}-${product.indexInPage}`; // Product type defines pageId and indexInPage as numbers
         uniqueProductsMap.set(key, product);
     });
 
     // Map에서 중복 제거된 제품 목록을 배열로 변환
     const uniqueProducts = Array.from(uniqueProductsMap.values());
+    debugLog(`[Crawler] 중복 제거 후 제품 수: ${uniqueProducts.length}`);
 
     // pageId는 내림차순, 같은 pageId 내에서는 indexInPage 오름차순으로 정렬
-    const sortedProducts = uniqueProducts.sort((a, b) => {
+    uniqueProducts.sort((a, b) => {
         const aPageId = a.pageId ?? 0;
         const bPageId = b.pageId ?? 0;
 
-        if (aPageId !== bPageId) {
-            return bPageId - aPageId;
+        if (bPageId !== aPageId) {
+            return bPageId - aPageId; // pageId 내림차순 (descending)
+        } else {
+            // pageId가 같으면 indexInPage 오름차순 (ascending)
+            const aIndexInPage = a.indexInPage ?? 0;
+            const bIndexInPage = b.indexInPage ?? 0;
+            return aIndexInPage - bIndexInPage;
         }
-
-        const aIndexInPage = a.indexInPage ?? 0;
-        const bIndexInPage = b.indexInPage ?? 0;
-        return aIndexInPage - bIndexInPage;
     });
 
-    // 정렬된 결과로 productsResults 업데이트
-    productsResults.length = 0; 
-    productsResults.push(...sortedProducts);
-
-    debugLog(`[Crawler] 중복 제거 및 정렬 후 제품 수: ${productsResults.length}`);
+    // Modify the original array in place
+    productsResults.length = 0; // Clear the original array
+    productsResults.push(...uniqueProducts); // Add sorted, unique products back
+    debugLog(`[Crawler] 정렬 완료. 최종 제품 수: ${productsResults.length}`);
 }
 
 /**
