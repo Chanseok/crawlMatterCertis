@@ -11,9 +11,9 @@ import type { Product, MatterProduct } from '../../../../types.d.ts';
  */
 export interface CrawlResult {
     pageNumber: number;
-    products: Product[] | null;
-    error?: string;
-    isComplete?: boolean; // Added for tracking page completion status
+    products: Product[];
+    error?: CrawlError; // Changed from string | undefined
+    isComplete: boolean;
 }
 
 export interface DetailCrawlResult {
@@ -87,4 +87,15 @@ export interface RetryLogItem {
     errorMessage: string;         // 오류 메시지
     attempt: number;              // 시도 회차
     timestamp: number;            // 기록 시간
+}
+
+/**
+ * 구조화된 크롤링 오류 타입
+ */
+export interface CrawlError {
+  type: 'Timeout' | 'Abort' | 'Navigation' | 'Extraction' | 'Initialization' | 'Generic';
+  message: string;
+  pageNumber?: number;
+  attempt?: number;
+  originalError?: any; // Can store the original error object if needed
 }
