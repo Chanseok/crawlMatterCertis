@@ -540,7 +540,7 @@ export class ProductListCollector {
   private async retryFailedPages(
     pagesToRetryInitially: number[],
     totalPages: number,
-    failedPageErrors: Record<string, string[]>
+    failedPageErrors: Record<string, string[]> // Master error log, gets appended to
   ): Promise<void> {
     const productListRetryCount = this.config.productListRetryCount ?? 3;
     const retryConcurrency = this.config.retryConcurrency ?? 1;
@@ -548,48 +548,54 @@ export class ProductListCollector {
     if (productListRetryCount <= 0) {
       debugLog(`[RETRY] Product list retries disabled.`);
       pagesToRetryInitially.forEach(pageNumber => {
-        const sitePNum = PageIndexManager.toSitePageNumber(pageNumber, totalPages);
-        const lastPageProdCount = ProductListCollector.lastPageProductCount ?? 0;
-        const target = sitePNum === 0 ? lastPageProdCount : this.config.productsPerPage;
-        const cached = this.productCache.get(pageNumber) || [];
-        if (cached.length < target) {
-          if (!this.state.getFailedPages().includes(pageNumber)) {
-            const pageNumStr = pageNumber.toString();
-            if (!failedPageErrors[pageNumStr]) {
-              failedPageErrors[pageNumStr] = [];
-            }
-            const defaultError = 'Failed to meet target product count, retries disabled';
-            if (failedPageErrors[pageNumStr].length === 0) {
-                failedPageErrors[pageNumStr].push(defaultError);
-            }
-            this.state.addFailedPage(pageNumber, failedPageErrors[pageNumStr].join('; '));
-          }
+        const pageNumStr = pageNumber.toString();
+        if (!failedPageErrors[pageNumStr]) {
+          failedPageErrors[pageNumStr] = [];
+        }
+        // Add a specific error message indicating retries were disabled for this incomplete page.
+        // This error will be picked up by _summarizeCollectionOutcome.
+        const errorMessage = `Attempt 1: Failed to meet target product count, and retries are disabled.`;
+        // Avoid adding duplicate messages if this logic were ever to be called multiple times for the same page.
+        if (!failedPageErrors[pageNumStr].some(err => err.includes("retries are disabled"))) {
+             failedPageErrors[pageNumStr].push(errorMessage);
         }
       });
+      // No direct call to this.state.addFailedPage here.
+      // _summarizeCollectionOutcome will handle it based on the final state of productCache and failedPageErrors.
       return;
     }
 
     let currentIncompletePages = [...pagesToRetryInitially]; 
     
-    const firstRetryAttemptNumber = 2; 
+    const firstRetryAttemptNumber = 2; // Initial crawl is attempt 1. First retry loop is for attempt 2.
 
     for (let retryLoopIndex = 0; retryLoopIndex < productListRetryCount && currentIncompletePages.length > 0; retryLoopIndex++) {
       const currentOverallAttemptNumber = firstRetryAttemptNumber + retryLoopIndex;
       
       if (this.abortController.signal.aborted) {
         debugLog(`[RETRY] Aborted during retry loop for product list.`);
+        // Ensure errors for pages that were about to be retried reflect the abort.
+        currentIncompletePages.forEach(pageNumber => {
+            const pageNumStr = pageNumber.toString();
+            if (!failedPageErrors[pageNumStr]) failedPageErrors[pageNumStr] = [];
+            // Add abort error only if not already present for this attempt to avoid duplicates if signal is checked multiple times.
+            const abortMessage = `Attempt ${currentOverallAttemptNumber}: Aborted before retry.`;
+            if (!failedPageErrors[pageNumStr].includes(abortMessage)) {
+                failedPageErrors[pageNumStr].push(abortMessage);
+            }
+        });
         break;
       }
 
       const pagesForThisRetryAttempt = [...currentIncompletePages];
-      currentIncompletePages.length = 0;
+      currentIncompletePages.length = 0; // Reset to collect pages that are still incomplete after this attempt
 
       updateRetryStatus('list-retry', {
         stage: 'productList',
-        currentAttempt: retryLoopIndex + 1,
+        currentAttempt: retryLoopIndex + 1, 
         maxAttempt: productListRetryCount,
         remainingItems: pagesForThisRetryAttempt.length,
-        totalItems: pagesToRetryInitially.length,
+        totalItems: pagesToRetryInitially.length, 
         startTime: Date.now(),
         itemIds: pagesForThisRetryAttempt.map(p => p.toString())
       });
@@ -604,13 +610,13 @@ export class ProductListCollector {
         pagesForThisRetryAttempt,
         totalPages,
         retryConcurrency,
-        currentOverallAttemptNumber
+        currentOverallAttemptNumber 
       );
 
       this._processCrawlResults(
         retryBatchResults,
-        currentIncompletePages,
-        failedPageErrors,
+        currentIncompletePages, 
+        failedPageErrors,       
         currentOverallAttemptNumber
       );
 
@@ -621,17 +627,31 @@ export class ProductListCollector {
         if (resultForPage) {
           if (!resultForPage.isComplete) {
             const lastErrorForPage = failedPageErrors[pageNumStr]?.slice(-1)[0] || `Attempt ${currentOverallAttemptNumber}: ${resultForPage.error || "Unknown error during retry"}`;
-            logRetryError('productList', pageNumStr, lastErrorForPage, retryLoopIndex + 1);
+            logRetryError('productList', pageNumStr, lastErrorForPage, retryLoopIndex + 1); 
           } else {
             console.log(`[RETRY][${retryLoopIndex + 1}/${productListRetryCount}] Page ${pageNumberAttempted} successfully completed (Overall attempt ${currentOverallAttemptNumber}).`);
           }
         } else {
-          if (currentIncompletePages.includes(pageNumberAttempted)) {
+          // This page was in pagesForThisRetryAttempt but no result was found in retryBatchResults.
+          // If it's still in currentIncompletePages (populated by _processCrawlResults based on the batch),
+          // it means it effectively failed or was not processed correctly in this attempt.
+          if (currentIncompletePages.includes(pageNumberAttempted)) { 
             const errorsForPage = failedPageErrors[pageNumStr];
-            const lastErrorForPage = errorsForPage?.slice(-1)[0] || `Attempt ${currentOverallAttemptNumber}: Page ${pageNumberAttempted} was attempted, but no specific result was returned in the batch, and it remains incomplete.`;
+            // Ensure an error is logged for this attempt if _processCrawlResults didn't add one because the result was missing.
+            let lastErrorForPage = errorsForPage?.slice(-1)[0];
+            if (!lastErrorForPage || !lastErrorForPage.startsWith(`Attempt ${currentOverallAttemptNumber}`)){
+                const missingResultMessage = `Attempt ${currentOverallAttemptNumber}: Page ${pageNumberAttempted} was attempted, but no specific result was returned in the batch, and it remains incomplete.`;
+                if (!failedPageErrors[pageNumStr]) failedPageErrors[pageNumStr] = [];
+                failedPageErrors[pageNumStr].push(missingResultMessage);
+                lastErrorForPage = missingResultMessage;
+            }
             logRetryError('productList', pageNumStr, lastErrorForPage, retryLoopIndex + 1);
           } else {
-            console.log(`[RETRY][${retryLoopIndex + 1}/${productListRetryCount}] Page ${pageNumberAttempted} considered resolved (no direct result, not in incomplete list). Overall attempt ${currentOverallAttemptNumber}.`);
+            // It was attempted, no direct result, but also not in currentIncompletePages.
+            // This implies it was considered successful or resolved by _processCrawlResults (e.g. cache hit that met criteria)
+            // or it was never truly processed and _processCrawlResults didn't add it to incomplete. This path needs careful consideration.
+            // For now, assume _processCrawlResults correctly handles the incomplete list.
+             console.log(`[RETRY][${retryLoopIndex + 1}/${productListRetryCount}] Page ${pageNumberAttempted} considered resolved (no direct result from batch, not in current incomplete list). Overall attempt ${currentOverallAttemptNumber}.`);
           }
         }
       });
@@ -649,7 +669,7 @@ export class ProductListCollector {
         });
         break;
       }
-    }
+    } // End of retry loop
 
     if (currentIncompletePages.length > 0) {
       debugLog(`[RETRY] After ${productListRetryCount} retries, ${currentIncompletePages.length} pages remain incomplete: ${currentIncompletePages.join(', ')}`);
@@ -657,20 +677,22 @@ export class ProductListCollector {
         taskId: 'list-retry', status: 'error',
         message: `Product list retry finished: ${currentIncompletePages.length} pages still incomplete.`
       });
-      currentIncompletePages.forEach(pageNumber => {
-        const errors = failedPageErrors[pageNumber.toString()] || [`Unknown error after max retries (Last overall attempt ${firstRetryAttemptNumber + productListRetryCount -1})`];
-        this.state.addFailedPage(pageNumber, errors.join('; '));
-        console.error(`[RETRY] Page ${pageNumber} ultimately failed to complete: ${errors.join('; ')}`);
-      });
+      // No direct call to this.state.addFailedPage here.
+      // _summarizeCollectionOutcome will use failedPageErrors to determine final failed state.
+      // Ensure that errors for these ultimately incomplete pages are correctly logged in failedPageErrors.
+      // _processCrawlResults should have handled logging errors from the last attempt.
+      // If a page was aborted before its last attempt, that error was added.
     } else {
       debugLog(`[RETRY] All product list pages completed within retry attempts.`);
-      if (productListRetryCount > 0 && pagesToRetryInitially.length > 0) {
+      if (productListRetryCount > 0 && pagesToRetryInitially.length > 0) { // Only emit success if retries were active and needed
         crawlerEvents.emit('crawlingTaskStatus', {
           taskId: 'list-retry', status: 'success',
           message: 'Product list retry successful: All initially incomplete pages completed.'
         });
       }
     }
+    // The final decision to mark pages as "failed" in this.state
+    // will be handled by _summarizeCollectionOutcome based on productCache and failedPageErrors.
   }
 
   /**
