@@ -3,9 +3,9 @@
  * 제품 목록 수집을 담당하는 클래스
  */
 
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-chromium';
+import { type Page } from 'playwright-chromium';
 // import { getDatabaseSummaryFromDb } from '../../database.js';
-import { getRandomDelay, delay } from '../utils/delay.js';
+
 import { CrawlerState } from '../core/CrawlerState.js';
 import {
   promisePool, updateTaskStatus, initializeTaskStates,
@@ -14,7 +14,7 @@ import {
 import type { CrawlResult, CrawlError } from '../utils/types.js';
 import type { Product } from '../../../../types.js';
 import { debugLog } from '../../util.js';
-import { getConfig, type CrawlerConfig } from '../core/config.js';
+import { type CrawlerConfig } from '../core/config.js';
 import { crawlerEvents, updateRetryStatus, logRetryError } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';
 import { BrowserManager } from '../browser/BrowserManager.js'; // Corrected path
@@ -717,81 +717,6 @@ export class ProductListCollector {
           taskId: 'list-retry', status: 'success',
           message: 'Product list retry successful: All initially incomplete pages completed.'
         });
-      }
-    }
-  }
-
-  private async crawlProductsFromPage(pageNumber: number, totalPages: number, signal: AbortSignal, attempt: number): Promise<Product[]> {
-    const delayTime = getRandomDelay(this.config.minRequestDelayMs ?? 1000, this.config.maxRequestDelayMs ?? 3000);
-    await delay(delayTime);
-
-    if (signal.aborted) {
-      debugLog(`[ProductListCollector] Crawl for page ${pageNumber} aborted before starting.`);
-      throw new PageAbortedError('Aborted before navigation', pageNumber, attempt);
-    }
-
-    const pageUrl = `${this.config.matterFilterUrl}&paged=${pageNumber}`;
-    let page: Page | null = null; // Changed to single page variable
-
-    try {
-      if (signal.aborted) throw new PageAbortedError('Aborted before page acquisition', pageNumber, attempt);
-
-      page = await this.browserManager.getPage(); // Use BrowserManager
-      if (!page) {
-        throw new PageInitializationError('Failed to get a page from BrowserManager.', pageNumber, attempt);
-      }
-
-      if (signal.aborted) throw new PageAbortedError('Aborted before page navigation', pageNumber, attempt);
-      
-      debugLog(`[ProductListCollector] Navigating to ${pageUrl} for page ${pageNumber}`);
-      try {
-        await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
-      } catch (navError) {
-        if (signal.aborted) throw new PageAbortedError('Aborted during navigation', pageNumber, attempt);
-        throw new PageNavigationError(`Navigation failed for ${pageUrl}: ${navError instanceof Error ? navError.message : String(navError)}`, pageNumber, attempt);
-      }
-
-      if (signal.aborted) {
-        debugLog(`[ProductListCollector] Crawl for page ${pageNumber} aborted during navigation/load.`);
-        throw new PageAbortedError('Aborted after navigation', pageNumber, attempt);
-      }
-
-      const actualLastPageProductCount = ProductListCollector.lastPageProductCount ?? 0;
-
-      const sitePageNumber = PageIndexManager.toSitePageNumber(pageNumber, totalPages);
-      const offset = PageIndexManager.calculateOffset(actualLastPageProductCount);
-
-      debugLog(`[ProductListCollector] 페이지 ${pageNumber} 크롤링 (sitePageNumber: ${sitePageNumber}, lastPageProductCount: ${actualLastPageProductCount}, offset: ${offset})`);
-      let rawProducts: RawProductData[];
-      try {
-        rawProducts = await page.evaluate<RawProductData[]>(ProductListCollector._extractProductsFromPageDOM);
-      } catch (evalError) {
-        if (signal.aborted) throw new PageAbortedError('Aborted during page evaluation', pageNumber, attempt);
-        throw new PageContentExtractionError(`Content extraction failed on page ${pageNumber}: ${evalError instanceof Error ? evalError.message : String(evalError)}`, pageNumber, attempt);
-      }
-      
-      const products = this._mapRawProductsToProducts(rawProducts, sitePageNumber, offset);
-
-      debugLog(`[ProductListCollector] Successfully crawled ${products.length} products from page ${pageNumber}.`);
-      return products;
-    } catch (error: unknown) {
-      if (error instanceof PageAbortedError || signal.aborted) {
-        debugLog(`[ProductListCollector] Crawl for page ${pageNumber} confirmed aborted in catch block.`);
-        if (error instanceof PageAbortedError) throw error;
-        throw new PageAbortedError(`Aborted crawling for page ${pageNumber}`, pageNumber, attempt);
-      }
-      if (error instanceof PageOperationError) throw error;
-
-      console.error(`[ProductListCollector] Error crawling page ${pageNumber}:`, error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new PageOperationError(`Failed to crawl page ${pageNumber}: ${errorMessage}`, pageNumber, attempt);
-    } finally {
-      if (page) {
-        try {
-          await this.browserManager.closePage(page);
-        } catch (e) {
-          console.error(`[ProductListCollector] Error releasing page for ${pageNumber}:`, e);
-        }
       }
     }
   }
