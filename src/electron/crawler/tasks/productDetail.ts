@@ -21,39 +21,17 @@ import {
   logRetryError
 } from '../utils/progress.js';
 
-// 진행 상황 콜백 타입 정의
-export type DetailProgressCallback = (
-  processedItems: number, 
-  newItems: number, 
-  updatedItems: number
-) => void;
-
 export class ProductDetailCollector {
   private state: CrawlerState;
   private abortController: AbortController;
   private readonly config: CrawlerConfig;
   private browserManager: BrowserManager;
-  private progressCallback: DetailProgressCallback | null = null;
-  private processedItems: number = 0;
-  private newItems: number = 0;
-  private updatedItems: number = 0;
 
   constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig) {
     this.state = state;
     this.abortController = abortController;
     this.config = config;
-    this.browserManager = new BrowserManager(config); // BrowserManager 초기화
-    this.processedItems = 0;
-    this.newItems = 0;
-    this.updatedItems = 0;
-  }
-
-  /**
-   * 진행 상황 콜백 설정 함수
-   * @param callback 진행 상황을 업데이트할 콜백 함수
-   */
-  public setProgressCallback(callback: DetailProgressCallback): void {
-    this.progressCallback = callback;
+    this.browserManager = new BrowserManager(config);
   }
 
   /**
@@ -61,17 +39,7 @@ export class ProductDetailCollector {
    * @param isNew 새로운 항목인지 여부
    */
   private updateProgress(isNew: boolean = true): void {
-    this.processedItems++;
-    
-    if (isNew) {
-      this.newItems++;
-    } else {
-      this.updatedItems++;
-    }
-    
-    if (this.progressCallback) {
-      this.progressCallback(this.processedItems, this.newItems, this.updatedItems);
-    }
+    this.state.recordDetailItemProcessed(isNew);
   }
 
   /**
@@ -139,10 +107,6 @@ export class ProductDetailCollector {
 
     const config = this.config;
 
-    this.processedItems = 0;
-    this.newItems = 0;
-    this.updatedItems = 0;
-
     this.state.setStage('productDetail:init', '2/2단계: 제품 상세 정보 수집 준비 중');
     this.state.updateProgress({
       totalItems: products.length,
@@ -190,7 +154,7 @@ export class ProductDetailCollector {
           message: JSON.stringify({
             stage: 2,
             type: 'abort',
-            processedItems: this.processedItems,
+            processedItems: this.state.getDetailStageProcessedCount(),
             totalItems: products.length,
             abortReason: 'user_request',
             endTime: new Date().toISOString()
@@ -234,11 +198,11 @@ export class ProductDetailCollector {
           stage: 2,
           type: 'complete',
           totalItems: products.length,
-          processedItems: this.processedItems,
+          processedItems: this.state.getDetailStageProcessedCount(),
           successItems: successProducts,
           failedItems: finalFailedCount,
-          newItems: this.newItems,
-          updatedItems: this.updatedItems,
+          newItems: this.state.getDetailStageNewCount(),
+          updatedItems: this.state.getDetailStageUpdatedCount(),
           successRate: parseFloat((successRate * 100).toFixed(1)),
           endTime: new Date().toISOString()
         })
@@ -249,7 +213,7 @@ export class ProductDetailCollector {
     } catch (error) {
       console.error('[ProductDetailCollector] Critical error during product detail collection:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.state.setStage('failed', `2단계 상세 수집 중 오류: ${errorMessage}`); // Changed 'productDetail:error' to 'failed'
+      this.state.setStage('failed', `2단계 상세 수집 중 오류: ${errorMessage}`);
       crawlerEvents.emit('crawlingError', {
         stage: 'Product Detail Collection',
         message: errorMessage,
@@ -275,12 +239,11 @@ export class ProductDetailCollector {
     }
 
     try {
-      // 진행 상태 최종 업데이트
       const progressData = this.state.getProgressData();
-      const totalItems = progressData?.totalItems ?? this.processedItems; 
+      const totalItems = progressData?.totalItems ?? this.state.getDetailStageProcessedCount(); 
 
       this.state.updateProgress({
-        currentItem: totalItems, 
+        currentItem: this.state.getDetailStageProcessedCount(), 
         totalItems: totalItems,
         stage: 'productDetail:processing', 
         message: '2단계: 제품 상세 정보 처리 완료'
@@ -465,10 +428,6 @@ export class ProductDetailCollector {
           const activeTasksCount = Math.min(detailConcurrency, totalItems - processedItems + 1);
           this.state.updateParallelTasks(activeTasksCount, detailConcurrency);
           
-          if (this.progressCallback) {
-            this.progressCallback(processedItems, this.newItems, this.updatedItems);
-          }
-          
           crawlerEvents.emit('crawlingProgress', {
             status: 'running',
             currentPage: processedItems,
@@ -482,8 +441,8 @@ export class ProductDetailCollector {
             elapsedTime: elapsedTime,
             startTime: startTime,
             estimatedEndTime: remainingTime ? now + remainingTime : 0,
-            newItems: this.newItems,
-            updatedItems: this.updatedItems,
+            newItems: this.state.getDetailStageNewCount(),
+            updatedItems: this.state.getDetailStageUpdatedCount(),
             message: message
           });
         }
@@ -496,9 +455,9 @@ export class ProductDetailCollector {
   
     const finalElapsedTime = Date.now() - startTime;
     this.state.updateProgress({
-      currentItem: processedItems,
+      currentItem: this.state.getDetailStageProcessedCount(),
       totalItems: totalItems,
-      message: `2/2단계: 제품 상세 정보 수집 완료 (${processedItems}/${totalItems})`,
+      message: `2/2단계: 제품 상세 정보 수집 완료 (${this.state.getDetailStageProcessedCount()}/${totalItems})`,
       percentage: 100
     });
     this.state.updateParallelTasks(0, config.detailConcurrency ?? 1);
@@ -516,9 +475,9 @@ export class ProductDetailCollector {
       elapsedTime: finalElapsedTime,
       startTime: startTime,
       estimatedEndTime: Date.now(),
-      newItems: this.newItems,
-      updatedItems: this.updatedItems,
-      message: `2단계 완료: ${totalItems}개 제품 상세정보 수집 완료 (신규: ${this.newItems}, 업데이트: ${this.updatedItems})` 
+      newItems: this.state.getDetailStageNewCount(),
+      updatedItems: this.state.getDetailStageUpdatedCount(),
+      message: `2단계 완료: ${totalItems}개 제품 상세정보 수집 완료 (신규: ${this.state.getDetailStageNewCount()}, 업데이트: ${this.state.getDetailStageUpdatedCount()})` 
     });
   }
 

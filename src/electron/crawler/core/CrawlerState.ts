@@ -43,6 +43,9 @@ export class CrawlerState {
   private failedPageErrors: Record<number, string[]> = {};
   private failedProductErrors: Record<string, string[]> = {};
   private progressData: ProgressData;
+  private detailStageProcessedCount: number = 0;
+  private detailStageNewCount: number = 0;
+  private detailStageUpdatedCount: number = 0;
   
   constructor() {
     this.progressData = {
@@ -253,5 +256,58 @@ public updateProgress(data: Partial<ProgressData>): void {
    */
   private emitProgressUpdate(): void {
     crawlerEvents.emit('crawlingProgress', this.progressData);
+  }
+
+  /**
+   * 상태 초기화
+   */
+  public reset(): void {
+    this.products = [];
+    this.matterProducts = [];
+    this.failedProducts = [];
+    this.failedPages = [];
+    this.failedPageErrors = {};
+    this.failedProductErrors = {};
+    this.progressData = {
+      stage: 'preparation',
+      message: '크롤링 준비 중...',
+      startTime: Date.now(),
+    };
+    this.detailStageProcessedCount = 0;
+    this.detailStageNewCount = 0;
+    this.detailStageUpdatedCount = 0;
+  }
+
+  /**
+   * 상세 정보 수집 단계에서 처리된 항목 기록
+   */
+  public recordDetailItemProcessed(isNewItem: boolean): void {
+    this.detailStageProcessedCount++;
+    if (isNewItem) {
+      this.detailStageNewCount++;
+    } else {
+      this.detailStageUpdatedCount++;
+    }
+  }
+
+  /**
+   * 상세 정보 수집 단계에서 처리된 항목 수 가져오기
+   */
+  public getDetailStageProcessedCount(): number {
+    return this.detailStageProcessedCount;
+  }
+
+  /**
+   * 상세 정보 수집 단계에서 새로 추가된 항목 수 가져오기
+   */
+  public getDetailStageNewCount(): number {
+    return this.detailStageNewCount;
+  }
+
+  /**
+   * 상세 정보 수집 단계에서 업데이트된 항목 수 가져오기
+   */
+  public getDetailStageUpdatedCount(): number {
+    return this.detailStageUpdatedCount;
   }
 }

@@ -159,14 +159,6 @@ export class CrawlerEngine {
       // 제품 상세 정보 수집기 생성 (2단계)
       const productDetailCollector = new ProductDetailCollector(this.state, this.abortController, config); // Pass config
       
-      // 진행 상황 업데이트 함수 설정 - 2단계
-      const detailProgressUpdater = (processedItems: number, newItems: number, updatedItems: number) => {
-        updateProductDetailProgress(processedItems, products.length, detailStartTime, false, newItems, updatedItems);
-      };
-      
-      // 콜백 함수 설정
-      productDetailCollector.setProgressCallback(detailProgressUpdater);
-      
       // 제품 상세 정보 수집 실행
       const matterProducts = await productDetailCollector.collect(products);
 
