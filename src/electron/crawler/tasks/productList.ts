@@ -598,13 +598,23 @@ export class ProductListCollector {
       );
 
       pagesForThisRetryAttempt.forEach(pageNumberAttempted => {
+        const pageNumStr = pageNumberAttempted.toString();
         const resultForPage = retryBatchResults.find(r => r?.pageNumber === pageNumberAttempted);
+
         if (resultForPage) {
           if (!resultForPage.isComplete) {
-            const lastErrorForPage = failedPageErrors[resultForPage.pageNumber.toString()]?.slice(-1)[0] || `Attempt ${currentOverallAttemptNumber}: ${resultForPage.error || "Unknown error during retry"}`;
-            logRetryError('productList', resultForPage.pageNumber.toString(), lastErrorForPage, retryLoopIndex + 1); 
+            const lastErrorForPage = failedPageErrors[pageNumStr]?.slice(-1)[0] || `Attempt ${currentOverallAttemptNumber}: ${resultForPage.error || "Unknown error during retry"}`;
+            logRetryError('productList', pageNumStr, lastErrorForPage, retryLoopIndex + 1);
           } else {
-            console.log(`[RETRY][${retryLoopIndex + 1}/${productListRetryCount}] Page ${resultForPage.pageNumber} successfully completed (Overall attempt ${currentOverallAttemptNumber}).`);
+            console.log(`[RETRY][${retryLoopIndex + 1}/${productListRetryCount}] Page ${pageNumberAttempted} successfully completed (Overall attempt ${currentOverallAttemptNumber}).`);
+          }
+        } else {
+          if (currentIncompletePages.includes(pageNumberAttempted)) {
+            const errorsForPage = failedPageErrors[pageNumStr];
+            const lastErrorForPage = errorsForPage?.slice(-1)[0] || `Attempt ${currentOverallAttemptNumber}: Page ${pageNumberAttempted} was attempted, but no specific result was returned in the batch, and it remains incomplete.`;
+            logRetryError('productList', pageNumStr, lastErrorForPage, retryLoopIndex + 1);
+          } else {
+            console.log(`[RETRY][${retryLoopIndex + 1}/${productListRetryCount}] Page ${pageNumberAttempted} considered resolved (no direct result, not in incomplete list). Overall attempt ${currentOverallAttemptNumber}.`);
           }
         }
       });
