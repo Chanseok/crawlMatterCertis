@@ -3,7 +3,7 @@
  * 제품 상세 정보 수집을 담당하는 클래스
  */
 
-import { chromium } from 'playwright-chromium';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-chromium';
 import { getRandomDelay, delay } from '../utils/delay.js';
 import { CrawlerState } from '../core/CrawlerState.js';
 import {
@@ -30,6 +30,8 @@ export class ProductDetailCollector {
   private state: CrawlerState;
   private abortController: AbortController;
   private readonly config: CrawlerConfig;
+  private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
   private progressCallback: DetailProgressCallback | null = null;
   private processedItems: number = 0;
   private newItems: number = 0; // 새로 추가된 항목
@@ -82,14 +84,11 @@ export class ProductDetailCollector {
 
     const config = this.config;
 
-    // 진행 상황 초기화
     this.processedItems = 0;
     this.newItems = 0;
     this.updatedItems = 0;
 
     this.state.setStage('productDetail:init', '2/2단계: 제품 상세 정보 수집 준비 중');
-
-    // 진행 상태 업데이트
     this.state.updateProgress({
       totalItems: products.length,
       currentItem: 0,
@@ -101,135 +100,211 @@ export class ProductDetailCollector {
     const failedProducts: string[] = [];
     const failedProductErrors: Record<string, string[]> = {};
 
-    // 제품 상세 정보 작업 상태 초기화
     initializeProductTaskStates(products);
 
-    this.state.setStage('productDetail:fetching', '2/2단계: 제품 상세 정보 수집 중');
-    debugLog(`Starting phase 2: crawling product details for ${products.length} products`);
+    try {
+      await this._initializeBrowser();
 
-    // 전체 크롤링 시작 메시지 이벤트
-    crawlerEvents.emit('crawlingTaskStatus', {
-      taskId: 'detail-start',
-      status: 'running',
-      message: JSON.stringify({
-        stage: 2,
-        type: 'start',
-        totalProducts: products.length,
-        startTime: new Date().toISOString()
-      })
-    });
+      this.state.setStage('productDetail:fetching', '2/2단계: 제품 상세 정보 수집 중');
+      debugLog(`Starting phase 2: crawling product details for ${products.length} products`);
 
-    // 제품 상세 정보 병렬 크롤링 실행
-    await this.executeParallelProductDetailCrawling(
-      products,
-      matterProducts,
-      failedProducts,
-      failedProductErrors
-    );
-
-    // 중단 여부 처리
-    if (this.abortController.signal.aborted) {
-      console.log('[ProductDetailCollector] Crawling was stopped during product detail collection.');
-      
-      // 중단 상태 이벤트 발송
       crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: 'detail-abort',
-        status: 'stopped',
+        taskId: 'detail-start',
+        status: 'running',
         message: JSON.stringify({
           stage: 2,
-          type: 'abort',
-          processedItems: this.processedItems,
+          type: 'start',
+          totalProducts: products.length,
+          startTime: new Date().toISOString()
+        })
+      });
+
+      await this.executeParallelProductDetailCrawling(
+        products,
+        matterProducts,
+        failedProducts,
+        failedProductErrors
+      );
+
+      if (this.abortController.signal.aborted) {
+        console.log('[ProductDetailCollector] Crawling was stopped during product detail collection.');
+      
+        crawlerEvents.emit('crawlingTaskStatus', {
+          taskId: 'detail-abort',
+          status: 'stopped',
+          message: JSON.stringify({
+            stage: 2,
+            type: 'abort',
+            processedItems: this.processedItems,
+            totalItems: products.length,
+            abortReason: 'user_request',
+            endTime: new Date().toISOString()
+          })
+        });
+        return matterProducts;
+      }
+
+      const initialFailedProducts = [...failedProducts];
+      if (failedProducts.length > 0) {
+        console.log(`[ProductDetailCollector] Retrying ${failedProducts.length} failed products.`);
+        await this.retryFailedProductDetails(
+          failedProducts,
+          products,
+          matterProducts,
+          failedProductErrors
+        );
+      }
+
+      const totalProducts = products.length;
+      const finalFailedCount = failedProducts.length;
+      const finalFailureRate = totalProducts > 0 ? finalFailedCount / totalProducts : 0;
+      const initialFailRate = totalProducts > 0 ? initialFailedProducts.length / totalProducts : 0;
+
+      console.log(`[ProductDetailCollector] Initial failure rate: ${(initialFailRate * 100).toFixed(1)}% (${initialFailedProducts.length}/${totalProducts})`);
+      console.log(`[ProductDetailCollector] Final failure rate after retries: ${(finalFailureRate * 100).toFixed(1)}% (${finalFailedCount}/${totalProducts})`);
+
+      failedProducts.forEach(url => {
+        const errors = failedProductErrors[url] || ['Unknown error'];
+        this.state.addFailedProduct(url, errors.join('; '));
+      });
+
+      const successProducts = totalProducts - finalFailedCount;
+      const successRate = totalProducts > 0 ? successProducts / totalProducts : 1;
+      console.log(`[ProductDetailCollector] Collection success rate: ${(successRate * 100).toFixed(1)}% (${successProducts}/${totalProducts})`);
+
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'detail-complete',
+        status: 'success',
+        message: JSON.stringify({
+          stage: 2,
+          type: 'complete',
           totalItems: products.length,
-          abortReason: 'user_request',
+          processedItems: this.processedItems,
+          successItems: successProducts,
+          failedItems: finalFailedCount,
+          newItems: this.newItems,
+          updatedItems: this.updatedItems,
+          successRate: parseFloat((successRate * 100).toFixed(1)),
           endTime: new Date().toISOString()
         })
       });
       
-      return matterProducts;
+      this.state.setStage('productDetail:processing', '2단계: 제품 상세 정보 처리 완료');
+
+    } catch (error) {
+      console.error('[ProductDetailCollector] Critical error during product detail collection:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.state.setStage('failed', `2단계 상세 수집 중 오류: ${errorMessage}`); // Changed 'productDetail:error' to 'failed'
+      crawlerEvents.emit('crawlingError', {
+        stage: 'Product Detail Collection',
+        message: errorMessage,
+        error,
+      });
+    } finally {
+      await this.cleanupResources(); 
     }
-
-    // 실패한 제품 재시도
-    const initialFailedProducts = [...failedProducts];
-    if (failedProducts.length > 0) {
-      console.log(`[ProductDetailCollector] Retrying ${failedProducts.length} failed products.`);
-      await this.retryFailedProductDetails(
-        failedProducts,
-        products,
-        matterProducts,
-        failedProductErrors
-      );
-    }
-
-    // 최종 실패율 계산 및 로깅
-    const totalProducts = products.length;
-    const finalFailedCount = failedProducts.length;
-    const finalFailureRate = finalFailedCount / totalProducts;
-    const initialFailRate = initialFailedProducts.length / totalProducts;
-
-    console.log(`[ProductDetailCollector] Initial failure rate: ${(initialFailRate * 100).toFixed(1)}% (${initialFailedProducts.length}/${totalProducts})`);
-    console.log(`[ProductDetailCollector] Final failure rate after retries: ${(finalFailureRate * 100).toFixed(1)}% (${finalFailedCount}/${totalProducts})`);
-
-    // 실패 상태 기록
-    failedProducts.forEach(url => {
-      const errors = failedProductErrors[url] || ['Unknown error'];
-      this.state.addFailedProduct(url, errors.join('; '));
-    });
-
-    // 수집 성공률 통계
-    const successProducts = totalProducts - finalFailedCount;
-    const successRate = successProducts / totalProducts;
-    console.log(`[ProductDetailCollector] Collection success rate: ${(successRate * 100).toFixed(1)}% (${successProducts}/${totalProducts})`);
-
-    // 최종 완료 상태 이벤트 발송
-    crawlerEvents.emit('crawlingTaskStatus', {
-      taskId: 'detail-complete',
-      status: 'success',
-      message: JSON.stringify({
-        stage: 2,
-        type: 'complete',
-        totalItems: products.length,
-        processedItems: this.processedItems,
-        successItems: successProducts,
-        failedItems: finalFailedCount,
-        newItems: this.newItems,
-        updatedItems: this.updatedItems,
-        successRate: parseFloat((successRate * 100).toFixed(1)),
-        endTime: new Date().toISOString()
-      })
-    });
-
-    // 제품 상세 정보 처리 단계로 전환
-    this.state.setStage('productDetail:processing', '2단계: 제품 상세 정보 처리 중');
-    // 최종 결과 반환 전에 모든 리소스 정리
-    this.cleanupResources();
 
     return matterProducts;
   }
 
-/**
- * 리소스 정리 함수
- */
-private cleanupResources(): void {
-  console.log('[ProductDetailCollector] Cleaning up resources...');
+  private async _initializeBrowser(): Promise<void> {
+    const headless = this.config.headlessBrowser ?? true;
+    if (this.browser && this.browser.isConnected()) {
+      if (this.context && typeof this.context.pages === 'function') {
+        try {
+          await this.context.pages();
+          debugLog('[ProductDetailCollector] Browser and context are already initialized and valid.');
+          return;
+        } catch (e) {
+          debugLog('[ProductDetailCollector] Browser context seems invalid, will re-create.', e);
+          try {
+            await this.context.close();
+          } catch (closeError) {
+            console.warn('[ProductDetailCollector] Error closing invalid context during re-initialization:', closeError);
+          }
+          this.context = null;
+        }
+      } else if (this.context) {
+         debugLog('[ProductDetailCollector] Browser context in bad state, closing.');
+         try {
+            await this.context.close();
+         } catch (e) {
+            console.warn('[ProductDetailCollector] Error closing bad state context:', e);
+         }
+         this.context = null;
+      }
+      if (!this.context) {
+        try {
+          this.context = await this.browser.newContext();
+          debugLog('[ProductDetailCollector] Re-created browser context on existing browser.');
+          return;
+        } catch (e) {
+          console.error('[ProductDetailCollector] Failed to re-create browser context. Re-initializing browser.', e);
+          if (this.browser && this.browser.isConnected()) {
+            try { await this.browser.close(); } catch (be) { console.warn('Error closing browser before re-init', be); }
+          }
+          this.browser = null; 
+        }
+      }
+    }
 
-  // 열려있는 브라우저 인스턴스 정리
-  try {
-    // 여기에 필요한 리소스 정리 로직을 구현
-    // (참고: AbortController는 호출하지 않음)
-    
-    // 마지막 상태 업데이트 강제 발생
-    this.state.updateProgress({
-      currentItem: this.state.getProgressData().totalItems,
-      stage: 'productDetail:processing',
-      message: '2단계: 제품 상세 정보 처리 완료'
-    });
-    
-    // UI에 단계 변경 명시적 알림
-    crawlerEvents.emit('crawlingStageChanged', 'productDetail:processing', '2단계: 제품 상세 정보 처리 완료');
-  } catch (error) {
-    console.error('[ProductDetailCollector] Error cleaning up resources:', error);
+    if (this.browser) {
+        try {
+            debugLog('[ProductDetailCollector] Closing previous disconnected/problematic browser.');
+            await this.browser.close();
+        } catch (e) {
+            console.warn('[ProductDetailCollector] Error closing previous browser:', e);
+        }
+        this.browser = null;
+        this.context = null;
+    }
+
+    debugLog(`[ProductDetailCollector] Initializing browser (headless: ${headless})...`);
+    try {
+        this.browser = await chromium.launch({ headless });
+        this.context = await this.browser.newContext();
+        debugLog('[ProductDetailCollector] Browser and context initialized.');
+    } catch (error) {
+        console.error('[ProductDetailCollector] Failed to initialize browser:', error);
+        if (this.context) { try { await this.context.close(); } catch(e){ /* ignore */ } this.context = null; }
+        if (this.browser) { try { await this.browser.close(); } catch(e){ /* ignore */ } this.browser = null; }
+        throw new Error(`Failed to initialize browser: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
-}
+
+  private async cleanupResources(): Promise<void> {
+    console.log('[ProductDetailCollector] Cleaning up resources...');
+    try {
+      if (this.context) {
+        await this.context.close();
+        this.context = null;
+        debugLog('[ProductDetailCollector] Browser context closed.');
+      }
+      if (this.browser && this.browser.isConnected()) {
+        await this.browser.close();
+        this.browser = null;
+        debugLog('[ProductDetailCollector] Browser closed.');
+      }
+    } catch (error) {
+      console.error('[ProductDetailCollector] Error cleaning up Playwright resources:', error);
+    }
+
+    try {
+      const progressData = this.state.getProgressData();
+      const totalItems = progressData?.totalItems ?? this.processedItems; 
+
+      this.state.updateProgress({
+        currentItem: totalItems, 
+        totalItems: totalItems,
+        stage: 'productDetail:processing', 
+        message: '2단계: 제품 상세 정보 처리 완료'
+      });
+      
+      crawlerEvents.emit('crawlingStageChanged', 'productDetail:processing', '2단계: 제품 상세 정보 처리 완료');
+    } catch (error) {
+      console.error('[ProductDetailCollector] Error during final state update in cleanupResources:', error);
+    }
+  }
 
   /**
    * 제품 상세 정보를 크롤링하는 함수
@@ -237,53 +312,38 @@ private cleanupResources(): void {
   private async crawlProductDetail(product: Product, signal: AbortSignal): Promise<MatterProduct> {
     const config = this.config;
     
-    // 서버 과부하 방지를 위한 무작위 지연 시간 적용
-    // Provide default values if config values are undefined
-    const minDelay = config.minRequestDelayMs ?? 100; // Default min delay
-    const maxDelay = config.maxRequestDelayMs ?? 2200; // Default max delay
+    const minDelay = config.minRequestDelayMs ?? 100;
+    const maxDelay = config.maxRequestDelayMs ?? 2200;
     const delayTime = getRandomDelay(minDelay, maxDelay);
     await delay(delayTime);
 
-    const browser = await chromium.launch({ headless: true });
+    if (!this.context) {
+      await this._initializeBrowser();
+      if (!this.context) {
+         throw new Error('[ProductDetailCollector] Browser context is not initialized. Cannot create page.');
+      }
+    }
+    
+    let page: Page | null = null;
 
     try {
-      // 중단 신호 확인 - 브라우저가 시작된 직후
+      page = await this.context.newPage();
+
       if (signal.aborted) {
-        throw new Error('Aborted');
+        throw new Error('Aborted before page operations');
       }
 
-      const context = await browser.newContext();
-      const page = await context.newPage();
+      await page.goto(product.url, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs ?? 60000 });
 
-      // 중단 시 브라우저 작업을 취소하기 위한 이벤트 리스너
-      const abortListener = () => {
-        if (!browser.isConnected()) return;
-        browser.close().catch(e => console.error('Error closing browser after abort:', e));
-      };
-      signal.addEventListener('abort', abortListener);
-
-      // 페이지 로드를 시작하기 전에 중단 신호 확인
       if (signal.aborted) {
-        throw new Error('Aborted');
+        throw new Error('Aborted after page.goto');
       }
 
-      await page.goto(product.url, { waitUntil: 'domcontentloaded' });
-
-      // 중단 신호 확인 - 페이지 이동 직후
-      if (signal.aborted) {
-        throw new Error('Aborted');
-      }
-
-      // 제품 상세 정보 추출
       const detailProduct = await page.evaluate((baseProduct) => {
         type ProductDetails = Record<string, string>;
 
-        // 타입스크립트는 브라우저 컨텍스트에서 실행되지 않으므로 
-        // 런타임에는 간단한 객체로 다루고, 이후 MatterProduct로 타입 변환
         const result = {
-          // baseProduct의 모든 속성을 복사
           ...baseProduct,
-          // 필수 속성 설정
           id: `csa-matter-${baseProduct.pageId}-${baseProduct.indexInPage}`,
           deviceType: 'Matter Device',
           applicationCategories: [] as string[]
@@ -291,7 +351,6 @@ private cleanupResources(): void {
 
         console.debug(`[Extracting product details for ${result.id}]`);
 
-        // 제품 제목 추출
         function extractProductTitle(): string {
           const getText = (selector: string): string => {
             const el = document.querySelector(selector);
@@ -301,7 +360,6 @@ private cleanupResources(): void {
           return getText('h1.entry-title') || getText('h1') || 'Unknown Product';
         }
 
-        // 인증 정보 테이블에서 데이터 추출
         function extractDetailsFromTable(): ProductDetails {
           const details: ProductDetails = {};
           const infoTable = document.querySelector('.product-certificates-table');
@@ -337,7 +395,6 @@ private cleanupResources(): void {
           return details;
         }
 
-        // 제품 상세 정보를 span.label, span.value 구조에서 추출
         function extractDetailValues(): ProductDetails {
           const details: ProductDetails = {};
           const detailItems = document.querySelectorAll('.entry-product-details div ul li');
@@ -351,7 +408,6 @@ private cleanupResources(): void {
               const valueText = value.textContent?.trim() || '';
 
               if (valueText) {
-                // 레이블에 따라 해당 키에 값 할당
                 if (labelText === 'manufacturer' || labelText.includes('company'))
                   details.manufacturer = valueText;
                 else if (labelText === 'vendor id' || labelText.includes('vid'))
@@ -390,7 +446,6 @@ private cleanupResources(): void {
           return details;
         }
 
-        // 애플리케이션 카테고리 추출
         function extractApplicationCategories(deviceType: string): string[] {
           const appCategories: string[] = [];
           const appCategoriesSection = Array.from(document.querySelectorAll('h3')).find(
@@ -410,7 +465,6 @@ private cleanupResources(): void {
             }
           }
 
-          // 애플리케이션 카테고리가 없으면 deviceType을 사용
           if (appCategories.length === 0 && deviceType !== 'Matter Device') {
             appCategories.push(deviceType);
           } else if (appCategories.length === 0) {
@@ -420,15 +474,11 @@ private cleanupResources(): void {
           return appCategories;
         }
 
-        // 제조사 정보 추출 및 결과에 할당
         function extractManufacturerInfo(result: Record<string, any>, details: ProductDetails, productTitle: string): void {
-          // Extract manufacturer (fallback methods)
           let manufacturer = details.manufacturer || result.manufacturer || '';
           const knownManufacturers = ['Govee', 'Philips', 'Samsung', 'Apple', 'Google', 'Amazon', 'Aqara', 'LG', 'IKEA', 'Belkin', 'Eve', 'Nanoleaf', 'GE', 'Cync', 'Tapo', 'TP-Link', 'Signify', 'Haier', 'WiZ'];
 
-          // 이미 제조사를 찾았다면 다음 단계를 건너뜀
           if (!manufacturer) {
-            // Try to find manufacturer in the title first
             for (const brand of knownManufacturers) {
               if (productTitle.includes(brand)) {
                 manufacturer = brand;
@@ -437,7 +487,6 @@ private cleanupResources(): void {
             }
           }
 
-          // If not found in title, look for it in company info
           if (!manufacturer) {
             const companyInfo = document.querySelector('.company-info')?.textContent?.trim() ||
               document.querySelector('.manufacturer')?.textContent?.trim() || '';
@@ -446,7 +495,6 @@ private cleanupResources(): void {
             }
           }
 
-          // If still not found, check for it in product details using text parsing
           if (!manufacturer) {
             const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
             for (const li of detailsList) {
@@ -461,16 +509,12 @@ private cleanupResources(): void {
             }
           }
 
-          // Default if still not found
           result.manufacturer = manufacturer || 'Unknown';
         }
 
-        // 장치 유형 정보 추출 및 결과에 할당
         function extractDeviceTypeInfo(result: Record<string, any>, details: ProductDetails, productTitle: string): void {
-          // Extract device type (fallback method)
           let deviceType = details.deviceType || 'Matter Device';
 
-          // 디바이스 타입 추출 (alternatives)
           if (deviceType === 'Matter Device') {
             const deviceTypeEl = document.querySelector('.category-link');
             if (deviceTypeEl && deviceTypeEl.textContent) {
@@ -478,7 +522,6 @@ private cleanupResources(): void {
             }
           }
 
-          // If no specific device type found, try to identify from common types
           if (deviceType === 'Matter Device') {
             const deviceTypes = [
               'Light Bulb', 'Smart Switch', 'Door Lock', 'Thermostat',
@@ -498,9 +541,7 @@ private cleanupResources(): void {
           result.deviceType = deviceType;
         }
 
-        // 인증 정보 추출 및 결과에 할당
         function extractCertificationInfo(result: Record<string, any>, details: ProductDetails): void {
-          // Extract certification ID (fallback method)
           let certificationId = details.certificationId || result.certificateId || '';
           if (!certificationId) {
             const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
@@ -514,7 +555,6 @@ private cleanupResources(): void {
                   break;
                 }
 
-                // Alternative: try to get anything after a colon
                 const parts = text.split(':');
                 if (parts.length > 1 && parts[1].trim()) {
                   certificationId = parts[1].trim();
@@ -526,21 +566,18 @@ private cleanupResources(): void {
           result.certificationId = certificationId;
           result.certificateId = certificationId;
 
-          // Extract certification date (fallback method)
           let certificationDate = details.certificationDate || '';
           if (!certificationDate) {
             const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
             for (const li of detailsList) {
               const text = li.textContent || '';
               if (text.toLowerCase().includes('date')) {
-                // Try to match a date pattern
                 const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})|(\d{4}-\d{1,2}-\d{1,2})|([A-Za-z]+\s+\d{1,2},?\s+\d{4})/);
                 if (dateMatch) {
                   certificationDate = dateMatch[0];
                   break;
                 }
 
-                // Alternative: try to get anything after a colon
                 const parts = text.split(':');
                 if (parts.length > 1 && parts[1].trim()) {
                   certificationDate = parts[1].trim();
@@ -550,16 +587,13 @@ private cleanupResources(): void {
             }
           }
 
-          // Default to today if no date found
           if (!certificationDate) {
             certificationDate = new Date().toISOString().split('T')[0];
           }
           result.certificationDate = certificationDate;
         }
 
-        // 소프트웨어 및 하드웨어 버전 정보 추출 및 결과에 할당
         function extractVersionInfo(result: Record<string, any>, details: ProductDetails): void {
-          // Extract software and hardware versions (fallback method)
           let softwareVersion = details.firmwareVersion || details.softwareVersion || '';
           let hardwareVersion = details.hardwareVersion || '';
 
@@ -586,9 +620,7 @@ private cleanupResources(): void {
           result.firmwareVersion = details.firmwareVersion || softwareVersion;
         }
 
-        // VID/PID 하드웨어 ID 정보 추출 및 결과에 할당
         function extractHardwareIds(result: Record<string, any>, details: ProductDetails): void {
-          // VID/PID 추출 (fallback method)
           let vid = details.vid || '';
           let pid = details.pid || '';
 
@@ -614,9 +646,7 @@ private cleanupResources(): void {
           result.pid = pid;
         }
 
-        // 추가 정보 필드를 결과에 할당
         function extractAdditionalInfo(result: Record<string, any>, details: ProductDetails): void {
-          // 추가 정보 할당
           result.familySku = details.familySku || '';
           result.familyVariantSku = details.familyVariantSku || '';
           result.familyId = details.familyId || '';
@@ -626,18 +656,14 @@ private cleanupResources(): void {
           result.primaryDeviceTypeId = details.primaryDeviceTypeId || '';
         }
 
-        // 여기서 실제 데이터 추출 실행
         const productTitle = extractProductTitle();
         result.model = result.model || productTitle;
 
-        // 세부 정보 추출 (두 가지 방식)
         const tableDetails = extractDetailsFromTable();
         const structuredDetails = extractDetailValues();
 
-        // 두 정보를 병합 (구조화된 방식이 우선)
         const details = { ...tableDetails, ...structuredDetails };
 
-        // 각 필드 정보 추출 및 병합
         extractManufacturerInfo(result, details, productTitle);
         extractDeviceTypeInfo(result, details, productTitle);
         extractCertificationInfo(result, details);
@@ -649,11 +675,6 @@ private cleanupResources(): void {
         return result;
       }, product);
 
-      // 신규 제품인지 여부 결정 (개선된 로직 필요 시 이 부분을 수정)
-      // 현재는 예시로 일부 속성을 활용한 조건문 제공
-      // const isNewProduct = true; // 기본값을 true로 설정 (기존 코드와 호환성 유지)
-      
-      // 기존 제품 속성을 MatterProduct 형식으로 확장
       const matterProduct: MatterProduct = {
         ...detailProduct
       };
@@ -661,19 +682,18 @@ private cleanupResources(): void {
       return matterProduct;
     } catch (error: unknown) {
       if (signal.aborted) {
-        throw new Error(`Aborted crawling for ${product.url}`);
+        throw new Error(`Aborted crawling for ${product.url} during operation.`);
       }
       console.error(`[ProductDetailCollector] Error crawling product detail for ${product.url}:`, error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to crawl product detail for ${product.url}: ${errorMessage}`);
     } finally {
-      try {
-        // 중단 여부와 상관없이 항상 브라우저 종료 시도
-        if (browser.isConnected()) {
-          await browser.close();
+      if (page && !page.isClosed()) {
+        try {
+          await page.close();
+        } catch (e) {
+          console.warn(`Error while closing page for ${product.url}:`, e);
         }
-      } catch (e) {
-        console.error(`Error while closing browser for ${product.url}:`, e);
       }
     }
   }
@@ -731,12 +751,11 @@ private cleanupResources(): void {
           url: product.url,
           manufacturer: detailProduct.manufacturer || 'Unknown',
           model: detailProduct.model || 'Unknown',
-          // isNew: detailProduct.isNewProduct, // Removed because isNewProduct does not exist on MatterProduct
           endTime: new Date().toISOString()
         })
       });
       
-      this.updateProgress(true); // Assume new product, or adjust logic as needed
+      this.updateProgress(true);
 
       matterProducts.push(detailProduct);
 
@@ -848,7 +867,7 @@ private cleanupResources(): void {
             percentage: percentage
           });
   
-          const detailConcurrency = config.detailConcurrency ?? 1; // Provide a default value
+          const detailConcurrency = config.detailConcurrency ?? 1;
           const activeTasksCount = Math.min(detailConcurrency, totalItems - processedItems + 1);
           this.state.updateParallelTasks(activeTasksCount, detailConcurrency);
           
@@ -877,7 +896,7 @@ private cleanupResources(): void {
   
         return result;
       },
-      config.detailConcurrency ?? 1, // Provide a default value if undefined
+      config.detailConcurrency ?? 1,
       this.abortController
     );
   
@@ -920,7 +939,7 @@ private cleanupResources(): void {
   ): Promise<void> {
     const config = this.config;
     const { productDetailRetryCount } = config;
-    const retryStart = config.retryStart ?? 1; // Default to 1 if undefined
+    const retryStart = config.retryStart ?? 1;
     
     if (productDetailRetryCount <= 0) {
       debugLog(`[RETRY] 재시도 횟수가 0으로 설정되어 제품 상세 정보 재시도를 건너뜁니다.`);
@@ -1000,7 +1019,7 @@ private cleanupResources(): void {
           
           return result;
         },
-        config.retryConcurrency ?? 1, // Provide a default value if undefined
+        config.retryConcurrency ?? 1,
         this.abortController
       );
 

@@ -119,6 +119,7 @@ export interface CrawlerConfig {
     pageRangeLimit: number;
     productListRetryCount: number;
     productDetailRetryCount: number;
+    headlessBrowser?: boolean; // Added headlessBrowser property
     
     // UI 관련 추가 설정
     maxConcurrentTasks?: number;
