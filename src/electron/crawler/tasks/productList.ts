@@ -336,8 +336,6 @@ export class ProductListCollector {
   private async processPageCrawl(
     pageNumber: number,
     totalPages: number,
-    failedPagesOutput: number[],
-    failedPageErrors: Record<string, string[]>,
     signal: AbortSignal,
     attempt: number = 1
   ): Promise<CrawlResult | null> {
@@ -414,23 +412,6 @@ export class ProductListCollector {
         })
       });
       isComplete = currentProductsOnPage.length >= targetProductCount;
-
-      if (!failedPageErrors[pageNumber.toString()]) {
-        failedPageErrors[pageNumber.toString()] = [];
-      }
-      const attemptPrefix = attempt > 1 ? `Attempt ${attempt}: ` : '';
-      failedPageErrors[pageNumber.toString()].push(`${attemptPrefix}${pageErrorMessage}`);
-    }
-
-    if (!isComplete) {
-      if (!failedPagesOutput.includes(pageNumber)) {
-        failedPagesOutput.push(pageNumber);
-      }
-    } else {
-      const index = failedPagesOutput.indexOf(pageNumber);
-      if (index > -1) {
-        failedPagesOutput.splice(index, 1);
-      }
     }
 
     return {
@@ -447,26 +428,51 @@ export class ProductListCollector {
   private async executeParallelCrawling(
     pageNumbersToCrawl: number[],
     totalPages: number,
-    incompletePagesOutput: number[],
-    failedPageErrors: Record<string, string[]>,
+    incompletePagesOutput: number[], // This array will be populated based on results
+    failedPageErrors: Record<string, string[]>, // This object will be populated based on results
     concurrency: number,
-    isRetryAttempt: boolean = false,
+    isRetryAttempt: boolean = false, // Keep this to manage clearing incompletePagesOutput
     currentAttemptNumber: number = 1
   ): Promise<void> {
     if (!isRetryAttempt) {
-      incompletePagesOutput.length = 0;
+      incompletePagesOutput.length = 0; // Clear for initial crawl
     }
 
-    await promisePool(
+    const results: (CrawlResult | null)[] = await promisePool(
       pageNumbersToCrawl,
       async (pageNumber, signal) => {
         return this.processPageCrawl(
-          pageNumber, totalPages, incompletePagesOutput, failedPageErrors, signal, currentAttemptNumber
+          pageNumber, totalPages, signal, currentAttemptNumber
         );
       },
       concurrency,
       this.abortController
     );
+
+    results.forEach(result => {
+      if (result) {
+        if (!result.isComplete) {
+          if (!incompletePagesOutput.includes(result.pageNumber)) {
+            incompletePagesOutput.push(result.pageNumber);
+          }
+        } else {
+          const index = incompletePagesOutput.indexOf(result.pageNumber);
+          if (index > -1) {
+            incompletePagesOutput.splice(index, 1);
+          }
+        }
+
+        if (result.error) {
+          if (!failedPageErrors[result.pageNumber.toString()]) {
+            failedPageErrors[result.pageNumber.toString()] = [];
+          }
+          const attemptPrefix = currentAttemptNumber > 1 ? `Attempt ${currentAttemptNumber}: ` : '';
+          if (!result.isComplete || result.error) { 
+            failedPageErrors[result.pageNumber.toString()].push(`${attemptPrefix}${result.error}`);
+          }
+        }
+      }
+    });
 
     debugLog(`[ExecuteParallelCrawling attempt ${currentAttemptNumber}] Completed batch. ${incompletePagesOutput.length} pages remain incomplete.`);
   }
