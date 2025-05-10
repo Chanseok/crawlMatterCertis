@@ -183,15 +183,32 @@ export class ProductListCollector {
       const allPageErrors: Record<string, string[]> = {};
 
       debugLog(`Starting initial crawl for ${pageNumbersToCrawl.length} pages.`);
-      await this.executeParallelCrawling(
+      
+      const initialAttemptNumber = 1;
+      const { results: initialCrawlResults } = await this.executeParallelCrawling(
         pageNumbersToCrawl,
         totalPages,
-        incompletePagesAfterInitialCrawl,
-        allPageErrors,
         this.config.initialConcurrency ?? 5,
-        false,
-        1
+        initialAttemptNumber 
       );
+
+      initialCrawlResults.forEach(result => {
+        if (result) {
+          if (!result.isComplete) {
+            if (!incompletePagesAfterInitialCrawl.includes(result.pageNumber)) {
+              incompletePagesAfterInitialCrawl.push(result.pageNumber);
+            }
+          }
+          if (result.error) {
+            const pageNumStr = result.pageNumber.toString();
+            if (!allPageErrors[pageNumStr]) {
+              allPageErrors[pageNumStr] = [];
+            }
+            allPageErrors[pageNumStr].push(`Attempt ${initialAttemptNumber}: ${result.error}`);
+          }
+        }
+      });
+      debugLog(`[Collect after initial crawl] Completed. ${incompletePagesAfterInitialCrawl.length} pages initially incomplete.`);
 
       if (this.abortController.signal.aborted) {
         console.log('[ProductListCollector] Crawling stopped after initial list collection.');
@@ -201,7 +218,7 @@ export class ProductListCollector {
       if (incompletePagesAfterInitialCrawl.length > 0) {
         console.log(`[ProductListCollector] ${incompletePagesAfterInitialCrawl.length} pages incomplete after initial crawl. Retrying...`);
         await this.retryFailedPages(
-          incompletePagesAfterInitialCrawl,
+          incompletePagesAfterInitialCrawl, 
           totalPages,
           allPageErrors
         );
@@ -239,10 +256,9 @@ export class ProductListCollector {
       if (cached.length < target) {
         finalFailedCount++;
         if (!this.state.getFailedPages().includes(pNum)) {
-          // Use a more specific error message if available from allPageErrors
           const errorsForPage = allPageErrors[pNum.toString()];
           const errorMessage = errorsForPage && errorsForPage.length > 0 
-            ? errorsForPage[errorsForPage.length -1] // Get the last error for the page
+            ? errorsForPage[errorsForPage.length -1]
             : 'Failed to meet target product count after all attempts';
           this.state.addFailedPage(pNum, errorMessage);
         }
@@ -273,7 +289,6 @@ export class ProductListCollector {
    */
   private cleanupResources(): void {
     console.log('[ProductListCollector] Cleaning up resources...');
-    // 추가적인 리소스 정리가 필요하면 여기에 작성
   }
 
   /**
@@ -461,16 +476,9 @@ export class ProductListCollector {
   private async executeParallelCrawling(
     pageNumbersToCrawl: number[],
     totalPages: number,
-    incompletePagesOutput: number[], // This array will be populated based on results
-    failedPageErrors: Record<string, string[]>, // This object will be populated based on results
     concurrency: number,
-    isRetryAttempt: boolean = false, // Keep this to manage clearing incompletePagesOutput
-    currentAttemptNumber: number = 1
-  ): Promise<void> {
-    if (!isRetryAttempt) {
-      incompletePagesOutput.length = 0; // Clear for initial crawl
-    }
-
+    currentAttemptNumber: number
+  ): Promise<{ results: (CrawlResult | null)[] }> {
     const results: (CrawlResult | null)[] = await promisePool(
       pageNumbersToCrawl,
       async (pageNumber, signal) => {
@@ -481,33 +489,7 @@ export class ProductListCollector {
       concurrency,
       this.abortController
     );
-
-    results.forEach(result => {
-      if (result) {
-        if (!result.isComplete) {
-          if (!incompletePagesOutput.includes(result.pageNumber)) {
-            incompletePagesOutput.push(result.pageNumber);
-          }
-        } else {
-          const index = incompletePagesOutput.indexOf(result.pageNumber);
-          if (index > -1) {
-            incompletePagesOutput.splice(index, 1);
-          }
-        }
-
-        if (result.error) {
-          if (!failedPageErrors[result.pageNumber.toString()]) {
-            failedPageErrors[result.pageNumber.toString()] = [];
-          }
-          const attemptPrefix = currentAttemptNumber > 1 ? `Attempt ${currentAttemptNumber}: ` : '';
-          if (!result.isComplete || result.error) { 
-            failedPageErrors[result.pageNumber.toString()].push(`${attemptPrefix}${result.error}`);
-          }
-        }
-      }
-    });
-
-    debugLog(`[ExecuteParallelCrawling attempt ${currentAttemptNumber}] Completed batch. ${incompletePagesOutput.length} pages remain incomplete.`);
+    return { results };
   }
 
   /**
@@ -530,72 +512,92 @@ export class ProductListCollector {
         const cached = this.productCache.get(pageNumber) || [];
         if (cached.length < target) {
           if (!this.state.getFailedPages().includes(pageNumber)) {
-            const errors = failedPageErrors[pageNumber.toString()] || ['Failed to meet target product count, retries disabled'];
-            this.state.addFailedPage(pageNumber, errors.join('; '));
+            const pageNumStr = pageNumber.toString();
+            if (!failedPageErrors[pageNumStr]) {
+              failedPageErrors[pageNumStr] = [];
+            }
+            const defaultError = 'Failed to meet target product count, retries disabled';
+            if (failedPageErrors[pageNumStr].length === 0) {
+                failedPageErrors[pageNumStr].push(defaultError);
+            }
+            this.state.addFailedPage(pageNumber, failedPageErrors[pageNumStr].join('; '));
           }
         }
       });
       return;
     }
 
-    let currentIncompletePages = [...pagesToRetryInitially];
-    const retryStartAttemptNumber = 1;
+    let currentIncompletePages = [...pagesToRetryInitially]; 
+    
+    const firstRetryAttemptNumber = 2; 
 
-    for (let attempt = retryStartAttemptNumber; attempt <= productListRetryCount && currentIncompletePages.length > 0; attempt++) {
+    for (let retryLoopIndex = 0; retryLoopIndex < productListRetryCount && currentIncompletePages.length > 0; retryLoopIndex++) {
+      const currentOverallAttemptNumber = firstRetryAttemptNumber + retryLoopIndex;
+      
       if (this.abortController.signal.aborted) {
         debugLog(`[RETRY] Aborted during retry loop for product list.`);
         break;
       }
 
-      const pagesForThisAttempt = [...currentIncompletePages];
+      const pagesForThisRetryAttempt = [...currentIncompletePages];
       currentIncompletePages.length = 0;
 
       updateRetryStatus('list-retry', {
         stage: 'productList',
-        currentAttempt: attempt,
+        currentAttempt: retryLoopIndex + 1,
         maxAttempt: productListRetryCount,
-        remainingItems: pagesForThisAttempt.length,
+        remainingItems: pagesForThisRetryAttempt.length,
         totalItems: pagesToRetryInitially.length,
         startTime: Date.now(),
-        itemIds: pagesForThisAttempt.map(p => p.toString())
+        itemIds: pagesForThisRetryAttempt.map(p => p.toString())
       });
 
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'list-retry', status: 'running',
-        message: `Product list retry attempt ${attempt}/${productListRetryCount}: ${pagesForThisAttempt.length} pages`
+        message: `Product list retry attempt ${retryLoopIndex + 1}/${productListRetryCount} (Overall attempt ${currentOverallAttemptNumber}): ${pagesForThisRetryAttempt.length} pages`
       });
-      debugLog(`[RETRY] Product list attempt ${attempt}/${productListRetryCount} for pages: ${pagesForThisAttempt.join(', ')}`);
+      debugLog(`[RETRY] Product list attempt ${retryLoopIndex + 1}/${productListRetryCount} (Overall attempt ${currentOverallAttemptNumber}) for pages: ${pagesForThisRetryAttempt.join(', ')}`);
 
-      await this.executeParallelCrawling(
-        pagesForThisAttempt,
+      const { results: retryBatchResults } = await this.executeParallelCrawling(
+        pagesForThisRetryAttempt,
         totalPages,
-        currentIncompletePages,
-        failedPageErrors,
         retryConcurrency,
-        true,
-        attempt
+        currentOverallAttemptNumber
       );
 
-      pagesForThisAttempt.forEach(pageNumber => {
-        if (currentIncompletePages.includes(pageNumber)) {
-          const errorsForPage = failedPageErrors[pageNumber.toString()] || [];
-          const lastError = errorsForPage.length > 0 ? errorsForPage[errorsForPage.length - 1] : "Unknown error during retry";
-          logRetryError('productList', pageNumber.toString(), lastError, attempt);
-        } else {
-          console.log(`[RETRY][${attempt}/${productListRetryCount}] Page ${pageNumber} successfully completed.`);
+      retryBatchResults.forEach(result => {
+        if (result) {
+          const pageNumStr = result.pageNumber.toString();
+          if (result.error) {
+            if (!failedPageErrors[pageNumStr]) {
+              failedPageErrors[pageNumStr] = [];
+            }
+            failedPageErrors[pageNumStr].push(`Attempt ${currentOverallAttemptNumber}: ${result.error}`);
+          }
+
+          if (!result.isComplete) {
+            if (!currentIncompletePages.includes(result.pageNumber)) {
+              currentIncompletePages.push(result.pageNumber);
+            }
+            const lastErrorForPage = failedPageErrors[pageNumStr]?.slice(-1)[0] || `Attempt ${currentOverallAttemptNumber}: ${result.error || "Unknown error during retry"}`;
+            logRetryError('productList', pageNumStr, lastErrorForPage, retryLoopIndex + 1); 
+          } else {
+            console.log(`[RETRY][${retryLoopIndex + 1}/${productListRetryCount}] Page ${result.pageNumber} successfully completed (Overall attempt ${currentOverallAttemptNumber}).`);
+          }
         }
       });
-
+      
+      debugLog(`[RETRY attempt ${retryLoopIndex + 1}] Completed. ${currentIncompletePages.length} pages still incomplete.`);
       updateRetryStatus('list-retry', {
         remainingItems: currentIncompletePages.length,
         itemIds: currentIncompletePages.map(p => p.toString())
       });
 
       if (currentIncompletePages.length === 0) {
-        debugLog(`[RETRY] All product list pages successfully completed after attempt ${attempt}.`);
+        debugLog(`[RETRY] All product list pages successfully completed after retry attempt ${retryLoopIndex + 1}.`);
         crawlerEvents.emit('crawlingTaskStatus', {
           taskId: 'list-retry', status: 'success',
-          message: `Product list retry successful after attempt ${attempt}.`
+          message: `Product list retry successful after attempt ${retryLoopIndex + 1}.`
         });
         break;
       }
@@ -608,7 +610,7 @@ export class ProductListCollector {
         message: `Product list retry finished: ${currentIncompletePages.length} pages still incomplete.`
       });
       currentIncompletePages.forEach(pageNumber => {
-        const errors = failedPageErrors[pageNumber.toString()] || ['Unknown error after max retries'];
+        const errors = failedPageErrors[pageNumber.toString()] || [`Unknown error after max retries (Last overall attempt ${firstRetryAttemptNumber + productListRetryCount -1})`];
         this.state.addFailedPage(pageNumber, errors.join('; '));
         console.error(`[RETRY] Page ${pageNumber} ultimately failed to complete: ${errors.join('; ')}`);
       });
@@ -768,7 +770,6 @@ export class ProductListCollector {
   ): Product[] {
     const productMap = new Map<string, Product>();
     
-    // 새로 가져온 제품 목록과 기존 제품 목록을 병합합니다.
     for (const product of newProducts) {
       if (product.url) {
         productMap.set(product.url, product);
@@ -794,7 +795,6 @@ export class ProductListCollector {
       const productsOnPage = this.productCache.get(pageNum) || [];
       allProducts = allProducts.concat(productsOnPage);
     }
-    // TODO: Consider sorting or other final processing if necessary
     return allProducts;
   }
 
