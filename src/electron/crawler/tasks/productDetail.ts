@@ -127,6 +127,22 @@ export class ProductDetailCollector {
     initializeProductTaskStates(products);
 
     try {
+      // Force a browser context refresh before starting detail collection
+      if (this.browserManager && typeof this.browserManager.forceRefreshContext === 'function') {
+        debugLog('[ProductDetailCollector] Forcing browser context refresh before detail collection.');
+        try {
+          await this.browserManager.forceRefreshContext();
+          debugLog('[ProductDetailCollector] Browser context refreshed successfully.');
+        } catch (refreshError) {
+          console.error('[ProductDetailCollector] Failed to refresh browser context:', refreshError);
+          // Decide if this error is critical enough to stop the collection
+          // For now, we'll log and continue, but you might want to throw an error:
+          // throw new Error(`Failed to refresh browser context: ${refreshError.message}`);
+        }
+      } else {
+        debugLog('[ProductDetailCollector] BrowserManager or forceRefreshContext method not available. Skipping context refresh.');
+      }
+
       this.state.setStage('productDetail:fetching', '2/2단계: 제품 상세 정보 수집 중');
       debugLog(`Starting phase 2: crawling product details for ${products.length} products`);
 
