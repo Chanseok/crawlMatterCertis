@@ -157,7 +157,7 @@ export class CrawlerEngine {
       debugLog(`[CrawlerEngine] Found ${products.length} products to process. Starting detail collection...`);
       
       // 제품 상세 정보 수집기 생성 (2단계)
-      const productDetailCollector = new ProductDetailCollector(this.state, this.abortController);
+      const productDetailCollector = new ProductDetailCollector(this.state, this.abortController, config); // Pass config
       
       // 진행 상황 업데이트 함수 설정 - 2단계
       const detailProgressUpdater = (processedItems: number, newItems: number, updatedItems: number) => {

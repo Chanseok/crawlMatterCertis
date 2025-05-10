@@ -11,15 +11,13 @@ import {
 } from '../utils/concurrency.js';
 
 import type { DetailCrawlResult } from '../utils/types.js';
-import type { Product, MatterProduct } from '../../../../types.d.ts';
+import type { Product, MatterProduct, CrawlerConfig } from '../../../../types.d.ts';
 import { debugLog } from '../../util.js';
 import { 
   crawlerEvents, 
   updateRetryStatus, 
   logRetryError
 } from '../utils/progress.js';
-
-import { getConfig } from '../core/config.js';
 
 // 진행 상황 콜백 타입 정의
 export type DetailProgressCallback = (
@@ -31,14 +29,16 @@ export type DetailProgressCallback = (
 export class ProductDetailCollector {
   private state: CrawlerState;
   private abortController: AbortController;
+  private readonly config: CrawlerConfig;
   private progressCallback: DetailProgressCallback | null = null;
   private processedItems: number = 0;
   private newItems: number = 0; // 새로 추가된 항목
   private updatedItems: number = 0; // 업데이트된 항목
 
-  constructor(state: CrawlerState, abortController: AbortController) {
+  constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig) {
     this.state = state;
     this.abortController = abortController;
+    this.config = config;
     this.processedItems = 0;
     this.newItems = 0;
     this.updatedItems = 0;
@@ -80,7 +80,7 @@ export class ProductDetailCollector {
       return [];
     }
 
-    const config = getConfig();
+    const config = this.config;
 
     // 진행 상황 초기화
     this.processedItems = 0;
@@ -235,7 +235,7 @@ private cleanupResources(): void {
    * 제품 상세 정보를 크롤링하는 함수
    */
   private async crawlProductDetail(product: Product, signal: AbortSignal): Promise<MatterProduct> {
-    const config = getConfig();
+    const config = this.config;
     
     // 서버 과부하 방지를 위한 무작위 지연 시간 적용
     // Provide default values if config values are undefined
@@ -689,7 +689,7 @@ private cleanupResources(): void {
     signal: AbortSignal,
     attempt: number = 1
   ): Promise<DetailCrawlResult | null> {
-    const config = getConfig();
+    const config = this.config;
     
     if (signal.aborted) {
       updateProductTaskStatus(product.url, 'stopped');
@@ -782,7 +782,7 @@ private cleanupResources(): void {
     failedProducts: string[],
     failedProductErrors: Record<string, string[]>
   ): Promise<void> {
-    const config = getConfig();
+    const config = this.config;
     
     let processedItems = 0;
     const totalItems = products.length;
@@ -918,7 +918,7 @@ private cleanupResources(): void {
     matterProducts: MatterProduct[],
     failedProductErrors: Record<string, string[]>
   ): Promise<void> {
-    const config = getConfig();
+    const config = this.config;
     const { productDetailRetryCount } = config;
     const retryStart = config.retryStart ?? 1; // Default to 1 if undefined
     
