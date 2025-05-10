@@ -3,7 +3,7 @@
  * 제품 목록 수집을 담당하는 클래스
  */
 
-import { chromium } from 'playwright-chromium';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-chromium';
 // import { getDatabaseSummaryFromDb } from '../../database.js';
 import { getRandomDelay, delay } from '../utils/delay.js';
 import { CrawlerState } from '../core/CrawlerState.js';
@@ -31,6 +31,7 @@ export class ProductListCollector {
   private progressCallback: ProgressCallback | null = null;
   private processedPages: number = 0;
   private readonly config: CrawlerConfig;
+  private browser: Browser | null = null; // ProductListCollector 인스턴스 레벨에서 브라우저 관리
 
   // 마지막 페이지 제품 수를 저장하는 캐시 변수
   private static lastPageProductCount: number | null = null;
@@ -42,6 +43,21 @@ export class ProductListCollector {
     this.abortController = abortController;
     this.config = config;
     this.productCache = new Map(); // 제품 캐시 초기화
+  }
+
+  private async _initializeBrowser(): Promise<void> {
+    if (!this.browser || !this.browser.isConnected()) {
+      debugLog('[ProductListCollector] Initializing browser instance...');
+      this.browser = await chromium.launch({ headless: true });
+    }
+  }
+
+  private async _closeBrowser(): Promise<void> {
+    if (this.browser && this.browser.isConnected()) {
+      debugLog('[ProductListCollector] Closing browser instance...');
+      await this.browser.close();
+      this.browser = null;
+    }
   }
 
   /**
@@ -72,6 +88,7 @@ export class ProductListCollector {
     this.processedPages = 0;
 
     try {
+      await this._initializeBrowser(); // 브라우저 초기화
       const { totalPages, lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached(false, this.config);
       debugLog(`Total pages: ${totalPages}, Last page product count: ${lastPageProductCount}`);
       ProductListCollector.lastPageProductCount = lastPageProductCount;
@@ -192,6 +209,7 @@ export class ProductListCollector {
       return finalProducts;
 
     } finally {
+      await this._closeBrowser(); // 브라우저 종료
       this.cleanupResources();
     }
   }
@@ -201,6 +219,7 @@ export class ProductListCollector {
    */
   private cleanupResources(): void {
     console.log('[ProductListCollector] Cleaning up resources...');
+    // 추가적인 리소스 정리가 필요하면 여기에 작성
   }
 
   /**
@@ -558,33 +577,55 @@ export class ProductListCollector {
     await delay(delayTime);
 
     if (signal.aborted) {
+      debugLog(`[ProductListCollector] Crawl for page ${pageNumber} aborted before starting.`);
       throw new Error('Aborted');
+    }
+    if (!this.browser || !this.browser.isConnected()) {
+      debugLog(`[ProductListCollector] Browser not initialized or disconnected for page ${pageNumber}.`);
+      throw new Error('Browser not initialized or disconnected in ProductListCollector');
     }
 
     const pageUrl = `${this.config.matterFilterUrl}&paged=${pageNumber}`;
-    const browser = await chromium.launch({ headless: true });
+    let context: BrowserContext | null = null;
+    let page: Page | null = null;
+
+    const cleanupPageAndContext = async () => {
+      if (page && !page.isClosed()) {
+        try {
+          await page.close();
+        } catch (e) {
+          console.error(`[ProductListCollector] Error closing page for ${pageNumber}:`, e);
+        }
+      }
+      if (context) {
+        try {
+          await context.close();
+        } catch (e) {
+          console.error(`[ProductListCollector] Error closing context for ${pageNumber}:`, e);
+        }
+      }
+    };
+
+    const abortListener = () => {
+      debugLog(`[ProductListCollector] Abort signal received for page ${pageNumber}. Cleaning up page/context.`);
+      cleanupPageAndContext().catch(e => console.error(`[ProductListCollector] Error in abort listener cleanup for page ${pageNumber}:`, e));
+    };
 
     try {
-      if (signal.aborted) {
-        throw new Error('Aborted');
-      }
+      signal.addEventListener('abort', abortListener, { once: true });
+      if (signal.aborted) throw new Error('Aborted');
 
-      const context = await browser.newContext();
-      const page = await context.newPage();
+      context = await this.browser.newContext();
+      if (signal.aborted) throw new Error('Aborted');
 
-      const abortListener = () => {
-        if (!browser.isConnected()) return;
-        browser.close().catch(e => console.error('Error closing browser after abort:', e));
-      };
-      signal.addEventListener('abort', abortListener);
-
-      if (signal.aborted) {
-        throw new Error('Aborted');
-      }
-
+      page = await context.newPage();
+      if (signal.aborted) throw new Error('Aborted');
+      
+      debugLog(`[ProductListCollector] Navigating to ${pageUrl} for page ${pageNumber}`);
       await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
 
       if (signal.aborted) {
+        debugLog(`[ProductListCollector] Crawl for page ${pageNumber} aborted during navigation/load.`);
         throw new Error('Aborted');
       }
 
@@ -593,7 +634,7 @@ export class ProductListCollector {
       const sitePageNumber = PageIndexManager.toSitePageNumber(pageNumber, totalPages);
       const offset = PageIndexManager.calculateOffset(actualLastPageProductCount);
 
-      console.log(`[ProductListCollector] 페이지 ${pageNumber} 크롤링 (sitePageNumber: ${sitePageNumber}, lastPageProductCount: ${actualLastPageProductCount}, offset: ${offset})`);
+      debugLog(`[ProductListCollector] 페이지 ${pageNumber} 크롤링 (sitePageNumber: ${sitePageNumber}, lastPageProductCount: ${actualLastPageProductCount}, offset: ${offset})`);
 
       const rawProducts = await page.evaluate(() => {
         const articles = Array.from(document.querySelectorAll('div.post-feed article'));
@@ -645,26 +686,19 @@ export class ProductListCollector {
           };
         });
 
-      if (products.length === 0) {
-        debugLog(`[ProductListCollector] Extracted 0 products on page ${pageNumber}.`);
-      }
-
+      debugLog(`[ProductListCollector] Successfully crawled ${products.length} products from page ${pageNumber}.`);
       return products;
     } catch (error: unknown) {
       if (signal.aborted) {
+        debugLog(`[ProductListCollector] Crawl for page ${pageNumber} confirmed aborted in catch block.`);
         throw new Error(`Aborted crawling for page ${pageNumber}`);
       }
       console.error(`[ProductListCollector] Error crawling page ${pageNumber}:`, error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to crawl page ${pageNumber}: ${errorMessage}`);
     } finally {
-      try {
-        if (browser.isConnected()) {
-          await browser.close();
-        }
-      } catch (e) {
-        console.error(`Error while closing browser for page ${pageNumber}:`, e);
-      }
+      signal.removeEventListener('abort', abortListener);
+      await cleanupPageAndContext();
     }
   }
 
