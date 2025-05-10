@@ -1,11 +1,12 @@
-import { useStore } from '@nanostores/react'
-import { useEffect, useState, useRef } from 'react'
-import './App.css'
+import React, { useState, useEffect, useRef } from 'react';
+import { useStore } from '@nanostores/react';
+import './App.css';
 import { ConcurrentTasksVisualizer } from './Charts';
 import { CrawlingSettings } from './components/CrawlingSettings';
 import { CrawlingDashboard } from './components/CrawlingDashboard';
 import { LocalDBTab } from './components/LocalDBTab';
 import { CrawlingCompleteView } from './components/CrawlingCompleteView';
+import StatusCheckLoadingAnimation from './components/StatusCheckLoadingAnimation';
 import {
   appModeStore,
   crawlingStatusStore,
@@ -25,10 +26,10 @@ import {
   CrawlingStatusSummary,
   crawlingProgressStore,
   loadConfig
-} from './stores'
-import { LogEntry } from './types'
-import { format } from 'date-fns'
-import { getPlatformApi } from './platform/api'
+} from './stores';
+import { LogEntry } from './types';
+import { format } from 'date-fns';
+import { getPlatformApi } from './platform/api';
 
 // ExpandableSection 컴포넌트 - Hook 규칙을 준수하도록 별도 컴포넌트로 추출
 const ExpandableSection = ({
@@ -216,6 +217,7 @@ function App() {
     setIsStatusChecking(true); // Indicate that status checking has started
 
     try {
+      await loadConfig(); // Ensure latest config is loaded before checking status
       await checkCrawlingStatus();
     } catch (error) {
       addLog(`상태 체크 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
@@ -410,16 +412,9 @@ function App() {
                   title="사이트 로컬 비교"
                   isExpanded={compareExpanded}
                   onToggle={() => toggleSection('compare')}
+                  additionalClasses="site-local-compare-section"
                   isLoading={isStatusChecking}
-                  loadingContent={
-                    <div className="flex flex-col items-center justify-center h-40">
-                      <svg className="animate-spin -ml-1 mr-3 h-10 w-10 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <p className="mt-2 text-gray-600 dark:text-gray-400">사이트 정보를 확인 중입니다...</p>
-                    </div>
-                  }
+                  loadingContent={<StatusCheckLoadingAnimation />}
                 >
                   {/* 이 부분은 isStatusChecking이 false일 때만 렌더링됩니다. */}
                   {Object.keys(statusSummary || {}).length === 0 ? (
