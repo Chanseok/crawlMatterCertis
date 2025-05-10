@@ -10,7 +10,7 @@ import {
   promisePool, updateProductTaskStatus, initializeProductTaskStates
 } from '../utils/concurrency.js';
 import { MatterProductParser } from '../parsers/MatterProductParser.js';
-import { BrowserManager } from '../browser/BrowserManager.js'; // 새로 추가된 import
+import { BrowserManager } from '../browser/BrowserManager.js';
 
 import type { DetailCrawlResult } from '../utils/types.js';
 import type { Product, MatterProduct, CrawlerConfig } from '../../../../types.d.ts';
@@ -27,11 +27,16 @@ export class ProductDetailCollector {
   private readonly config: CrawlerConfig;
   private browserManager: BrowserManager;
 
-  constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig) {
+  constructor(
+    state: CrawlerState,
+    abortController: AbortController,
+    config: CrawlerConfig,
+    browserManager: BrowserManager
+  ) {
     this.state = state;
     this.abortController = abortController;
     this.config = config;
-    this.browserManager = new BrowserManager(config);
+    this.browserManager = browserManager;
   }
 
   /**
@@ -122,8 +127,6 @@ export class ProductDetailCollector {
     initializeProductTaskStates(products);
 
     try {
-      await this.browserManager.initialize();
-
       this.state.setStage('productDetail:fetching', '2/2단계: 제품 상세 정보 수집 중');
       debugLog(`Starting phase 2: crawling product details for ${products.length} products`);
 
@@ -230,14 +233,8 @@ export class ProductDetailCollector {
    * 리소스 정리를 위한 함수
    */
   private async cleanupResources(): Promise<void> {
-    console.log('[ProductDetailCollector] Cleaning up resources...');
+    console.log('[ProductDetailCollector] Cleaning up resources specific to ProductDetailCollector...');
     
-    try {
-      await this.browserManager.cleanupResources();
-    } catch (error) {
-      console.error('[ProductDetailCollector] Error cleaning up browser resources:', error);
-    }
-
     try {
       const progressData = this.state.getProgressData();
       const totalItems = progressData?.totalItems ?? this.state.getDetailStageProcessedCount(); 

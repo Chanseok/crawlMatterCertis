@@ -21,6 +21,7 @@ import {
   validateDataConsistency 
 } from '../utils/data-processing.js';
 import { initializeCrawlingState } from '../utils/concurrency.js';
+import { BrowserManager } from '../browser/BrowserManager.js';
 import type {
   CrawlingSummary,
   FailedPageReport,
@@ -35,6 +36,7 @@ export class CrawlerEngine {
   private isCrawling: boolean = false;
   private abortController: AbortController | null = null;
   private startTime: number = 0;
+  private browserManager: BrowserManager | null = null;
 
   constructor() {
     this.state = new CrawlerState();
@@ -62,21 +64,31 @@ export class CrawlerEngine {
     this.abortController = new AbortController();
     this.startTime = Date.now();
 
+    const config = getConfig();
+    this.browserManager = new BrowserManager(config);
+
     try {
       console.log('[CrawlerEngine] Starting crawling process...');
       
       // 초기 크롤링 상태 이벤트
       initializeCrawlingProgress('크롤링 초기화', CRAWLING_STAGE.INIT);
       
+      await this.browserManager.initialize();
+
+      if (!this.browserManager.isValid()) {
+        console.error('[CrawlerEngine] BrowserManager is not initialized. Please call initialize first.');
+        this.state.setStage('failed', '브라우저 초기화 실패');
+        return false;
+      }
+
       // 사용자 설정 가져오기 (CRAWL-RANGE-001)
-      const config = getConfig();
       const userPageLimit = config.pageRangeLimit;
 
       // 1/2단계: 제품 목록 수집 시작 알림
       updateProductListProgress(0, 0, this.startTime);
       
       // 제품 목록 수집기 생성 (1단계)
-      const productListCollector = new ProductListCollector(this.state, this.abortController, config); // Pass config
+      const productListCollector = new ProductListCollector(this.state, this.abortController, config, this.browserManager!);
       
       // 총 페이지 수 먼저 확인
       const totalPages = await productListCollector.getTotalPagesCached(true); // This will now use the instance config
@@ -157,7 +169,7 @@ export class CrawlerEngine {
       debugLog(`[CrawlerEngine] Found ${products.length} products to process. Starting detail collection...`);
       
       // 제품 상세 정보 수집기 생성 (2단계)
-      const productDetailCollector = new ProductDetailCollector(this.state, this.abortController, config); // Pass config
+      const productDetailCollector = new ProductDetailCollector(this.state, this.abortController, config, this.browserManager); // Pass browserManager
       
       // 제품 상세 정보 수집 실행
       const matterProducts = await productDetailCollector.collect(products);
@@ -186,6 +198,10 @@ export class CrawlerEngine {
       this.handleCrawlingError(error);
       return false;
     } finally {
+      if (this.browserManager) {
+        await this.browserManager.cleanupResources(); // Cleanup BrowserManager
+        this.browserManager = null;
+      }
       // 모든 작업이 완료되었을 때만 크롤링 상태 변경
       this.isCrawling = false;
 
@@ -222,14 +238,28 @@ export class CrawlerEngine {
 
       // 페이지 정보 가져오기
       let totalPages = 0;
+      let tempBrowserManager: BrowserManager | null = null; // Temporary BrowserManager for this method
       try {
         const tempController = new AbortController();
-        // 제품 목록 수집기 생성 시 config 전달
-        const collector = new ProductListCollector(this.state, tempController, currentConfig); // Use currentConfig
+        // If a global browserManager exists and is initialized, use it. Otherwise, create a temporary one.
+        if (this.browserManager && await this.browserManager.isValid()) {
+          tempBrowserManager = this.browserManager;
+        } else {
+          tempBrowserManager = new BrowserManager(currentConfig);
+          await tempBrowserManager.initialize(); // Initialize if created new
+        }
+        // 제품 목록 수집기 생성 시 config와 browserManager 전달
+        const collector = new ProductListCollector(this.state, tempController, currentConfig, tempBrowserManager);
         totalPages = await collector.getTotalPagesCached(true);
       } catch (e) {
         console.error('[CrawlerEngine] Error getting total pages:', e);
         totalPages = 0;
+      } finally {
+        // If a temporary browserManager was created and initialized for this method, clean it up.
+        // Do not clean up the global this.browserManager here.
+        if (tempBrowserManager && tempBrowserManager !== this.browserManager) {
+          await tempBrowserManager.cleanupResources();
+        }
       }
 
       // 사이트 제품 수 계산

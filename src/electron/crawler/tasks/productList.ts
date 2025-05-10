@@ -17,6 +17,7 @@ import { debugLog } from '../../util.js';
 import { getConfig, type CrawlerConfig } from '../core/config.js';
 import { crawlerEvents, updateRetryStatus, logRetryError } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';
+import { BrowserManager } from '../browser/BrowserManager.js'; // Corrected path
 
 // --- 사용자 정의 오류 클래스 --- 
 class PageOperationError extends Error {
@@ -54,33 +55,19 @@ export class ProductListCollector {
   private progressCallback: ProgressCallback | null = null;
   private processedPages: number = 0;
   private readonly config: CrawlerConfig;
-  private browser: Browser | null = null; // ProductListCollector 인스턴스 레벨에서 브라우저 관리
+  private readonly browserManager: BrowserManager; // Added BrowserManager
 
   // 마지막 페이지 제품 수를 저장하는 캐시 변수
   private static lastPageProductCount: number | null = null;
   // 페이지별로 수집된 제품을 임시 저장하는 캐시
   private productCache: Map<number, Product[]>;
 
-  constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig) {
+  constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig, browserManager: BrowserManager) { // Added browserManager
     this.state = state;
     this.abortController = abortController;
-    this.config = config;
+    this.config = config; // Configuration is stored
+    this.browserManager = browserManager; // Store browserManager
     this.productCache = new Map(); // 제품 캐시 초기화
-  }
-
-  private async _initializeBrowser(): Promise<void> {
-    if (!this.browser || !this.browser.isConnected()) {
-      debugLog('[ProductListCollector] Initializing browser instance...');
-      this.browser = await chromium.launch({ headless: true });
-    }
-  }
-
-  private async _closeBrowser(): Promise<void> {
-    if (this.browser && this.browser.isConnected()) {
-      debugLog('[ProductListCollector] Closing browser instance...');
-      await this.browser.close();
-      this.browser = null;
-    }
   }
 
   /**
@@ -150,8 +137,6 @@ export class ProductListCollector {
     this.processedPages = 0;
 
     try {
-      await this._initializeBrowser();
-
       const prepResult = await this._preparePageRange(userPageLimit);
       if (!prepResult) {
         return []; // No new pages to crawl
@@ -186,7 +171,6 @@ export class ProductListCollector {
       return finalProducts;
 
     } finally {
-      await this._closeBrowser();
       this.cleanupResources();
     }
   }
@@ -364,33 +348,21 @@ export class ProductListCollector {
   }
 
   private async _fetchTotalPages(): Promise<{ totalPages: number; lastPageProductCount: number }> {
-    await this._initializeBrowser();
-
-    if (!this.browser || !this.browser.isConnected()) {
-      throw new PageInitializationError('Browser not available or disconnected for fetching total pages', 0, 0);
-    }
-
-    let totalPages = 0;
-    let lastPageProductCount = 0;
     let page: Page | null = null;
-    let tempContext: BrowserContext | null = null;
-
     try {
-      tempContext = await this.browser.newContext();
-      page = await tempContext.newPage();
+      page = await this.browserManager.getPage();
+      if (!page) {
+        throw new Error('Failed to get a page from BrowserManager.');
+      }
 
       if (!this.config.matterFilterUrl) {
         throw new Error('Configuration error: matterFilterUrl is not defined.');
       }
-
-      debugLog(`[ProductListCollector] Navigating to ${this.config.matterFilterUrl} to get total pages`);
-      try {
-        await page.goto(this.config.matterFilterUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
-      } catch (navError) {
-        throw new PageNavigationError(`Navigation failed for ${this.config.matterFilterUrl} when fetching total pages: ${navError instanceof Error ? navError.message : String(navError)}`, 0, 0);
-      }
+      debugLog(`[ProductListCollector] Navigating to ${this.config.matterFilterUrl} to fetch total pages.`);
+      await page.goto(this.config.matterFilterUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
 
       const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
+      let totalPages = 0;
       if (pageElements.length > 0) {
         const pageNumbers = await Promise.all(
           pageElements.map(async (el) => {
@@ -402,41 +374,45 @@ export class ProductListCollector {
       }
       debugLog(`[ProductListCollector] Determined ${totalPages} total pages from pagination elements.`);
 
+      let lastPageProductCount = 0;
       if (totalPages > 0) {
         const lastPageUrl = `${this.config.matterFilterUrl}&paged=${totalPages}`;
         debugLog(`[ProductListCollector] Navigating to last page: ${lastPageUrl}`);
-        try {
+        if (page && lastPageUrl !== page.url()) {
           await page.goto(lastPageUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
-        } catch (navError) {
-          throw new PageNavigationError(`Navigation failed for last page ${lastPageUrl}: ${navError instanceof Error ? navError.message : String(navError)}`, totalPages, 0);
         }
 
-        try {
-          lastPageProductCount = await page.evaluate(() => {
-            return document.querySelectorAll('div.post-feed article').length;
-          });
-        } catch (evalError) {
-          throw new PageContentExtractionError(`Failed to count products on last page ${totalPages}: ${evalError instanceof Error ? evalError.message : String(evalError)}`, totalPages, 0);
+        if (page) {
+          try {
+            lastPageProductCount = await page.evaluate(() => {
+              return document.querySelectorAll('div.post-feed article').length;
+            });
+          } catch (evalError) {
+            throw new PageContentExtractionError(`Failed to count products on last page ${totalPages}: ${evalError instanceof Error ? evalError.message : String(evalError)}`, totalPages, 0);
+          }
+          debugLog(`[ProductListCollector] Last page ${totalPages} has ${lastPageProductCount} products.`);
         }
-        debugLog(`[ProductListCollector] Last page ${totalPages} has ${lastPageProductCount} products.`);
       } else {
         debugLog(`[ProductListCollector] No pagination elements found or totalPages is 0. Checking current page for products.`);
-        try {
-          lastPageProductCount = await page.evaluate(() => {
-            return document.querySelectorAll('div.post-feed article').length;
-          });
-        } catch (evalError) {
-          throw new PageContentExtractionError(`Failed to count products on initial page (no pagination): ${evalError instanceof Error ? evalError.message : String(evalError)}`, 1, 0);
-        }
+        if (page) {
+          try {
+            lastPageProductCount = await page.evaluate(() => {
+              return document.querySelectorAll('div.post-feed article').length;
+            });
+          } catch (evalError) {
+            throw new PageContentExtractionError(`Failed to count products on initial page (no pagination): ${evalError instanceof Error ? evalError.message : String(evalError)}`, 1, 0);
+          }
 
-        if (lastPageProductCount > 0) {
-          totalPages = 1;
-          debugLog(`[ProductListCollector] Found ${lastPageProductCount} products on the first page. Setting totalPages to 1.`);
-        } else {
-          totalPages = 0;
-          debugLog(`[ProductListCollector] No products found on the first page. Setting totalPages to 0.`);
+          if (lastPageProductCount > 0) {
+            totalPages = 1;
+            debugLog(`[ProductListCollector] Found ${lastPageProductCount} products on the first page. Setting totalPages to 1.`);
+          } else {
+            totalPages = 0;
+            debugLog(`[ProductListCollector] No products found on the first page. Setting totalPages to 0.`);
+          }
         }
       }
+      return { totalPages, lastPageProductCount };
     } catch (error: unknown) {
       if (error instanceof PageOperationError) {
         console.error(`[ProductListCollector] Error getting total pages: ${error.message}`, error);
@@ -446,15 +422,14 @@ export class ProductListCollector {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new PageInitializationError(`Failed to get total pages: ${errorMessage}`, 0, 0);
     } finally {
-      if (page && !page.isClosed()) {
-        try { await page.close(); } catch (e) { console.error("[ProductListCollector] Error closing temporary page in _fetchTotalPages:", e); }
-      }
-      if (tempContext) {
-        try { await tempContext.close(); } catch (e) { console.error("[ProductListCollector] Error closing temporary context in _fetchTotalPages:", e); }
+      if (page) {
+        try {
+          await this.browserManager.closePage(page);
+        } catch (e) {
+          console.error("[ProductListCollector] Error releasing page in _fetchTotalPages:", e);
+        }
       }
     }
-
-    return { totalPages, lastPageProductCount };
   }
 
   private async processPageCrawl(
@@ -754,45 +729,18 @@ export class ProductListCollector {
       debugLog(`[ProductListCollector] Crawl for page ${pageNumber} aborted before starting.`);
       throw new PageAbortedError('Aborted before navigation', pageNumber, attempt);
     }
-    if (!this.browser || !this.browser.isConnected()) {
-      debugLog(`[ProductListCollector] Browser not initialized or disconnected for page ${pageNumber}.`);
-      throw new PageInitializationError('Browser not initialized or disconnected', pageNumber, attempt);
-    }
 
     const pageUrl = `${this.config.matterFilterUrl}&paged=${pageNumber}`;
-    let context: BrowserContext | null = null;
-    let page: Page | null = null;
-
-    const cleanupPageAndContext = async () => {
-      if (page && !page.isClosed()) {
-        try {
-          await page.close();
-        } catch (e) {
-          console.error(`[ProductListCollector] Error closing page for ${pageNumber}:`, e);
-        }
-      }
-      if (context) {
-        try {
-          await context.close();
-        } catch (e) {
-          console.error(`[ProductListCollector] Error closing context for ${pageNumber}:`, e);
-        }
-      }
-    };
-
-    const abortListener = () => {
-      debugLog(`[ProductListCollector] Abort signal received for page ${pageNumber}. Cleaning up page/context.`);
-      cleanupPageAndContext().catch(e => console.error(`[ProductListCollector] Error in abort listener cleanup for page ${pageNumber}:`, e));
-    };
+    let page: Page | null = null; // Changed to single page variable
 
     try {
-      signal.addEventListener('abort', abortListener, { once: true });
-      if (signal.aborted) throw new PageAbortedError('Aborted before context creation', pageNumber, attempt);
+      if (signal.aborted) throw new PageAbortedError('Aborted before page acquisition', pageNumber, attempt);
 
-      context = await this.browser.newContext();
-      if (signal.aborted) throw new PageAbortedError('Aborted before page creation', pageNumber, attempt);
+      page = await this.browserManager.getPage(); // Use BrowserManager
+      if (!page) {
+        throw new PageInitializationError('Failed to get a page from BrowserManager.', pageNumber, attempt);
+      }
 
-      page = await context.newPage();
       if (signal.aborted) throw new PageAbortedError('Aborted before page navigation', pageNumber, attempt);
       
       debugLog(`[ProductListCollector] Navigating to ${pageUrl} for page ${pageNumber}`);
@@ -838,8 +786,13 @@ export class ProductListCollector {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new PageOperationError(`Failed to crawl page ${pageNumber}: ${errorMessage}`, pageNumber, attempt);
     } finally {
-      signal.removeEventListener('abort', abortListener);
-      await cleanupPageAndContext();
+      if (page) {
+        try {
+          await this.browserManager.closePage(page);
+        } catch (e) {
+          console.error(`[ProductListCollector] Error releasing page for ${pageNumber}:`, e);
+        }
+      }
     }
   }
 
@@ -934,8 +887,42 @@ export class ProductListCollector {
       throw new PageAbortedError('Aborted before crawlPageWithTimeout call', pageNumber, attempt);
     }
 
-    const products = await this.crawlProductsFromPage(pageNumber, totalPages, signal, attempt);
+    const pageUrl = `${this.config.matterFilterUrl}&paged=${pageNumber}`;
+    let page: Page | null = null;
+    const timeout = this.config.pageTimeoutMs ?? 60000; // Default to 60 seconds
 
-    return products;
+    try {
+      page = await this.browserManager.getPage();
+      if (!page) {
+        throw new PageInitializationError('Failed to get a page from BrowserManager.', pageNumber, attempt);
+      }
+
+      await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout });
+
+      const rawProducts = await page.evaluate<RawProductData[]>(
+        ProductListCollector._extractProductsFromPageDOM
+      );
+
+      const actualLastPageProductCount = ProductListCollector.lastPageProductCount ?? 0;
+      const sitePageNumber = PageIndexManager.toSitePageNumber(pageNumber, totalPages);
+      const offset = PageIndexManager.calculateOffset(actualLastPageProductCount);
+
+      const products = this._mapRawProductsToProducts(rawProducts, sitePageNumber, offset);
+
+      return products;
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.name === 'TimeoutError') {
+          throw new PageTimeoutError(`Page ${pageNumber} timed out after ${timeout}ms on attempt ${attempt}. URL: ${pageUrl}`, pageNumber, attempt);
+        }
+        throw new PageOperationError(`Error crawling page ${pageNumber} (attempt ${attempt}): ${error.message}. URL: ${pageUrl}`, pageNumber, attempt);
+      } else {
+        throw new PageOperationError(`Unknown error crawling page ${pageNumber} (attempt ${attempt}). URL: ${pageUrl}`, pageNumber, attempt);
+      }
+    } finally {
+      if (page) {
+        await this.browserManager.closePage(page);
+      }
+    }
   }
 }
