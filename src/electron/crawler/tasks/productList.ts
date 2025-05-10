@@ -197,7 +197,7 @@ export class ProductListCollector {
     lastPageProductCount: number;
   } | null> {
     try {
-      const { totalPages, lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached(false, this.config);
+      const { totalPages, lastPageProductCount } = await this.fetchTotalPagesCached(false);
       debugLog(`[ProductListCollector] Total pages: ${totalPages}, Last page product count: ${lastPageProductCount}`);
 
       const { startPage, endPage } = await PageIndexManager.calculateCrawlingRange(
@@ -330,54 +330,65 @@ export class ProductListCollector {
   }
 
   public async getTotalPagesCached(force = false): Promise<number> {
-    const { totalPages } = await ProductListCollector.fetchTotalPagesCached(force, this.config);
+    const { totalPages } = await this.fetchTotalPagesCached(force);
     return totalPages;
   }
 
-  public static async fetchTotalPagesCached(force = false, instanceConfig?: CrawlerConfig): Promise<{
+  public async fetchTotalPagesCached(force = false): Promise<{
     totalPages: number;
     lastPageProductCount: number;
   }> {
-    const configToUse = instanceConfig || getConfig();
     const now = Date.now();
-    const cacheTtl = configToUse.cacheTtlMs ?? 3600000;
+    const cacheTtl = this.config.cacheTtlMs ?? 3600000;
 
     if (!force &&
       cachedTotalPages &&
       ProductListCollector.lastPageProductCount !== null &&
       cachedTotalPagesFetchedAt &&
       (now - cachedTotalPagesFetchedAt < cacheTtl)) {
+      debugLog('[ProductListCollector] Returning cached total pages data.');
       return {
         totalPages: cachedTotalPages,
         lastPageProductCount: ProductListCollector.lastPageProductCount!
       };
     }
 
-    const result = await ProductListCollector.fetchTotalPages(configToUse);
+    debugLog(`[ProductListCollector] Fetching total pages. Force refresh: ${force}`);
+    const result = await this._fetchTotalPages();
     cachedTotalPages = result.totalPages;
     ProductListCollector.lastPageProductCount = result.lastPageProductCount;
     cachedTotalPagesFetchedAt = now;
+    debugLog(`[ProductListCollector] Fetched and cached new total pages data: ${result.totalPages} pages, ${result.lastPageProductCount} products on last page.`);
 
     return result;
   }
 
-  private static async fetchTotalPages(config: CrawlerConfig): Promise<{ totalPages: number; lastPageProductCount: number }> {
-    const browser = await chromium.launch({ headless: true });
+  private async _fetchTotalPages(): Promise<{ totalPages: number; lastPageProductCount: number }> {
+    await this._initializeBrowser();
+
+    if (!this.browser || !this.browser.isConnected()) {
+      throw new PageInitializationError('Browser not available or disconnected for fetching total pages', 0, 0);
+    }
+
     let totalPages = 0;
     let lastPageProductCount = 0;
     let page: Page | null = null;
-    let context: BrowserContext | null = null;
+    let tempContext: BrowserContext | null = null;
 
     try {
-      context = await browser.newContext();
-      page = await context.newPage();
+      tempContext = await this.browser.newContext();
+      page = await tempContext.newPage();
 
-      if (!config.matterFilterUrl) {
+      if (!this.config.matterFilterUrl) {
         throw new Error('Configuration error: matterFilterUrl is not defined.');
       }
 
-      console.log(`[ProductListCollector] Navigating to ${config.matterFilterUrl}`);
-      await page.goto(config.matterFilterUrl, { waitUntil: 'domcontentloaded' });
+      debugLog(`[ProductListCollector] Navigating to ${this.config.matterFilterUrl} to get total pages`);
+      try {
+        await page.goto(this.config.matterFilterUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
+      } catch (navError) {
+        throw new PageNavigationError(`Navigation failed for ${this.config.matterFilterUrl} when fetching total pages: ${navError instanceof Error ? navError.message : String(navError)}`, 0, 0);
+      }
 
       const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
       if (pageElements.length > 0) {
@@ -387,30 +398,60 @@ export class ProductListCollector {
             return text ? parseInt(text.trim(), 10) : 0;
           })
         );
-
-        totalPages = Math.max(...pageNumbers.filter(n => !isNaN(n)));
+        totalPages = Math.max(...pageNumbers.filter(n => !isNaN(n) && n > 0), 0);
       }
-      console.log(`[ProductListCollector] Found ${totalPages} total pages`);
+      debugLog(`[ProductListCollector] Determined ${totalPages} total pages from pagination elements.`);
 
       if (totalPages > 0) {
-        const lastPageUrl = `${config.matterFilterUrl}&paged=${totalPages}`;
-        console.log(`[ProductListCollector] Navigating to last page: ${lastPageUrl}`);
-        await page.goto(lastPageUrl, { waitUntil: 'domcontentloaded' });
+        const lastPageUrl = `${this.config.matterFilterUrl}&paged=${totalPages}`;
+        debugLog(`[ProductListCollector] Navigating to last page: ${lastPageUrl}`);
+        try {
+          await page.goto(lastPageUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
+        } catch (navError) {
+          throw new PageNavigationError(`Navigation failed for last page ${lastPageUrl}: ${navError instanceof Error ? navError.message : String(navError)}`, totalPages, 0);
+        }
 
-        lastPageProductCount = await page.evaluate(() => {
-          return document.querySelectorAll('div.post-feed article').length;
-        });
+        try {
+          lastPageProductCount = await page.evaluate(() => {
+            return document.querySelectorAll('div.post-feed article').length;
+          });
+        } catch (evalError) {
+          throw new PageContentExtractionError(`Failed to count products on last page ${totalPages}: ${evalError instanceof Error ? evalError.message : String(evalError)}`, totalPages, 0);
+        }
+        debugLog(`[ProductListCollector] Last page ${totalPages} has ${lastPageProductCount} products.`);
+      } else {
+        debugLog(`[ProductListCollector] No pagination elements found or totalPages is 0. Checking current page for products.`);
+        try {
+          lastPageProductCount = await page.evaluate(() => {
+            return document.querySelectorAll('div.post-feed article').length;
+          });
+        } catch (evalError) {
+          throw new PageContentExtractionError(`Failed to count products on initial page (no pagination): ${evalError instanceof Error ? evalError.message : String(evalError)}`, 1, 0);
+        }
 
-        console.log(`[ProductListCollector] Last page ${totalPages} has ${lastPageProductCount} products`);
+        if (lastPageProductCount > 0) {
+          totalPages = 1;
+          debugLog(`[ProductListCollector] Found ${lastPageProductCount} products on the first page. Setting totalPages to 1.`);
+        } else {
+          totalPages = 0;
+          debugLog(`[ProductListCollector] No products found on the first page. Setting totalPages to 0.`);
+        }
       }
     } catch (error: unknown) {
-      console.error('[ProductListCollector] Error getting total pages:', error);
+      if (error instanceof PageOperationError) {
+        console.error(`[ProductListCollector] Error getting total pages: ${error.message}`, error);
+        throw error;
+      }
+      console.error('[ProductListCollector] Generic error getting total pages:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to get total pages: ${errorMessage}`);
+      throw new PageInitializationError(`Failed to get total pages: ${errorMessage}`, 0, 0);
     } finally {
-      if (page && !page.isClosed()) await page.close();
-      if (context) await context.close();
-      await browser.close();
+      if (page && !page.isClosed()) {
+        try { await page.close(); } catch (e) { console.error("[ProductListCollector] Error closing temporary page in _fetchTotalPages:", e); }
+      }
+      if (tempContext) {
+        try { await tempContext.close(); } catch (e) { console.error("[ProductListCollector] Error closing temporary context in _fetchTotalPages:", e); }
+      }
     }
 
     return { totalPages, lastPageProductCount };
