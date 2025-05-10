@@ -170,7 +170,7 @@ export class BrowserManager {
    * 새 페이지 생성
    */
   public async newPage(): Promise<Page> {
-    debugLog('[BrowserManager] Attempting to create a new page...');
+    // debugLog('[BrowserManager] Attempting to create a new page...');
     if (!await this.isValid()) {
       debugLog('[BrowserManager] Browser/context not valid. Attempting re-initialization before creating page.');
       await this.initialize(); // This ensures both browser and context are fresh if they weren't valid.
@@ -183,7 +183,7 @@ export class BrowserManager {
 
     try {
       const page = await this.context.newPage();
-      debugLog('[BrowserManager] New page created successfully.');
+      // debugLog('[BrowserManager] New page created successfully.');
       return page;
     } catch (error) {
       debugLog('[BrowserManager] Failed to create new page:', error);
