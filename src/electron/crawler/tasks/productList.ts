@@ -127,78 +127,17 @@ export class ProductListCollector {
     this.processedPages = 0;
 
     try {
-      await this._initializeBrowser(); // 브라우저 초기화
-      const { totalPages, lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached(false, this.config);
-      debugLog(`Total pages: ${totalPages}, Last page product count: ${lastPageProductCount}`);
-      ProductListCollector.lastPageProductCount = lastPageProductCount;
+      await this._initializeBrowser();
 
-      const { startPage, endPage } = await PageIndexManager.calculateCrawlingRange(
-        totalPages, lastPageProductCount, userPageLimit
-      );
-      debugLog(`Crawling range: ${startPage} to ${endPage}`);
-
-      const pageNumbersToCrawl = Array.from({ length: startPage - endPage + 1 }, (_, i) => endPage + i).reverse();
-      debugLog(`Page numbers to crawl: ${pageNumbersToCrawl.join(', ')}`);
-
-      crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: 'list-range',
-        status: 'running',
-        message: JSON.stringify({
-          stage: 1,
-          type: 'range',
-          totalPages,
-          startPage,
-          endPage,
-          pageCount: pageNumbersToCrawl.length,
-          estimatedProductCount: pageNumbersToCrawl.length * this.config.productsPerPage,
-          lastPageProductCount
-        })
-      });
-
-      if (pageNumbersToCrawl.length === 0) {
-        console.log('[ProductListCollector] No new pages to crawl.');
-        crawlerEvents.emit('crawlingTaskStatus', {
-          taskId: 'list-range',
-          status: 'success',
-          message: JSON.stringify({
-            stage: 1,
-            type: 'range',
-            message: 'DB 정보가 최신 상태입니다. 새로운 페이지가 없습니다.',
-            totalPages
-          })
-        });
-        return [];
+      const prepResult = await this._preparePageRange(userPageLimit);
+      if (!prepResult) {
+        return []; // No new pages to crawl
       }
+      const { totalPages, pageNumbersToCrawl, lastPageProductCount } = prepResult;
+      ProductListCollector.lastPageProductCount = lastPageProductCount; // Set static member
 
-      this.state.updateProgress({
-        totalPages,
-        currentPage: 0,
-        totalItems: pageNumbersToCrawl.length * this.config.productsPerPage,
-        currentItem: 0
-      });
-      this.state.setStage('productList:fetching', '1/2단계: 제품 목록 수집 중');
-      initializeTaskStates(pageNumbersToCrawl);
-
-      const incompletePagesAfterInitialCrawl: number[] = [];
-      const allPageErrors: Record<string, string[]> = {};
-
-      debugLog(`Starting initial crawl for ${pageNumbersToCrawl.length} pages.`);
-      
-      const initialAttemptNumber = 1;
-      const { results: initialCrawlResults } = await this.executeParallelCrawling(
-        pageNumbersToCrawl,
-        totalPages,
-        this.config.initialConcurrency ?? 5,
-        initialAttemptNumber 
-      );
-
-      incompletePagesAfterInitialCrawl.length = 0;
-      this._processCrawlResults(
-        initialCrawlResults,
-        incompletePagesAfterInitialCrawl,
-        allPageErrors,
-        initialAttemptNumber
-      );
+      const { incompletePages: incompletePagesAfterInitialCrawl, allPageErrors } = 
+        await this._executeInitialCrawl(pageNumbersToCrawl, totalPages);
 
       if (this.abortController.signal.aborted) {
         console.log('[ProductListCollector] Crawling stopped after initial list collection.');
@@ -208,7 +147,7 @@ export class ProductListCollector {
       if (incompletePagesAfterInitialCrawl.length > 0) {
         console.log(`[ProductListCollector] ${incompletePagesAfterInitialCrawl.length} pages incomplete after initial crawl. Retrying...`);
         await this.retryFailedPages(
-          incompletePagesAfterInitialCrawl, 
+          incompletePagesAfterInitialCrawl,
           totalPages,
           allPageErrors
         );
@@ -224,9 +163,87 @@ export class ProductListCollector {
       return finalProducts;
 
     } finally {
-      await this._closeBrowser(); // 브라우저 종료
+      await this._closeBrowser();
       this.cleanupResources();
     }
+  }
+
+  private async _preparePageRange(userPageLimit: number): Promise<{
+    totalPages: number;
+    pageNumbersToCrawl: number[];
+    lastPageProductCount: number;
+  } | null> {
+    const { totalPages, lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached(false, this.config);
+    debugLog(`[ProductListCollector] Total pages: ${totalPages}, Last page product count: ${lastPageProductCount}`);
+
+    const { startPage, endPage } = await PageIndexManager.calculateCrawlingRange(
+      totalPages, lastPageProductCount, userPageLimit
+    );
+    debugLog(`[ProductListCollector] Crawling range: ${startPage} to ${endPage}`);
+
+    const pageNumbersToCrawl = Array.from({ length: startPage - endPage + 1 }, (_, i) => endPage + i).reverse();
+    debugLog(`[ProductListCollector] Page numbers to crawl: ${pageNumbersToCrawl.join(', ')}`);
+
+    crawlerEvents.emit('crawlingTaskStatus', {
+      taskId: 'list-range',
+      status: 'running',
+      message: JSON.stringify({
+        stage: 1,
+        type: 'range',
+        totalPages,
+        startPage,
+        endPage,
+        pageCount: pageNumbersToCrawl.length,
+        estimatedProductCount: pageNumbersToCrawl.length * this.config.productsPerPage,
+        lastPageProductCount
+      })
+    });
+
+    if (pageNumbersToCrawl.length === 0) {
+      console.log('[ProductListCollector] No new pages to crawl.');
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'list-range',
+        status: 'success',
+        message: JSON.stringify({
+          stage: 1,
+          type: 'range',
+          message: 'DB 정보가 최신 상태입니다. 새로운 페이지가 없습니다.',
+          totalPages
+        })
+      });
+      return null;
+    }
+    return { totalPages, pageNumbersToCrawl, lastPageProductCount };
+  }
+
+  private async _executeInitialCrawl(pageNumbersToCrawl: number[], totalPages: number): Promise<{
+    incompletePages: number[];
+    allPageErrors: Record<string, string[]>;
+  }> {
+    this.state.updateProgress({
+      totalPages,
+      currentPage: 0,
+      totalItems: pageNumbersToCrawl.length * this.config.productsPerPage,
+      currentItem: 0
+    });
+    this.state.setStage('productList:fetching', '1/2단계: 제품 목록 수집 중');
+    initializeTaskStates(pageNumbersToCrawl);
+
+    const incompletePages: number[] = [];
+    const allPageErrors: Record<string, string[]> = {}; // Initialize here for this crawl phase
+    const initialAttemptNumber = 1;
+
+    debugLog(`[ProductListCollector] Starting initial crawl for ${pageNumbersToCrawl.length} pages.`);
+    const { results } = await this.executeParallelCrawling(
+      pageNumbersToCrawl,
+      totalPages,
+      this.config.initialConcurrency ?? 5,
+      initialAttemptNumber
+    );
+
+    this._processCrawlResults(results, incompletePages, allPageErrors, initialAttemptNumber);
+
+    return { incompletePages, allPageErrors };
   }
 
   /**
