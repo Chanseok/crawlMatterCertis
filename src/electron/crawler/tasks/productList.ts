@@ -367,8 +367,10 @@ export class ProductListCollector {
     updateTaskStatus(pageNumber, 'running');
 
     let newlyFetchedProducts: Product[] = [];
+    // Initialize currentProductsOnPage from cache. This will be the fallback if fetching fails.
     let currentProductsOnPage: Product[] = this.productCache.get(pageNumber) || [];
     let pageErrorMessage: string | undefined;
+    // Initial completeness based on cached data.
     let isComplete = currentProductsOnPage.length >= targetProductCount;
 
     try {
@@ -379,7 +381,15 @@ export class ProductListCollector {
         )
       ]);
 
-      currentProductsOnPage = this.mergePageProducts(pageNumber, newlyFetchedProducts);
+      // Get existing products from cache to merge with newly fetched products.
+      const existingProductsFromCache = this.productCache.get(pageNumber) || [];
+      const allProductsForPage = ProductListCollector._mergeAndDeduplicateProductLists(
+        existingProductsFromCache,
+        newlyFetchedProducts
+      );
+      this.productCache.set(pageNumber, allProductsForPage);
+      currentProductsOnPage = allProductsForPage; // Update with the merged list
+
       isComplete = currentProductsOnPage.length >= targetProductCount;
 
       this.state.updateProgress({ currentPage: pageNumber });
@@ -416,7 +426,7 @@ export class ProductListCollector {
 
     return {
       pageNumber,
-      products: currentProductsOnPage,
+      products: currentProductsOnPage, // currentProductsOnPage now reflects the cache state after the attempt
       error: pageErrorMessage,
       isComplete
     };
@@ -724,27 +734,29 @@ export class ProductListCollector {
   }
 
   /**
-   * 새로 가져온 제품과 캐시된 제품을 병합하고 캐시를 업데이트합니다.
-   * @param pageNumber 대상 페이지 번호
+   * 두 제품 목록을 병합하고 URL 기준으로 중복을 제거합니다.
+   * @param existingProducts 기존 제품 목록
    * @param newProducts 새로 가져온 제품 목록
    * @returns 병합되고 URL 기준으로 중복 제거된 제품 목록
    */
-  private mergePageProducts(pageNumber: number, newProducts: Product[]): Product[] {
-    const existingProducts = this.productCache.get(pageNumber) || [];
+  private static _mergeAndDeduplicateProductLists(
+    existingProducts: Product[],
+    newProducts: Product[]
+  ): Product[] {
     const productMap = new Map<string, Product>();
-
-    for (const product of existingProducts) {
-      if (product.url) {
-        productMap.set(product.url, product);
-      }
-    }
+    
+    // 새로 가져온 제품 목록과 기존 제품 목록을 병합합니다.
     for (const product of newProducts) {
       if (product.url) {
         productMap.set(product.url, product);
       }
     }
+    for (const product of existingProducts) {
+      if (product.url) {
+        productMap.set(product.url, product);
+      }
+    }
     const mergedProducts = Array.from(productMap.values());
-    this.productCache.set(pageNumber, mergedProducts);
     return mergedProducts;
   }
 
