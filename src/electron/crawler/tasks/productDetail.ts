@@ -73,6 +73,422 @@ export class ProductDetailCollector {
   }
 
   /**
+   * 페이지 내 DOM에서 제품 상세 정보를 추출하는 로직
+   * 브라우저 컨텍스트에서 실행됩니다.
+   */
+  private static _evaluatePageExtractionLogic(
+    baseProductForContext: Readonly<Product>
+  ): Partial<Omit<MatterProduct, 'url' | 'pageId' | 'indexInPage' | 'id'>> {
+    type ProductDetails = Record<string, string | undefined>;
+
+    const extractedFields: Partial<Omit<MatterProduct, 'url' | 'pageId' | 'indexInPage' | 'id'>> = {
+      manufacturer: baseProductForContext.manufacturer,
+      model: baseProductForContext.model,
+      certificateId: baseProductForContext.certificateId,
+      deviceType: 'Matter Device',
+      applicationCategories: [],
+    };
+
+    console.debug(`[Extracting product details for ${baseProductForContext.url}]`);
+
+    function extractProductTitle(): string {
+      const getText = (selector: string): string => {
+        const el = document.querySelector(selector);
+        return el ? el.textContent?.trim() || '' : '';
+      };
+
+      return getText('h1.entry-title') || getText('h1') || 'Unknown Product';
+    }
+
+    function extractDetailsFromTable(): ProductDetails {
+      const details: ProductDetails = {};
+      const infoTable = document.querySelector('.product-certificates-table');
+      if (!infoTable) return details;
+
+      const rows = infoTable.querySelectorAll('tr');
+      rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length >= 2) {
+          const key = cells[0].textContent?.trim().toLowerCase() || '';
+          const value = cells[1].textContent?.trim() || '';
+
+          if (value) {
+            if (key.includes('certification id')) details.certificateId = value; // certificationId -> certificateId
+            else if (key.includes('certification date')) details.certificationDate = value;
+            else if (key.includes('software version')) details.softwareVersion = value;
+            else if (key.includes('hardware version')) details.hardwareVersion = value;
+            else if (key.includes('vid')) details.vid = value;
+            else if (key.includes('pid')) details.pid = value;
+            else if (key.includes('family sku')) details.familySku = value;
+            else if (key.includes('family variant sku')) details.familyVariantSku = value;
+            else if (key.includes('firmware version')) details.firmwareVersion = value;
+            else if (key.includes('family id')) details.familyId = value;
+            else if (key.includes('tis') && key.includes('trp tested')) details.tisTrpTested = value;
+            else if (key.includes('specification version')) details.specificationVersion = value;
+            else if (key.includes('transport interface')) details.transportInterface = value;
+            else if (key.includes('primary device type id')) details.primaryDeviceTypeId = value;
+            else if (key.includes('device type') || key.includes('product type')) details.deviceType = value;
+          }
+        }
+      });
+
+      return details;
+    }
+
+    function extractDetailValues(): ProductDetails {
+      const details: ProductDetails = {};
+      const detailItems = document.querySelectorAll('.entry-product-details div ul li');
+
+      for (const item of detailItems) {
+        const label = item.querySelector('span.label');
+        const value = item.querySelector('span.value');
+
+        if (label && value) {
+          const labelText = label.textContent?.trim().toLowerCase() || '';
+          const valueText = value.textContent?.trim() || '';
+
+          if (valueText) {
+            if (labelText === 'manufacturer' || labelText.includes('company'))
+              details.manufacturer = valueText;
+            else if (labelText === 'vendor id' || labelText.includes('vid'))
+              details.vid = valueText;
+            else if (labelText === 'product id' || labelText.includes('pid'))
+              details.pid = valueText;
+            else if (labelText === 'family sku')
+              details.familySku = valueText;
+            else if (labelText === 'family variant sku')
+              details.familyVariantSku = valueText;
+            else if (labelText === 'firmware version')
+              details.firmwareVersion = valueText;
+            else if (labelText === 'hardware version')
+              details.hardwareVersion = valueText;
+            else if (labelText === 'certificate id' || labelText.includes('certification id'))
+              details.certificateId = valueText; // certificationId -> certificateId
+            else if (labelText === 'certified date' || labelText.includes('certification date'))
+              details.certificationDate = valueText;
+            else if (labelText === 'family id')
+              details.familyId = valueText;
+            else if (labelText === 'tis/trp tested' || labelText.includes('tis') || labelText.includes('trp'))
+              details.tisTrpTested = valueText;
+            else if (labelText === 'specification version' || labelText.includes('spec version'))
+              details.specificationVersion = valueText;
+            else if (labelText === 'transport interface')
+              details.transportInterface = valueText;
+            else if (labelText === 'primary device type id' || labelText.includes('primary device'))
+              details.primaryDeviceTypeId = valueText;
+            else if (labelText === 'device type' || labelText.includes('product type') ||
+              labelText.includes('category'))
+              details.deviceType = valueText;
+          }
+        }
+      }
+
+      return details;
+    }
+
+    function extractApplicationCategories(deviceType: string | undefined): string[] {
+      const appCategories: string[] = [];
+      const appCategoriesSection = Array.from(document.querySelectorAll('h3')).find(
+        el => el.textContent?.trim().includes('Application Categories')
+      );
+
+      if (appCategoriesSection) {
+        const parentDiv = appCategoriesSection.parentElement;
+        if (parentDiv) {
+          const listItems = parentDiv.querySelectorAll('ul li');
+          if (listItems.length > 0) {
+            Array.from(listItems).forEach(li => {
+              const category = li.textContent?.trim();
+              if (category) appCategories.push(category);
+            });
+          }
+        }
+      }
+
+      const currentDeviceType = deviceType || 'Matter Device';
+      if (appCategories.length === 0 && currentDeviceType !== 'Matter Device') {
+        appCategories.push(currentDeviceType);
+      } else if (appCategories.length === 0) {
+        appCategories.push('Matter Device');
+      }
+
+      return appCategories;
+    }
+
+    function extractManufacturerInfo(output: typeof extractedFields, details: ProductDetails, productTitle: string): void {
+      let manufacturer = details.manufacturer || output.manufacturer || '';
+      const knownManufacturers = ['Govee', 'Philips', 'Samsung', 'Apple', 'Google', 'Amazon', 'Aqara', 'LG', 'IKEA', 'Belkin', 'Eve', 'Nanoleaf', 'GE', 'Cync', 'Tapo', 'TP-Link', 'Signify', 'Haier', 'WiZ'];
+
+      if (!manufacturer) {
+        for (const brand of knownManufacturers) {
+          if (productTitle.toLowerCase().includes(brand.toLowerCase())) {
+            manufacturer = brand;
+            break;
+          }
+        }
+      }
+
+      if (!manufacturer) {
+        const companyInfo = document.querySelector('.company-info')?.textContent?.trim() ||
+          document.querySelector('.manufacturer')?.textContent?.trim() || '';
+        if (companyInfo) {
+          manufacturer = companyInfo;
+        }
+      }
+
+      if (!manufacturer) {
+        const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
+        for (const li of detailsList) {
+          const text = li.textContent || '';
+          if (text.toLowerCase().includes('manufacturer') || text.toLowerCase().includes('company')) {
+            const parts = text.split(':');
+            if (parts.length > 1) {
+              manufacturer = parts[1].trim();
+              break;
+            }
+          }
+        }
+      }
+
+      output.manufacturer = manufacturer || 'Unknown';
+    }
+
+    function extractDeviceTypeInfo(output: typeof extractedFields, details: ProductDetails, productTitle: string): void {
+      let deviceType = details.deviceType || output.deviceType || 'Matter Device';
+
+      if (deviceType === 'Matter Device') {
+        const deviceTypeEl = document.querySelector('.category-link');
+        if (deviceTypeEl && deviceTypeEl.textContent) {
+          deviceType = deviceTypeEl.textContent.trim();
+        }
+      }
+
+      if (deviceType === 'Matter Device') {
+        const deviceTypes = [
+          'Light Bulb', 'Smart Switch', 'Door Lock', 'Thermostat',
+          'Motion Sensor', 'Smart Plug', 'Hub', 'Gateway', 'Camera',
+          'Smoke Detector', 'Outlet', 'Light', 'Door', 'Window',
+          'Sensor', 'Speaker', 'Display'
+        ];
+
+        const allText = (document.body.textContent || '').toLowerCase();
+        const lowerProductTitle = productTitle.toLowerCase();
+        
+        for (const type of deviceTypes) {
+          if (allText.includes(type.toLowerCase()) || lowerProductTitle.includes(type.toLowerCase())) {
+            deviceType = type;
+            break;
+          }
+        }
+      }
+      output.deviceType = deviceType;
+    }
+
+    function extractCertificationInfo(output: typeof extractedFields, details: ProductDetails): void {
+      let certificationId = details.certificateId || output.certificateId || '';
+      if (!certificationId) {
+        const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
+        for (const li of detailsList) {
+          const text = li.textContent || '';
+          if (text.toLowerCase().includes('certification') || text.toLowerCase().includes('certificate') ||
+            text.toLowerCase().includes('cert id')) {
+            const match = text.match(/([A-Za-z0-9-]+\d+[-][A-Za-z0-9]+)/);
+            if (match) {
+              certificationId = match[1];
+              break;
+            }
+
+            const parts = text.split(':');
+            if (parts.length > 1 && parts[1].trim()) {
+              certificationId = parts[1].trim();
+              break;
+            }
+          }
+        }
+      }
+      output.certificateId = certificationId;
+
+      let certificationDate = details.certificationDate || '';
+      if (!certificationDate) {
+        const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
+        for (const li of detailsList) {
+          const text = li.textContent || '';
+          if (text.toLowerCase().includes('date')) {
+            const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})|(\d{4}-\d{1,2}-\d{1,2})|([A-Za-z]+\s+\d{1,2},?\s+\d{4})/);
+            if (dateMatch) {
+              certificationDate = dateMatch[0];
+              break;
+            }
+
+            const parts = text.split(':');
+            if (parts.length > 1 && parts[1].trim()) {
+              certificationDate = parts[1].trim();
+              break;
+            }
+          }
+        }
+      }
+
+      if (!certificationDate) {
+        certificationDate = new Date().toISOString().split('T')[0];
+      }
+      output.certificationDate = certificationDate;
+    }
+
+    function extractVersionInfo(output: typeof extractedFields, details: ProductDetails): void {
+      let softwareVersion = details.firmwareVersion || details.softwareVersion || '';
+      let hardwareVersion = details.hardwareVersion || '';
+
+      if (!softwareVersion || !hardwareVersion) {
+        const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
+        for (const li of detailsList) {
+          const text = li.textContent || '';
+          if (!softwareVersion && (text.toLowerCase().includes('software') || text.toLowerCase().includes('firmware'))) {
+            const parts = text.split(':');
+            if (parts.length > 1) {
+              softwareVersion = parts[1].trim();
+            }
+          }
+          if (!hardwareVersion && text.toLowerCase().includes('hardware')) {
+            const parts = text.split(':');
+            if (parts.length > 1) {
+              hardwareVersion = parts[1].trim();
+            }
+          }
+        }
+      }
+      output.softwareVersion = softwareVersion;
+      output.hardwareVersion = hardwareVersion;
+      output.firmwareVersion = details.firmwareVersion || softwareVersion;
+    }
+
+    function extractHardwareIds(output: typeof extractedFields, details: ProductDetails): void {
+      let vid = details.vid || '';
+      let pid = details.pid || '';
+
+      if (!vid || !pid) {
+        const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
+        for (const li of detailsList) {
+          const text = li.textContent || '';
+          if (!vid && (text.toLowerCase().includes('vendor id') || text.toLowerCase().includes('vid'))) {
+            const parts = text.split(':');
+            if (parts.length > 1) {
+              vid = parts[1].trim();
+            }
+          }
+          if (!pid && (text.toLowerCase().includes('product id') || text.toLowerCase().includes('pid'))) {
+            const parts = text.split(':');
+            if (parts.length > 1) {
+              pid = parts[1].trim();
+            }
+          }
+        }
+      }
+      output.vid = vid;
+      output.pid = pid;
+    }
+
+    function extractAdditionalInfo(output: typeof extractedFields, details: ProductDetails): void {
+      output.familySku = details.familySku || '';
+      output.familyVariantSku = details.familyVariantSku || '';
+      output.familyId = details.familyId || '';
+      output.tisTrpTested = details.tisTrpTested || '';
+      output.specificationVersion = details.specificationVersion || '';
+      output.transportInterface = details.transportInterface || '';
+      output.primaryDeviceTypeId = details.primaryDeviceTypeId || '';
+    }
+
+    const productTitle = extractProductTitle();
+    if (productTitle && productTitle !== 'Unknown Product' && productTitle !== extractedFields.model) {
+      extractedFields.model = productTitle;
+    }
+
+    const tableDetails = extractDetailsFromTable();
+    const structuredDetails = extractDetailValues();
+    const combinedDetails = { ...tableDetails, ...structuredDetails };
+
+    extractManufacturerInfo(extractedFields, combinedDetails, productTitle);
+    extractDeviceTypeInfo(extractedFields, combinedDetails, productTitle);
+    extractCertificationInfo(extractedFields, combinedDetails);
+    extractVersionInfo(extractedFields, combinedDetails);
+    extractHardwareIds(extractedFields, combinedDetails);
+    extractAdditionalInfo(extractedFields, combinedDetails);
+    
+    extractedFields.applicationCategories = extractApplicationCategories(extractedFields.deviceType);
+
+    // 만약 certificationId가 존재한다면 certificateId가 baseProduct의 것과 동일할 때 삭제 (certificationId가 우선)
+    if (extractedFields.certificateId && extractedFields.certificateId === baseProductForContext.certificateId) {
+      delete extractedFields.certificateId;
+    }
+
+    return extractedFields;
+  }
+
+  /**
+   * 제품 상세 정보를 크롤링하는 함수
+   */
+  private async crawlProductDetail(product: Product, signal: AbortSignal): Promise<MatterProduct> {
+    const config = this.config;
+    
+    const minDelay = config.minRequestDelayMs ?? 100;
+    const maxDelay = config.maxRequestDelayMs ?? 2200;
+    const delayTime = getRandomDelay(minDelay, maxDelay);
+    await delay(delayTime);
+
+    if (!this.context) {
+      await this._initializeBrowser();
+      if (!this.context) {
+         throw new Error('[ProductDetailCollector] Browser context is not initialized. Cannot create page.');
+      }
+    }
+    
+    let page: Page | null = null;
+
+    try {
+      page = await this.context.newPage();
+
+      if (signal.aborted) {
+        throw new Error('Aborted before page operations');
+      }
+
+      await page.goto(product.url, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs ?? 60000 });
+
+      if (signal.aborted) {
+        throw new Error('Aborted after page.goto');
+      }
+
+      const extractedDetails = await page.evaluate(
+        ProductDetailCollector._evaluatePageExtractionLogic,
+        product
+      );
+
+      const matterProduct: MatterProduct = {
+        ...product,
+        id: `csa-matter-${product.pageId}-${product.indexInPage}`,
+        ...extractedDetails,
+      };
+
+      return matterProduct;
+
+    } catch (error: unknown) {
+      if (signal.aborted) {
+        throw new Error(`Aborted crawling for ${product.url} during operation.`);
+      }
+      console.error(`[ProductDetailCollector] Error crawling product detail for ${product.url}:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to crawl product detail for ${product.url}: ${errorMessage}`);
+    } finally {
+      if (page && !page.isClosed()) {
+        try {
+          await page.close();
+        } catch (e) {
+          console.warn(`Error while closing page for ${product.url}:`, e);
+        }
+      }
+    }
+  }
+
+  /**
    * 제품 상세 정보 수집 프로세스 실행
    */
   public async collect(products: Product[]): Promise<MatterProduct[]> {
@@ -303,398 +719,6 @@ export class ProductDetailCollector {
       crawlerEvents.emit('crawlingStageChanged', 'productDetail:processing', '2단계: 제품 상세 정보 처리 완료');
     } catch (error) {
       console.error('[ProductDetailCollector] Error during final state update in cleanupResources:', error);
-    }
-  }
-
-  /**
-   * 제품 상세 정보를 크롤링하는 함수
-   */
-  private async crawlProductDetail(product: Product, signal: AbortSignal): Promise<MatterProduct> {
-    const config = this.config;
-    
-    const minDelay = config.minRequestDelayMs ?? 100;
-    const maxDelay = config.maxRequestDelayMs ?? 2200;
-    const delayTime = getRandomDelay(minDelay, maxDelay);
-    await delay(delayTime);
-
-    if (!this.context) {
-      await this._initializeBrowser();
-      if (!this.context) {
-         throw new Error('[ProductDetailCollector] Browser context is not initialized. Cannot create page.');
-      }
-    }
-    
-    let page: Page | null = null;
-
-    try {
-      page = await this.context.newPage();
-
-      if (signal.aborted) {
-        throw new Error('Aborted before page operations');
-      }
-
-      await page.goto(product.url, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs ?? 60000 });
-
-      if (signal.aborted) {
-        throw new Error('Aborted after page.goto');
-      }
-
-      const detailProduct = await page.evaluate((baseProduct) => {
-        type ProductDetails = Record<string, string>;
-
-        const result = {
-          ...baseProduct,
-          id: `csa-matter-${baseProduct.pageId}-${baseProduct.indexInPage}`,
-          deviceType: 'Matter Device',
-          applicationCategories: [] as string[]
-        };
-
-        console.debug(`[Extracting product details for ${result.id}]`);
-
-        function extractProductTitle(): string {
-          const getText = (selector: string): string => {
-            const el = document.querySelector(selector);
-            return el ? el.textContent?.trim() || '' : '';
-          };
-
-          return getText('h1.entry-title') || getText('h1') || 'Unknown Product';
-        }
-
-        function extractDetailsFromTable(): ProductDetails {
-          const details: ProductDetails = {};
-          const infoTable = document.querySelector('.product-certificates-table');
-          if (!infoTable) return details;
-
-          const rows = infoTable.querySelectorAll('tr');
-          rows.forEach(row => {
-            const cells = row.querySelectorAll('td');
-            if (cells.length >= 2) {
-              const key = cells[0].textContent?.trim().toLowerCase() || '';
-              const value = cells[1].textContent?.trim() || '';
-
-              if (value) {
-                if (key.includes('certification id')) details.certificationId = value;
-                else if (key.includes('certification date')) details.certificationDate = value;
-                else if (key.includes('software version')) details.softwareVersion = value;
-                else if (key.includes('hardware version')) details.hardwareVersion = value;
-                else if (key.includes('vid')) details.vid = value;
-                else if (key.includes('pid')) details.pid = value;
-                else if (key.includes('family sku')) details.familySku = value;
-                else if (key.includes('family variant sku')) details.familyVariantSku = value;
-                else if (key.includes('firmware version')) details.firmwareVersion = value;
-                else if (key.includes('family id')) details.familyId = value;
-                else if (key.includes('tis') && key.includes('trp tested')) details.tisTrpTested = value;
-                else if (key.includes('specification version')) details.specificationVersion = value;
-                else if (key.includes('transport interface')) details.transportInterface = value;
-                else if (key.includes('primary device type id')) details.primaryDeviceTypeId = value;
-                else if (key.includes('device type') || key.includes('product type')) details.deviceType = value;
-              }
-            }
-          });
-
-          return details;
-        }
-
-        function extractDetailValues(): ProductDetails {
-          const details: ProductDetails = {};
-          const detailItems = document.querySelectorAll('.entry-product-details div ul li');
-
-          for (const item of detailItems) {
-            const label = item.querySelector('span.label');
-            const value = item.querySelector('span.value');
-
-            if (label && value) {
-              const labelText = label.textContent?.trim().toLowerCase() || '';
-              const valueText = value.textContent?.trim() || '';
-
-              if (valueText) {
-                if (labelText === 'manufacturer' || labelText.includes('company'))
-                  details.manufacturer = valueText;
-                else if (labelText === 'vendor id' || labelText.includes('vid'))
-                  details.vid = valueText;
-                else if (labelText === 'product id' || labelText.includes('pid'))
-                  details.pid = valueText;
-                else if (labelText === 'family sku')
-                  details.familySku = valueText;
-                else if (labelText === 'family variant sku')
-                  details.familyVariantSku = valueText;
-                else if (labelText === 'firmware version')
-                  details.firmwareVersion = valueText;
-                else if (labelText === 'hardware version')
-                  details.hardwareVersion = valueText;
-                else if (labelText === 'certificate id' || labelText.includes('certification id'))
-                  details.certificationId = valueText;
-                else if (labelText === 'certified date' || labelText.includes('certification date'))
-                  details.certificationDate = valueText;
-                else if (labelText === 'family id')
-                  details.familyId = valueText;
-                else if (labelText === 'tis/trp tested' || labelText.includes('tis') || labelText.includes('trp'))
-                  details.tisTrpTested = valueText;
-                else if (labelText === 'specification version' || labelText.includes('spec version'))
-                  details.specificationVersion = valueText;
-                else if (labelText === 'transport interface')
-                  details.transportInterface = valueText;
-                else if (labelText === 'primary device type id' || labelText.includes('primary device'))
-                  details.primaryDeviceTypeId = valueText;
-                else if (labelText === 'device type' || labelText.includes('product type') ||
-                  labelText.includes('category'))
-                  details.deviceType = valueText;
-              }
-            }
-          }
-
-          return details;
-        }
-
-        function extractApplicationCategories(deviceType: string): string[] {
-          const appCategories: string[] = [];
-          const appCategoriesSection = Array.from(document.querySelectorAll('h3')).find(
-            el => el.textContent?.trim().includes('Application Categories')
-          );
-
-          if (appCategoriesSection) {
-            const parentDiv = appCategoriesSection.parentElement;
-            if (parentDiv) {
-              const listItems = parentDiv.querySelectorAll('ul li');
-              if (listItems.length > 0) {
-                Array.from(listItems).forEach(li => {
-                  const category = li.textContent?.trim();
-                  if (category) appCategories.push(category);
-                });
-              }
-            }
-          }
-
-          if (appCategories.length === 0 && deviceType !== 'Matter Device') {
-            appCategories.push(deviceType);
-          } else if (appCategories.length === 0) {
-            appCategories.push('Matter Device');
-          }
-
-          return appCategories;
-        }
-
-        function extractManufacturerInfo(result: Record<string, any>, details: ProductDetails, productTitle: string): void {
-          let manufacturer = details.manufacturer || result.manufacturer || '';
-          const knownManufacturers = ['Govee', 'Philips', 'Samsung', 'Apple', 'Google', 'Amazon', 'Aqara', 'LG', 'IKEA', 'Belkin', 'Eve', 'Nanoleaf', 'GE', 'Cync', 'Tapo', 'TP-Link', 'Signify', 'Haier', 'WiZ'];
-
-          if (!manufacturer) {
-            for (const brand of knownManufacturers) {
-              if (productTitle.includes(brand)) {
-                manufacturer = brand;
-                break;
-              }
-            }
-          }
-
-          if (!manufacturer) {
-            const companyInfo = document.querySelector('.company-info')?.textContent?.trim() ||
-              document.querySelector('.manufacturer')?.textContent?.trim() || '';
-            if (companyInfo) {
-              manufacturer = companyInfo;
-            }
-          }
-
-          if (!manufacturer) {
-            const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
-            for (const li of detailsList) {
-              const text = li.textContent || '';
-              if (text.toLowerCase().includes('manufacturer') || text.toLowerCase().includes('company')) {
-                const parts = text.split(':');
-                if (parts.length > 1) {
-                  manufacturer = parts[1].trim();
-                  break;
-                }
-              }
-            }
-          }
-
-          result.manufacturer = manufacturer || 'Unknown';
-        }
-
-        function extractDeviceTypeInfo(result: Record<string, any>, details: ProductDetails, productTitle: string): void {
-          let deviceType = details.deviceType || 'Matter Device';
-
-          if (deviceType === 'Matter Device') {
-            const deviceTypeEl = document.querySelector('.category-link');
-            if (deviceTypeEl && deviceTypeEl.textContent) {
-              deviceType = deviceTypeEl.textContent.trim();
-            }
-          }
-
-          if (deviceType === 'Matter Device') {
-            const deviceTypes = [
-              'Light Bulb', 'Smart Switch', 'Door Lock', 'Thermostat',
-              'Motion Sensor', 'Smart Plug', 'Hub', 'Gateway', 'Camera',
-              'Smoke Detector', 'Outlet', 'Light', 'Door', 'Window',
-              'Sensor', 'Speaker', 'Display'
-            ];
-
-            const allText = document.body.textContent || '';
-            for (const type of deviceTypes) {
-              if (allText.includes(type) || productTitle.includes(type)) {
-                deviceType = type;
-                break;
-              }
-            }
-          }
-          result.deviceType = deviceType;
-        }
-
-        function extractCertificationInfo(result: Record<string, any>, details: ProductDetails): void {
-          let certificationId = details.certificationId || result.certificateId || '';
-          if (!certificationId) {
-            const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
-            for (const li of detailsList) {
-              const text = li.textContent || '';
-              if (text.toLowerCase().includes('certification') || text.toLowerCase().includes('certificate') ||
-                text.toLowerCase().includes('cert id')) {
-                const match = text.match(/([A-Za-z0-9-]+\d+[-][A-Za-z0-9]+)/);
-                if (match) {
-                  certificationId = match[1];
-                  break;
-                }
-
-                const parts = text.split(':');
-                if (parts.length > 1 && parts[1].trim()) {
-                  certificationId = parts[1].trim();
-                  break;
-                }
-              }
-            }
-          }
-          result.certificationId = certificationId;
-          result.certificateId = certificationId;
-
-          let certificationDate = details.certificationDate || '';
-          if (!certificationDate) {
-            const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
-            for (const li of detailsList) {
-              const text = li.textContent || '';
-              if (text.toLowerCase().includes('date')) {
-                const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})|(\d{4}-\d{1,2}-\d{1,2})|([A-Za-z]+\s+\d{1,2},?\s+\d{4})/);
-                if (dateMatch) {
-                  certificationDate = dateMatch[0];
-                  break;
-                }
-
-                const parts = text.split(':');
-                if (parts.length > 1 && parts[1].trim()) {
-                  certificationDate = parts[1].trim();
-                  break;
-                }
-              }
-            }
-          }
-
-          if (!certificationDate) {
-            certificationDate = new Date().toISOString().split('T')[0];
-          }
-          result.certificationDate = certificationDate;
-        }
-
-        function extractVersionInfo(result: Record<string, any>, details: ProductDetails): void {
-          let softwareVersion = details.firmwareVersion || details.softwareVersion || '';
-          let hardwareVersion = details.hardwareVersion || '';
-
-          if (!softwareVersion || !hardwareVersion) {
-            const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
-            for (const li of detailsList) {
-              const text = li.textContent || '';
-              if (!softwareVersion && (text.toLowerCase().includes('software') || text.toLowerCase().includes('firmware'))) {
-                const parts = text.split(':');
-                if (parts.length > 1) {
-                  softwareVersion = parts[1].trim();
-                }
-              }
-              if (!hardwareVersion && text.toLowerCase().includes('hardware')) {
-                const parts = text.split(':');
-                if (parts.length > 1) {
-                  hardwareVersion = parts[1].trim();
-                }
-              }
-            }
-          }
-          result.softwareVersion = softwareVersion;
-          result.hardwareVersion = hardwareVersion;
-          result.firmwareVersion = details.firmwareVersion || softwareVersion;
-        }
-
-        function extractHardwareIds(result: Record<string, any>, details: ProductDetails): void {
-          let vid = details.vid || '';
-          let pid = details.pid || '';
-
-          if (!vid || !pid) {
-            const detailsList = document.querySelectorAll('div.entry-product-details > div > ul li');
-            for (const li of detailsList) {
-              const text = li.textContent || '';
-              if (!vid && (text.toLowerCase().includes('vendor id') || text.toLowerCase().includes('vid'))) {
-                const parts = text.split(':');
-                if (parts.length > 1) {
-                  vid = parts[1].trim();
-                }
-              }
-              if (!pid && (text.toLowerCase().includes('product id') || text.toLowerCase().includes('pid'))) {
-                const parts = text.split(':');
-                if (parts.length > 1) {
-                  pid = parts[1].trim();
-                }
-              }
-            }
-          }
-          result.vid = vid;
-          result.pid = pid;
-        }
-
-        function extractAdditionalInfo(result: Record<string, any>, details: ProductDetails): void {
-          result.familySku = details.familySku || '';
-          result.familyVariantSku = details.familyVariantSku || '';
-          result.familyId = details.familyId || '';
-          result.tisTrpTested = details.tisTrpTested || '';
-          result.specificationVersion = details.specificationVersion || '';
-          result.transportInterface = details.transportInterface || '';
-          result.primaryDeviceTypeId = details.primaryDeviceTypeId || '';
-        }
-
-        const productTitle = extractProductTitle();
-        result.model = result.model || productTitle;
-
-        const tableDetails = extractDetailsFromTable();
-        const structuredDetails = extractDetailValues();
-
-        const details = { ...tableDetails, ...structuredDetails };
-
-        extractManufacturerInfo(result, details, productTitle);
-        extractDeviceTypeInfo(result, details, productTitle);
-        extractCertificationInfo(result, details);
-        extractVersionInfo(result, details);
-        extractHardwareIds(result, details);
-        extractAdditionalInfo(result, details);
-        result.applicationCategories = extractApplicationCategories(result.deviceType);
-
-        return result;
-      }, product);
-
-      const matterProduct: MatterProduct = {
-        ...detailProduct
-      };
-
-      return matterProduct;
-    } catch (error: unknown) {
-      if (signal.aborted) {
-        throw new Error(`Aborted crawling for ${product.url} during operation.`);
-      }
-      console.error(`[ProductDetailCollector] Error crawling product detail for ${product.url}:`, error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to crawl product detail for ${product.url}: ${errorMessage}`);
-    } finally {
-      if (page && !page.isClosed()) {
-        try {
-          await page.close();
-        } catch (e) {
-          console.warn(`Error while closing page for ${product.url}:`, e);
-        }
-      }
     }
   }
 
