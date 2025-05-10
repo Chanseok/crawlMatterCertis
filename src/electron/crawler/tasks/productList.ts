@@ -79,6 +79,45 @@ export class ProductListCollector {
   }
 
   /**
+   * 페이지 크롤링 상태 이벤트를 발생시키는 내부 헬퍼 메소드
+   */
+  private _emitPageCrawlStatus(
+    pageNumber: number,
+    status: 'success' | 'error' | 'running' | 'stopped',
+    data: Record<string, any>
+  ): void {
+    const messagePayload: Record<string, any> = {
+      stage: 1,
+      type: 'page',
+      pageNumber,
+      ...data // Spread data first to allow specific overrides
+    };
+
+    if (status === 'running') {
+      messagePayload.startTime = new Date().toISOString();
+      // Ensure URL is included if provided in data for running status
+      if (data.url) {
+        messagePayload.url = data.url;
+      }
+    } else {
+      messagePayload.endTime = new Date().toISOString();
+    }
+
+    // Remove undefined fields to keep payload clean
+    Object.keys(messagePayload).forEach(key => {
+      if (messagePayload[key] === undefined) {
+        delete messagePayload[key];
+      }
+    });
+
+    crawlerEvents.emit('crawlingTaskStatus', {
+      taskId: `page-${pageNumber}`,
+      status,
+      message: JSON.stringify(messagePayload)
+    });
+  }
+
+  /**
    * 제품 목록 수집 프로세스 실행
    * @param userPageLimit 사용자가 설정한 페이지 수 제한
    */
@@ -355,22 +394,15 @@ export class ProductListCollector {
       };
     }
 
-    crawlerEvents.emit('crawlingTaskStatus', {
-      taskId: `page-${pageNumber}`,
-      status: 'running',
-      message: JSON.stringify({
-        stage: 1, type: 'page', pageNumber,
-        url: `${this.config.matterFilterUrl}&paged=${pageNumber}`,
-        attempt: attempt, startTime: new Date().toISOString()
-      })
+    this._emitPageCrawlStatus(pageNumber, 'running', { 
+      url: `${this.config.matterFilterUrl}&paged=${pageNumber}`, 
+      attempt 
     });
     updateTaskStatus(pageNumber, 'running');
 
     let newlyFetchedProducts: Product[] = [];
-    // Initialize currentProductsOnPage from cache. This will be the fallback if fetching fails.
     let currentProductsOnPage: Product[] = this.productCache.get(pageNumber) || [];
     let pageErrorMessage: string | undefined;
-    // Initial completeness based on cached data.
     let isComplete = currentProductsOnPage.length >= targetProductCount;
 
     try {
@@ -381,52 +413,43 @@ export class ProductListCollector {
         )
       ]);
 
-      // Get existing products from cache to merge with newly fetched products.
       const existingProductsFromCache = this.productCache.get(pageNumber) || [];
       const allProductsForPage = ProductListCollector._mergeAndDeduplicateProductLists(
         existingProductsFromCache,
         newlyFetchedProducts
       );
       this.productCache.set(pageNumber, allProductsForPage);
-      currentProductsOnPage = allProductsForPage; // Update with the merged list
+      currentProductsOnPage = allProductsForPage; 
 
       isComplete = currentProductsOnPage.length >= targetProductCount;
 
       this.state.updateProgress({ currentPage: pageNumber });
       this.updateProgress();
 
-      crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: `page-${pageNumber}`, status: 'success',
-        message: JSON.stringify({
-          stage: 1, type: 'page', pageNumber,
-          productsCount: currentProductsOnPage.length,
-          newlyFetchedCount: newlyFetchedProducts.length,
-          isComplete,
-          targetCount: targetProductCount,
-          endTime: new Date().toISOString()
-        })
+      this._emitPageCrawlStatus(pageNumber, 'success', {
+        productsCount: currentProductsOnPage.length,
+        newlyFetchedCount: newlyFetchedProducts.length,
+        isComplete,
+        targetCount: targetProductCount,
+        attempt
       });
       updateTaskStatus(pageNumber, 'success');
 
     } catch (err) {
       pageErrorMessage = err instanceof Error ? err.message : String(err);
-      const status = signal.aborted ? 'stopped' : 'error';
-      updateTaskStatus(pageNumber, status, pageErrorMessage);
+      const finalStatus = signal.aborted ? 'stopped' : 'error';
+      updateTaskStatus(pageNumber, finalStatus, pageErrorMessage);
 
-      crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: `page-${pageNumber}`, status: 'error',
-        message: JSON.stringify({
-          stage: 1, type: 'page', pageNumber,
-          error: pageErrorMessage, attempt: attempt,
-          endTime: new Date().toISOString()
-        })
+      this._emitPageCrawlStatus(pageNumber, finalStatus, {
+        error: pageErrorMessage,
+        attempt
       });
-      isComplete = currentProductsOnPage.length >= targetProductCount;
+      isComplete = currentProductsOnPage.length >= targetProductCount; 
     }
 
     return {
       pageNumber,
-      products: currentProductsOnPage, // currentProductsOnPage now reflects the cache state after the attempt
+      products: currentProductsOnPage, 
       error: pageErrorMessage,
       isComplete
     };
