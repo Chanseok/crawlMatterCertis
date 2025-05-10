@@ -174,44 +174,59 @@ export class ProductListCollector {
       }
 
       const finalProducts = this.finalizeCollectedProducts(pageNumbersToCrawl);
-
-      let finalFailedCount = 0;
-      pageNumbersToCrawl.forEach(pNum => {
-        const sitePNum = PageIndexManager.toSitePageNumber(pNum, totalPages);
-        const target = sitePNum === 0 ? (ProductListCollector.lastPageProductCount ?? this.config.productsPerPage) : this.config.productsPerPage;
-        const cached = this.productCache.get(pNum) || [];
-        if (cached.length < target) {
-          finalFailedCount++;
-          if (!this.state.getFailedPages().includes(pNum)) {
-            const errors = allPageErrors[pNum.toString()] || ['Failed to meet target product count'];
-            this.state.addFailedPage(pNum, errors.join('; '));
-          }
-        }
-      });
-
-      const successPagesCount = pageNumbersToCrawl.length - finalFailedCount;
-      const successRate = pageNumbersToCrawl.length > 0 ? (successPagesCount / pageNumbersToCrawl.length) : 1;
-
-      console.log(`[ProductListCollector] Final collection: ${successPagesCount}/${pageNumbersToCrawl.length} pages fully collected. Total products: ${finalProducts.length}`);
-
-      crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: 'list-complete', status: 'success',
-        message: JSON.stringify({
-          stage: 1, type: 'complete', totalPages,
-          processedPages: successPagesCount,
-          collectedProducts: finalProducts.length,
-          failedPages: finalFailedCount,
-          successRate: parseFloat((successRate * 100).toFixed(1))
-        })
-      });
-
-      this.state.setStage('productList:processing', '수집된 제품 목록 처리 중');
+      this._summarizeCollectionOutcome(pageNumbersToCrawl, totalPages, allPageErrors, finalProducts);
       return finalProducts;
 
     } finally {
       await this._closeBrowser(); // 브라우저 종료
       this.cleanupResources();
     }
+  }
+
+  /**
+   * 컬렉션 결과를 요약하고 보고하는 내부 메소드
+   */
+  private _summarizeCollectionOutcome(
+    pageNumbersToCrawl: number[],
+    totalPages: number,
+    allPageErrors: Record<string, string[]>,
+    collectedProducts: Product[]
+  ): void {
+    let finalFailedCount = 0;
+    pageNumbersToCrawl.forEach(pNum => {
+      const sitePNum = PageIndexManager.toSitePageNumber(pNum, totalPages);
+      const target = sitePNum === 0 ? (ProductListCollector.lastPageProductCount ?? this.config.productsPerPage) : this.config.productsPerPage;
+      const cached = this.productCache.get(pNum) || [];
+      if (cached.length < target) {
+        finalFailedCount++;
+        if (!this.state.getFailedPages().includes(pNum)) {
+          // Use a more specific error message if available from allPageErrors
+          const errorsForPage = allPageErrors[pNum.toString()];
+          const errorMessage = errorsForPage && errorsForPage.length > 0 
+            ? errorsForPage[errorsForPage.length -1] // Get the last error for the page
+            : 'Failed to meet target product count after all attempts';
+          this.state.addFailedPage(pNum, errorMessage);
+        }
+      }
+    });
+
+    const successPagesCount = pageNumbersToCrawl.length - finalFailedCount;
+    const successRate = pageNumbersToCrawl.length > 0 ? (successPagesCount / pageNumbersToCrawl.length) : 1;
+
+    console.log(`[ProductListCollector] Final collection: ${successPagesCount}/${pageNumbersToCrawl.length} pages fully collected. Total products: ${collectedProducts.length}`);
+
+    crawlerEvents.emit('crawlingTaskStatus', {
+      taskId: 'list-complete', status: 'success',
+      message: JSON.stringify({
+        stage: 1, type: 'complete', totalPages,
+        processedPages: successPagesCount,
+        collectedProducts: collectedProducts.length,
+        failedPages: finalFailedCount,
+        successRate: parseFloat((successRate * 100).toFixed(1))
+      })
+    });
+
+    this.state.setStage('productList:processing', '수집된 제품 목록 처리 중');
   }
 
   /**
