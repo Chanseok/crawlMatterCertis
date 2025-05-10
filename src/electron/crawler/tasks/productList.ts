@@ -25,6 +25,15 @@ let cachedTotalPagesFetchedAt: number | null = null;
 // 진행 상황 콜백 타입 정의
 export type ProgressCallback = (processedPages: number) => void;
 
+// page.evaluate가 반환하는 원시 데이터 타입
+interface RawProductData {
+  url: string;
+  manufacturer?: string;
+  model?: string;
+  certificateId?: string;
+  siteIndexInPage: number; // DOM 순서 기반 인덱스
+}
+
 export class ProductListCollector {
   private state: CrawlerState;
   private abortController: AbortController;
@@ -762,55 +771,9 @@ export class ProductListCollector {
 
       debugLog(`[ProductListCollector] 페이지 ${pageNumber} 크롤링 (sitePageNumber: ${sitePageNumber}, lastPageProductCount: ${actualLastPageProductCount}, offset: ${offset})`);
 
-      const rawProducts = await page.evaluate(() => {
-        const articles = Array.from(document.querySelectorAll('div.post-feed article'));
+      const rawProducts = await page.evaluate<RawProductData[]>(ProductListCollector._extractProductsFromPageDOM);
 
-        return articles.reverse().map((article, siteIndexInPage) => {
-          const link = article.querySelector('a');
-          const manufacturerEl = article.querySelector('p.entry-company.notranslate');
-          const modelEl = article.querySelector('h3.entry-title');
-          const certificateIdEl = article.querySelector('span.entry-cert-id');
-          const certificateIdPEl = article.querySelector('p.entry-certificate-id');
-          let certificateId;
-
-          if (certificateIdPEl && certificateIdPEl.textContent) {
-            const text = certificateIdPEl.textContent.trim();
-            if (text.startsWith('Certificate ID: ')) {
-              certificateId = text.replace('Certificate ID: ', '').trim();
-            } else {
-              certificateId = text;
-            }
-          } else if (certificateIdEl && certificateIdEl.textContent) {
-            certificateId = certificateIdEl.textContent.trim();
-          }
-
-          return {
-            url: link && link.href ? link.href : '',
-            manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
-            model: modelEl ? modelEl.textContent?.trim() : undefined,
-            certificateId,
-            siteIndexInPage
-          };
-        });
-      });
-
-      const products: Product[] = rawProducts
-        .map((product) => {
-          const { siteIndexInPage } = product;
-
-          const { pageId, indexInPage } = PageIndexManager.mapToLocalIndexing(
-            sitePageNumber,
-            siteIndexInPage,
-            offset
-          );
-
-          const { siteIndexInPage: _, ...rest } = product;
-          return {
-            ...rest,
-            pageId,
-            indexInPage
-          };
-        });
+      const products = this._mapRawProductsToProducts(rawProducts, sitePageNumber, offset);
 
       debugLog(`[ProductListCollector] Successfully crawled ${products.length} products from page ${pageNumber}.`);
       return products;
@@ -826,6 +789,65 @@ export class ProductListCollector {
       signal.removeEventListener('abort', abortListener);
       await cleanupPageAndContext();
     }
+  }
+
+  /**
+   * 정적 메서드: 페이지의 DOM에서 원시 제품 데이터를 추출합니다.
+   * 이 함수는 page.evaluate의 컨텍스트 내에서 실행됩니다.
+   */
+  private static _extractProductsFromPageDOM(): RawProductData[] {
+    const articles = Array.from(document.querySelectorAll('div.post-feed article'));
+    return articles.reverse().map((article, siteIndexInPage) => {
+      const link = article.querySelector('a');
+      const manufacturerEl = article.querySelector('p.entry-company.notranslate');
+      const modelEl = article.querySelector('h3.entry-title');
+      const certificateIdEl = article.querySelector('span.entry-cert-id');
+      const certificateIdPEl = article.querySelector('p.entry-certificate-id');
+      let certificateId;
+
+      if (certificateIdPEl && certificateIdPEl.textContent) {
+        const text = certificateIdPEl.textContent.trim();
+        if (text.startsWith('Certificate ID: ')) {
+          certificateId = text.replace('Certificate ID: ', '').trim();
+        } else {
+          certificateId = text;
+        }
+      } else if (certificateIdEl && certificateIdEl.textContent) {
+        certificateId = certificateIdEl.textContent.trim();
+      }
+
+      return {
+        url: link && link.href ? link.href : '',
+        manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
+        model: modelEl ? modelEl.textContent?.trim() : undefined,
+        certificateId,
+        siteIndexInPage
+      };
+    });
+  }
+
+  /**
+   * 원시 제품 데이터를 최종 Product 객체 배열로 매핑합니다.
+   */
+  private _mapRawProductsToProducts(
+    rawProducts: RawProductData[],
+    sitePageNumber: number,
+    offset: number
+  ): Product[] {
+    return rawProducts.map((product) => {
+      const { siteIndexInPage } = product;
+      const { pageId, indexInPage } = PageIndexManager.mapToLocalIndexing(
+        sitePageNumber,
+        siteIndexInPage,
+        offset
+      );
+      const { siteIndexInPage: _, ...rest } = product;
+      return {
+        ...rest,
+        pageId,
+        indexInPage
+      };
+    });
   }
 
   /**
