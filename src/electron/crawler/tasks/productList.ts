@@ -14,10 +14,9 @@ import {
 import type { CrawlResult } from '../utils/types.js';
 import type { Product } from '../../../../types.js';
 import { debugLog } from '../../util.js';
-import { getConfig } from '../core/config.js';
+import { getConfig, type CrawlerConfig } from '../core/config.js';
 import { crawlerEvents, updateRetryStatus, logRetryError } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';
-
 
 // 캐시
 let cachedTotalPages: number | null = null;
@@ -31,15 +30,17 @@ export class ProductListCollector {
   private abortController: AbortController;
   private progressCallback: ProgressCallback | null = null;
   private processedPages: number = 0;
+  private readonly config: CrawlerConfig;
 
   // 마지막 페이지 제품 수를 저장하는 캐시 변수
   private static lastPageProductCount: number | null = null;
   // 페이지별로 수집된 제품을 임시 저장하는 캐시
   private productCache: Map<number, Product[]>;
 
-  constructor(state: CrawlerState, abortController: AbortController) {
+  constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig) {
     this.state = state;
     this.abortController = abortController;
+    this.config = config;
     this.productCache = new Map(); // 제품 캐시 초기화
   }
 
@@ -71,7 +72,7 @@ export class ProductListCollector {
     this.processedPages = 0;
 
     try {
-      const { totalPages, lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached();
+      const { totalPages, lastPageProductCount } = await ProductListCollector.fetchTotalPagesCached(false, this.config);
       debugLog(`Total pages: ${totalPages}, Last page product count: ${lastPageProductCount}`);
       ProductListCollector.lastPageProductCount = lastPageProductCount;
 
@@ -83,7 +84,6 @@ export class ProductListCollector {
       const pageNumbersToCrawl = Array.from({ length: startPage - endPage + 1 }, (_, i) => endPage + i).reverse();
       debugLog(`Page numbers to crawl: ${pageNumbersToCrawl.join(', ')}`);
 
-      const config = getConfig();
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'list-range',
         status: 'running',
@@ -94,7 +94,7 @@ export class ProductListCollector {
           startPage,
           endPage,
           pageCount: pageNumbersToCrawl.length,
-          estimatedProductCount: pageNumbersToCrawl.length * config.productsPerPage,
+          estimatedProductCount: pageNumbersToCrawl.length * this.config.productsPerPage,
           lastPageProductCount
         })
       });
@@ -117,7 +117,7 @@ export class ProductListCollector {
       this.state.updateProgress({
         totalPages,
         currentPage: 0,
-        totalItems: pageNumbersToCrawl.length * config.productsPerPage,
+        totalItems: pageNumbersToCrawl.length * this.config.productsPerPage,
         currentItem: 0
       });
       this.state.setStage('productList:fetching', '1/2단계: 제품 목록 수집 중');
@@ -132,7 +132,7 @@ export class ProductListCollector {
         totalPages,
         incompletePagesAfterInitialCrawl,
         allPageErrors,
-        config.initialConcurrency ?? 5,
+        this.config.initialConcurrency ?? 5,
         false,
         1
       );
@@ -161,7 +161,7 @@ export class ProductListCollector {
       let finalFailedCount = 0;
       pageNumbersToCrawl.forEach(pNum => {
         const sitePNum = PageIndexManager.toSitePageNumber(pNum, totalPages);
-        const target = sitePNum === 0 ? (ProductListCollector.lastPageProductCount ?? config.productsPerPage) : config.productsPerPage;
+        const target = sitePNum === 0 ? (ProductListCollector.lastPageProductCount ?? this.config.productsPerPage) : this.config.productsPerPage;
         const cached = this.productCache.get(pNum) || [];
         if (cached.length < target) {
           finalFailedCount++;
@@ -207,7 +207,7 @@ export class ProductListCollector {
    * 캐시된 페이지 정보 반환 또는 최신화
    */
   public async getTotalPagesCached(force = false): Promise<number> {
-    const { totalPages } = await ProductListCollector.fetchTotalPagesCached(force);
+    const { totalPages } = await ProductListCollector.fetchTotalPagesCached(force, this.config);
     return totalPages;
   }
 
@@ -215,13 +215,13 @@ export class ProductListCollector {
    * 정적 메서드: 캐시된 전체 페이지 수와 마지막 페이지 제품 수를 가져오거나 최신화
    * 외부 모듈에서 쉽게 접근할 수 있는 간단한 API 제공
    */
-  public static async fetchTotalPagesCached(force = false): Promise<{
+  public static async fetchTotalPagesCached(force = false, instanceConfig?: CrawlerConfig): Promise<{
     totalPages: number;
     lastPageProductCount: number;
   }> {
-    const config = getConfig();
+    const configToUse = instanceConfig || getConfig();
     const now = Date.now();
-    const cacheTtl = config.cacheTtlMs ?? 3600000;
+    const cacheTtl = configToUse.cacheTtlMs ?? 3600000;
 
     if (!force &&
       cachedTotalPages &&
@@ -234,7 +234,7 @@ export class ProductListCollector {
       };
     }
 
-    const result = await ProductListCollector.fetchTotalPages();
+    const result = await ProductListCollector.fetchTotalPages(configToUse);
     cachedTotalPages = result.totalPages;
     ProductListCollector.lastPageProductCount = result.lastPageProductCount;
     cachedTotalPagesFetchedAt = now;
@@ -245,8 +245,7 @@ export class ProductListCollector {
   /**
    * 정적 메서드: 총 페이지 수와 마지막 페이지의 제품 수를 가져오는 함수
    */
-  private static async fetchTotalPages(): Promise<{ totalPages: number; lastPageProductCount: number }> {
-    const config = getConfig();
+  private static async fetchTotalPages(config: CrawlerConfig): Promise<{ totalPages: number; lastPageProductCount: number }> {
     const browser = await chromium.launch({ headless: true });
     let totalPages = 0;
     let lastPageProductCount = 0;
@@ -308,11 +307,10 @@ export class ProductListCollector {
     signal: AbortSignal,
     attempt: number = 1
   ): Promise<CrawlResult | null> {
-    const config = getConfig();
     const sitePageNumber = PageIndexManager.toSitePageNumber(pageNumber, totalPages);
 
     const actualLastPageProductCount = ProductListCollector.lastPageProductCount ?? 0;
-    const targetProductCount = sitePageNumber === 0 ? actualLastPageProductCount : config.productsPerPage;
+    const targetProductCount = sitePageNumber === 0 ? actualLastPageProductCount : this.config.productsPerPage;
 
     if (signal.aborted) {
       updateTaskStatus(pageNumber, 'stopped');
@@ -330,7 +328,7 @@ export class ProductListCollector {
       status: 'running',
       message: JSON.stringify({
         stage: 1, type: 'page', pageNumber,
-        url: `${config.matterFilterUrl}&paged=${pageNumber}`,
+        url: `${this.config.matterFilterUrl}&paged=${pageNumber}`,
         attempt: attempt, startTime: new Date().toISOString()
       })
     });
@@ -345,7 +343,7 @@ export class ProductListCollector {
       newlyFetchedProducts = await Promise.race([
         this.crawlPageWithTimeout(pageNumber, totalPages, signal),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), config.pageTimeoutMs)
+          setTimeout(() => reject(new Error('Timeout')), this.config.pageTimeoutMs)
         )
       ]);
 
@@ -447,16 +445,15 @@ export class ProductListCollector {
     totalPages: number,
     failedPageErrors: Record<string, string[]>
   ): Promise<void> {
-    const config = getConfig();
-    const productListRetryCount = config.productListRetryCount ?? 3;
-    const retryConcurrency = config.retryConcurrency ?? 1;
+    const productListRetryCount = this.config.productListRetryCount ?? 3;
+    const retryConcurrency = this.config.retryConcurrency ?? 1;
 
     if (productListRetryCount <= 0) {
       debugLog(`[RETRY] Product list retries disabled.`);
       pagesToRetryInitially.forEach(pageNumber => {
         const sitePNum = PageIndexManager.toSitePageNumber(pageNumber, totalPages);
         const lastPageProdCount = ProductListCollector.lastPageProductCount ?? 0;
-        const target = sitePNum === 0 ? lastPageProdCount : config.productsPerPage;
+        const target = sitePNum === 0 ? lastPageProdCount : this.config.productsPerPage;
         const cached = this.productCache.get(pageNumber) || [];
         if (cached.length < target) {
           if (!this.state.getFailedPages().includes(pageNumber)) {
@@ -557,16 +554,14 @@ export class ProductListCollector {
    * 특정 페이지의 제품 정보 목록을 크롤링하는 함수
    */
   private async crawlProductsFromPage(pageNumber: number, totalPages: number, signal: AbortSignal): Promise<Product[]> {
-    const config = getConfig();
-
-    const delayTime = getRandomDelay(config.minRequestDelayMs ?? 1000, config.maxRequestDelayMs ?? 3000);
+    const delayTime = getRandomDelay(this.config.minRequestDelayMs ?? 1000, this.config.maxRequestDelayMs ?? 3000);
     await delay(delayTime);
 
     if (signal.aborted) {
       throw new Error('Aborted');
     }
 
-    const pageUrl = `${config.matterFilterUrl}&paged=${pageNumber}`;
+    const pageUrl = `${this.config.matterFilterUrl}&paged=${pageNumber}`;
     const browser = await chromium.launch({ headless: true });
 
     try {

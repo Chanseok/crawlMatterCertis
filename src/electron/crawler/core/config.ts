@@ -8,6 +8,7 @@ import { join } from 'path';
 import { app } from 'electron';
 import { CrawlerConfig } from '../../../../types.js';
 
+export type { CrawlerConfig }; // Re-export CrawlerConfig type
 
 //#region Constants
 // 크롤링 URL 상수
@@ -18,9 +19,9 @@ const MATTER_FILTER_URL = 'https://csa-iot.org/csa-iot_products/?p_keywords=&p_t
 const PAGE_TIMEOUT_MS = 30000; // 페이지 타임아웃
 const PRODUCT_DETAIL_TIMEOUT_MS = 30000; // 제품 상세 페이지 타임아웃
 const PRODUCTS_PER_PAGE = 12;  // 페이지당 제품 수
-const INITIAL_CONCURRENCY = 9; // 초기 병렬 크롤링 동시성 수준
-const DETAIL_CONCURRENCY = 9; // 제품 상세 정보 크롤링 동시성 수준
-const RETRY_CONCURRENCY = 6;   // 재시도 시 병렬 크롤링 동시성 수준
+const INITIAL_CONCURRENCY = 16; // 초기 병렬 크롤링 동시성 수준
+const DETAIL_CONCURRENCY = 16; // 제품 상세 정보 크롤링 동시성 수준
+const RETRY_CONCURRENCY = 9;   // 재시도 시 병렬 크롤링 동시성 수준
 const MIN_REQUEST_DELAY_MS = 100; // 요청 간 최소 지연 시간(ms)
 const MAX_REQUEST_DELAY_MS = 2200; // 요청 간 최대 지연 시간(ms)
 const RETRY_START = 2;          // 재시도 시작 횟수 (첫 시도가 1)

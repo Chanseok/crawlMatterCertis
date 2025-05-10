@@ -76,10 +76,10 @@ export class CrawlerEngine {
       updateProductListProgress(0, 0, this.startTime);
       
       // 제품 목록 수집기 생성 (1단계)
-      const productListCollector = new ProductListCollector(this.state, this.abortController);
+      const productListCollector = new ProductListCollector(this.state, this.abortController, config); // Pass config
       
       // 총 페이지 수 먼저 확인
-      const totalPages = await productListCollector.getTotalPagesCached(true);
+      const totalPages = await productListCollector.getTotalPagesCached(true); // This will now use the instance config
       
       // 1단계 시작 - 총 페이지 수 알게 된 후 업데이트
       updateProductListProgress(0, totalPages, this.startTime);
@@ -231,7 +231,9 @@ export class CrawlerEngine {
       let totalPages = 0;
       try {
         const tempController = new AbortController();
-        const collector = new ProductListCollector(this.state, tempController);
+        // 제품 목록 수집기 생성 시 config 전달
+        const currentConfig = getConfig(); // getConfig 호출
+        const collector = new ProductListCollector(this.state, tempController, currentConfig); // config 전달
         totalPages = await collector.getTotalPagesCached(true);
       } catch (e) {
         console.error('[CrawlerEngine] Error getting total pages:', e);
