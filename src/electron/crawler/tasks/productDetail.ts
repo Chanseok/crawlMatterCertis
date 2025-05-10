@@ -3,13 +3,14 @@
  * 제품 상세 정보 수집을 담당하는 클래스
  */
 
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-chromium';
+import { type Page } from 'playwright-chromium';
 import { getRandomDelay, delay } from '../utils/delay.js';
 import { CrawlerState } from '../core/CrawlerState.js';
 import {
   promisePool, updateProductTaskStatus, initializeProductTaskStates
 } from '../utils/concurrency.js';
 import { MatterProductParser } from '../parsers/MatterProductParser.js';
+import { BrowserManager } from '../browser/BrowserManager.js'; // 새로 추가된 import
 
 import type { DetailCrawlResult } from '../utils/types.js';
 import type { Product, MatterProduct, CrawlerConfig } from '../../../../types.d.ts';
@@ -31,17 +32,17 @@ export class ProductDetailCollector {
   private state: CrawlerState;
   private abortController: AbortController;
   private readonly config: CrawlerConfig;
-  private browser: Browser | null = null;
-  private context: BrowserContext | null = null;
+  private browserManager: BrowserManager;
   private progressCallback: DetailProgressCallback | null = null;
   private processedItems: number = 0;
-  private newItems: number = 0; // 새로 추가된 항목
-  private updatedItems: number = 0; // 업데이트된 항목
+  private newItems: number = 0;
+  private updatedItems: number = 0;
 
   constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig) {
     this.state = state;
     this.abortController = abortController;
     this.config = config;
+    this.browserManager = new BrowserManager(config); // BrowserManager 초기화
     this.processedItems = 0;
     this.newItems = 0;
     this.updatedItems = 0;
@@ -83,18 +84,11 @@ export class ProductDetailCollector {
     const maxDelay = config.maxRequestDelayMs ?? 2200;
     const delayTime = getRandomDelay(minDelay, maxDelay);
     await delay(delayTime);
-
-    if (!this.context) {
-      await this._initializeBrowser();
-      if (!this.context) {
-         throw new Error('[ProductDetailCollector] Browser context is not initialized. Cannot create page.');
-      }
-    }
     
     let page: Page | null = null;
 
     try {
-      page = await this.context.newPage();
+      page = await this.browserManager.getPage();
 
       if (signal.aborted) {
         throw new Error('Aborted before page operations');
@@ -127,12 +121,8 @@ export class ProductDetailCollector {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to crawl product detail for ${product.url}: ${errorMessage}`);
     } finally {
-      if (page && !page.isClosed()) {
-        try {
-          await page.close();
-        } catch (e) {
-          console.warn(`Error while closing page for ${product.url}:`, e);
-        }
+      if (page) {
+        await this.browserManager.closePage(page);
       }
     }
   }
@@ -168,7 +158,7 @@ export class ProductDetailCollector {
     initializeProductTaskStates(products);
 
     try {
-      await this._initializeBrowser();
+      await this.browserManager.initialize();
 
       this.state.setStage('productDetail:fetching', '2/2단계: 제품 상세 정보 수집 중');
       debugLog(`Starting phase 2: crawling product details for ${products.length} products`);
@@ -266,95 +256,26 @@ export class ProductDetailCollector {
         error,
       });
     } finally {
-      await this.cleanupResources(); 
+      await this.cleanupResources();
     }
 
     return matterProducts;
   }
 
-  private async _initializeBrowser(): Promise<void> {
-    const headless = this.config.headlessBrowser ?? true;
-    if (this.browser && this.browser.isConnected()) {
-      if (this.context && typeof this.context.pages === 'function') {
-        try {
-          await this.context.pages();
-          debugLog('[ProductDetailCollector] Browser and context are already initialized and valid.');
-          return;
-        } catch (e) {
-          debugLog('[ProductDetailCollector] Browser context seems invalid, will re-create.', e);
-          try {
-            await this.context.close();
-          } catch (closeError) {
-            console.warn('[ProductDetailCollector] Error closing invalid context during re-initialization:', closeError);
-          }
-          this.context = null;
-        }
-      } else if (this.context) {
-         debugLog('[ProductDetailCollector] Browser context in bad state, closing.');
-         try {
-            await this.context.close();
-         } catch (e) {
-            console.warn('[ProductDetailCollector] Error closing bad state context:', e);
-         }
-         this.context = null;
-      }
-      if (!this.context) {
-        try {
-          this.context = await this.browser.newContext();
-          debugLog('[ProductDetailCollector] Re-created browser context on existing browser.');
-          return;
-        } catch (e) {
-          console.error('[ProductDetailCollector] Failed to re-create browser context. Re-initializing browser.', e);
-          if (this.browser && this.browser.isConnected()) {
-            try { await this.browser.close(); } catch (be) { console.warn('Error closing browser before re-init', be); }
-          }
-          this.browser = null; 
-        }
-      }
-    }
-
-    if (this.browser) {
-        try {
-            debugLog('[ProductDetailCollector] Closing previous disconnected/problematic browser.');
-            await this.browser.close();
-        } catch (e) {
-            console.warn('[ProductDetailCollector] Error closing previous browser:', e);
-        }
-        this.browser = null;
-        this.context = null;
-    }
-
-    debugLog(`[ProductDetailCollector] Initializing browser (headless: ${headless})...`);
-    try {
-        this.browser = await chromium.launch({ headless });
-        this.context = await this.browser.newContext();
-        debugLog('[ProductDetailCollector] Browser and context initialized.');
-    } catch (error) {
-        console.error('[ProductDetailCollector] Failed to initialize browser:', error);
-        if (this.context) { try { await this.context.close(); } catch(e){ /* ignore */ } this.context = null; }
-        if (this.browser) { try { await this.browser.close(); } catch(e){ /* ignore */ } this.browser = null; }
-        throw new Error(`Failed to initialize browser: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
+  /**
+   * 리소스 정리를 위한 함수
+   */
   private async cleanupResources(): Promise<void> {
     console.log('[ProductDetailCollector] Cleaning up resources...');
+    
     try {
-      if (this.context) {
-        await this.context.close();
-        this.context = null;
-        debugLog('[ProductDetailCollector] Browser context closed.');
-      }
-      if (this.browser && this.browser.isConnected()) {
-        await this.browser.close();
-        this.browser = null;
-        debugLog('[ProductDetailCollector] Browser closed.');
-      }
+      await this.browserManager.cleanupResources();
     } catch (error) {
-      console.error('[ProductDetailCollector] Error cleaning up Playwright resources:', error);
+      console.error('[ProductDetailCollector] Error cleaning up browser resources:', error);
     }
 
     try {
+      // 진행 상태 최종 업데이트
       const progressData = this.state.getProgressData();
       const totalItems = progressData?.totalItems ?? this.processedItems; 
 
