@@ -4,7 +4,7 @@
  */
 
 import { getDatabaseSummaryFromDb } from "../../database.js";
-import { getConfig } from "../core/config.js";
+import { configManager } from '../../ConfigManager.js'; // Added import for configManager
 
 /**
  * 사이트 페이지 번호와 로컬 데이터베이스 인덱싱 간의 변환을 관리하는 유틸리티 클래스
@@ -28,7 +28,7 @@ export class PageIndexManager {
    * @returns 옵셋 값 (마지막 페이지가 꽉 차 있으면 0)
    */
   public static calculateOffset(lastPageProductCount: number): number {
-    const config = getConfig();
+    const config = configManager.getConfig(); // Use configManager
     const productsPerPage = config.productsPerPage || 12;
     
     // 마지막 페이지가 꽉 차 있으면 옵셋 없음
@@ -53,7 +53,7 @@ export class PageIndexManager {
     siteIndexInPage: number, 
     offset: number
   ): { pageId: number, indexInPage: number } {
-    const config = getConfig();
+    const config = configManager.getConfig(); // Use configManager
     const productsPerPage = config.productsPerPage || 12;
     
     // 절대 위치 계산: 12*sitePageNumber + siteIndexInPage - offset
@@ -82,7 +82,7 @@ export class PageIndexManager {
   ): Promise<{ startPage: number, endPage: number }> {
     // DB 요약 정보를 가져옴
     const dbSummary = await getDatabaseSummaryFromDb();
-    const config = getConfig();
+    const config = configManager.getConfig(); // Use configManager
     const productsPerPage = config.productsPerPage || 12;
     
     // Offset 계산 - 마지막 페이지의 제품 수를 기반으로

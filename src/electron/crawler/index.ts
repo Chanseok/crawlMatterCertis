@@ -5,7 +5,7 @@
 
 import { CrawlerConfig } from '../../../types.js';
 import { CrawlerEngine } from './core/CrawlerEngine.js';
-import { getConfig, updateConfig, resetConfig } from './core/config.js';
+import { configManager } from '../ConfigManager.js';
 
 import type { CrawlingSummary } from './utils/types.js';
 
@@ -29,11 +29,11 @@ export async function startCrawling(userConfig?: Partial<CrawlerConfig> | null):
       console.log(`[Crawler] Setting autoAddToLocalDB to: ${userConfig.autoAddToLocalDB}`);
     }
     
-    updateConfig(userConfig);
+    configManager.updateConfig(userConfig);
   }
   
   // 최종 설정값 로깅 (업데이트 후)
-  const finalConfig = getConfig();
+  const finalConfig = configManager.getConfig();
   console.log('[Crawler] Final config before starting crawling:', JSON.stringify(finalConfig));
   console.log(`[Crawler] autoAddToLocalDB is set to: ${finalConfig.autoAddToLocalDB}`);
   
@@ -66,7 +66,7 @@ export function isRunning(): boolean {
  * 현재 크롤러 설정 가져오기
  */
 export function getCrawlerConfig(): CrawlerConfig {
-  return getConfig();
+  return configManager.getConfig();
 }
 
 /**
@@ -74,14 +74,14 @@ export function getCrawlerConfig(): CrawlerConfig {
  * @param config 업데이트할 설정 객체
  */
 export function updateCrawlerConfig(config: Partial<CrawlerConfig>): void {
-  updateConfig(config);
+  configManager.updateConfig(config);
 }
 
 /**
  * 크롤러 설정을 기본값으로 초기화
  */
 export function resetCrawlerConfig(): void {
-  resetConfig();
+  configManager.resetConfig();
 }
 
 // 모든 크롤러 기능 노출

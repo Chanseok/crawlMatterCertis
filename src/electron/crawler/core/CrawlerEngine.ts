@@ -11,7 +11,6 @@ import {
   CRAWLING_STAGE
 } from '../utils/progress.js';
 import { getDatabaseSummaryFromDb, saveProductsToDb } from '../../database.js';
-import { getConfig } from './config.js';
 import { CrawlerState } from './CrawlerState.js';
 import { ProductListCollector } from '../tasks/productList.js';
 import { ProductDetailCollector } from '../tasks/productDetail.js';
@@ -64,7 +63,7 @@ export class CrawlerEngine {
     this.abortController = new AbortController();
     this.startTime = Date.now();
 
-    const config = getConfig();
+    const config = configManager.getConfig();
     this.browserManager = new BrowserManager(config);
 
     try {
@@ -234,7 +233,7 @@ export class CrawlerEngine {
     try {
       // 데이터베이스 정보 가져오기
       const dbSummary = await getDatabaseSummaryFromDb();
-      const currentConfig = getConfig(); // Call getConfig() once at the beginning
+      const currentConfig = configManager.getConfig();
 
       // 페이지 정보 가져오기
       let totalPages = 0;
@@ -393,42 +392,11 @@ export class CrawlerEngine {
     }
 
     // 설정에 따라 자동으로 DB에 저장
-    // ConfigManager에서 설정을 직접 가져오기
-    try {
-      console.log('[CrawlerEngine] Fetching latest config from ConfigManager');
-      
-      const managerConfig = configManager.getConfig();
-      console.log(`[CrawlerEngine] ConfigManager autoAddToLocalDB setting: ${managerConfig.autoAddToLocalDB}`);
-    } catch (err) {
-      console.error('[CrawlerEngine] Error accessing ConfigManager:', err);
-    }
+    console.log('[CrawlerEngine] Fetching latest config from ConfigManager for DB save decision');
+    const currentConfig = configManager.getConfig();
+    console.log(`[CrawlerEngine] Current autoAddToLocalDB setting from ConfigManager: ${currentConfig.autoAddToLocalDB}`);
     
-    // 로컬 설정 가져오기
-    const config = getConfig();
-    console.log('[CrawlerEngine] Auto DB save setting from local config:', config.autoAddToLocalDB);
-    
-    // 설정파일 재로드 시도
-    try {
-      console.log('[CrawlerEngine] Attempting to reload config before DB save decision');
-      const { updateConfig } = await import('./config.js');
-      // ConfigManager에서 최신 설정을 가져와 강제 업데이트
-      
-      const latestConfig = configManager.getConfig();
-      
-      // 기존 설정과 최신 설정의 autoAddToLocalDB 값 비교
-      if (latestConfig.autoAddToLocalDB !== config.autoAddToLocalDB) {
-        console.log(`[CrawlerEngine] Config mismatch detected! Updating autoAddToLocalDB from ${config.autoAddToLocalDB} to ${latestConfig.autoAddToLocalDB}`);
-        updateConfig({ autoAddToLocalDB: latestConfig.autoAddToLocalDB });
-      }
-    } catch (err) {
-      console.error('[CrawlerEngine] Error during config reload:', err);
-    }
-    
-    // 최종 설정 다시 가져오기
-    const finalConfig = getConfig();
-    console.log(`[CrawlerEngine] FINAL autoAddToLocalDB setting: ${finalConfig.autoAddToLocalDB}`);
-    
-    if (finalConfig.autoAddToLocalDB) {
+    if (currentConfig.autoAddToLocalDB) {
       try {
         // 자동 저장 옵션이 켜져 있으면 DB에 저장
         console.log('[CrawlerEngine] Automatically saving collected products to DB per user settings...');
@@ -484,7 +452,7 @@ export class CrawlerEngine {
       count: matterProducts.length,
       products: matterProducts,
       failedReport,
-      autoSavedToDb: finalConfig.autoAddToLocalDB // 자동 저장 여부도 포함
+      autoSavedToDb: currentConfig.autoAddToLocalDB
     });
   }
 

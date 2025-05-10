@@ -5,7 +5,7 @@
 
 import { chromium } from 'playwright-chromium';
 import { getDatabaseSummaryFromDb } from '../../database.js';
-import { getConfig } from '../core/config.js';
+import { configManager } from '../../ConfigManager.js'; // Added import for configManager
 
 // 캐시
 let cachedTotalPages: number | null = null;
@@ -18,7 +18,7 @@ let cachedTotalPagesFetchedAt: number | null = null;
  * @returns 총 페이지 수
  */
 export async function getTotalPagesCached(force = false): Promise<number> {
-  const config = getConfig();
+  const config = configManager.getConfig(); // Use configManager
   const now = Date.now();
   if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < (config.cacheTtlMs ?? 0))) {
     return cachedTotalPages;
@@ -36,8 +36,8 @@ export async function getTotalPagesCached(force = false): Promise<number> {
  * @returns 총 페이지 수
  */
 async function getTotalPages(): Promise<number> {
-  const config = getConfig();
-  const browser = await chromium.launch({ headless: true });
+  const config = configManager.getConfig(); // Use configManager
+  const browser = await chromium.launch({ headless: config.headlessBrowser ?? true }); // Use headlessBrowser from config
   let totalPages = 0;
   
   try {
@@ -82,7 +82,7 @@ async function getTotalPages(): Promise<number> {
  * @returns 시작 페이지와 종료 페이지
  */
 export async function determineCrawlingRange(totalPages: number): Promise<{ startPage: number; endPage: number }> {
-  const config = getConfig();
+  const config = configManager.getConfig(); // Use configManager
   const dbSummary = await getDatabaseSummaryFromDb();
   
   if (dbSummary.productCount === 0) {
