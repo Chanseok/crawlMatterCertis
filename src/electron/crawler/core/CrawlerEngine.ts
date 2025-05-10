@@ -226,14 +226,14 @@ export class CrawlerEngine {
     try {
       // 데이터베이스 정보 가져오기
       const dbSummary = await getDatabaseSummaryFromDb();
+      const currentConfig = getConfig(); // Call getConfig() once at the beginning
 
       // 페이지 정보 가져오기
       let totalPages = 0;
       try {
         const tempController = new AbortController();
         // 제품 목록 수집기 생성 시 config 전달
-        const currentConfig = getConfig(); // getConfig 호출
-        const collector = new ProductListCollector(this.state, tempController, currentConfig); // config 전달
+        const collector = new ProductListCollector(this.state, tempController, currentConfig); // Use currentConfig
         totalPages = await collector.getTotalPagesCached(true);
       } catch (e) {
         console.error('[CrawlerEngine] Error getting total pages:', e);
@@ -241,11 +241,10 @@ export class CrawlerEngine {
       }
 
       // 사이트 제품 수 계산
-      const config = getConfig();
-      const siteProductCount = totalPages * config.productsPerPage;
+      const siteProductCount = totalPages * currentConfig.productsPerPage;
       
       // 사용자 설정 페이지 제한 확인
-      const userPageLimit = config.pageRangeLimit;
+      const userPageLimit = currentConfig.pageRangeLimit;
 
       // 크롤링 범위 계산
       let crawlingRange;
@@ -254,7 +253,7 @@ export class CrawlerEngine {
         const endPage = userPageLimit > 0 ? Math.min(userPageLimit, totalPages) : totalPages;
         crawlingRange = { startPage: 1, endPage };
       } else {
-        const collectedPages = Math.floor(dbSummary.productCount / config.productsPerPage);
+        const collectedPages = Math.floor(dbSummary.productCount / currentConfig.productsPerPage);
         let endPage = Math.max(1, totalPages - collectedPages);
         
         // 페이지 제한 적용
@@ -267,7 +266,7 @@ export class CrawlerEngine {
 
       // 선택된 페이지 범위에 따른 예상 제품 수 계산
       const selectedPageCount = crawlingRange.endPage - crawlingRange.startPage + 1;
-      const estimatedProductCount = selectedPageCount * config.productsPerPage;
+      const estimatedProductCount = selectedPageCount * currentConfig.productsPerPage;
       
       // 예상 소요 시간 계산 (페이지당 평균 5초 기준)
       const estimatedTimePerPage = 5000; // 5초
