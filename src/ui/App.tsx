@@ -7,6 +7,7 @@ import { CrawlingDashboard } from './components/CrawlingDashboard';
 import { LocalDBTab } from './components/LocalDBTab';
 import { CrawlingCompleteView } from './components/CrawlingCompleteView';
 import StatusCheckLoadingAnimation from './components/StatusCheckLoadingAnimation';
+import PageProgressDisplay from './components/PageProgressDisplay';
 import {
   appModeStore,
   crawlingStatusStore,
@@ -424,6 +425,10 @@ function App() {
                        overflow: 'hidden'
                      }}>
                   <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">제품 목록 페이지 읽기</h3>
+                  
+                  {/* 성공적으로 완료된 페이지 수 표시 */}
+                  <PageProgressDisplay />
+                  
                   <ConcurrentTasksVisualizer />
                 </div>
 

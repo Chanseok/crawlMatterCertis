@@ -34,12 +34,23 @@ export function ConcurrentTasksVisualizer() {
     running: '🚀',
     success: '✅',
     error: '❌',
+    stopped: '⏹️',
+    waiting: '⌛',
+    attempting: '🔄',
+    failed: '❌',
+    incomplete: '⚠️'
   };
+  
   const statusColor: Record<string, string> = {
     pending: 'text-gray-400',
     running: 'text-blue-500 animate-bounce',
     success: 'text-green-500',
     error: 'text-red-500 animate-shake',
+    stopped: 'text-gray-500',
+    waiting: 'text-gray-400',
+    attempting: 'text-blue-500 animate-pulse',
+    failed: 'text-red-500',
+    incomplete: 'text-amber-500'
   };
 
   return (
@@ -51,7 +62,7 @@ export function ConcurrentTasksVisualizer() {
           className={`flex flex-col items-center w-14 h-14 justify-center border rounded ${statusColor[task.status]}`}
           title={`페이지 ${task.pageNumber} - ${task.status}`}
         >
-          <span className="text-2xl">{statusEmoji[task.status]}</span>
+          <span className="text-2xl">{statusEmoji[task.status] || '❓'}</span>
           <span className="text-xs mt-1">p.{task.pageNumber}</span>
         </div>
       ))}
