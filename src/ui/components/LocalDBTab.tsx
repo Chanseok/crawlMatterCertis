@@ -43,19 +43,30 @@ export const LocalDBTab: React.FC = () => {
   useEffect(() => {
     loadProducts().then(() => {
       // 데이터 로드 후 페이지 계산
-      if (products && products.length > 0) {
-        const productsPerPage = config.productsPerPage || 12;
-        const calculatedTotalPages = Math.ceil(products.length / itemsPerPage);
+      const currentProducts = productsStore.get(); // 최신 products 상태 가져오기
+      if (currentProducts && currentProducts.length > 0) {
+        const calculatedTotalPages = Math.ceil(currentProducts.length / itemsPerPage);
         
-        // 최신 데이터 표시를 위해 첫 페이지를 가장 큰 페이지 번호로 설정
         if (calculatedTotalPages > 0) {
-          setCurrentPage(calculatedTotalPages);
           setTotalPages(calculatedTotalPages);
-          setTotalProductPages(Math.ceil(products.length / productsPerPage));
+          // 최신 데이터 표시를 위해 첫 페이지를 가장 큰 페이지 번호로 설정
+          setCurrentPage(calculatedTotalPages); 
+          
+          const productsPerPage = config.productsPerPage || 12;
+          setTotalProductPages(Math.ceil(currentProducts.length / productsPerPage));
+        } else {
+          setTotalPages(1);
+          setCurrentPage(1);
+          setTotalProductPages(0);
         }
+      } else {
+        setTotalPages(1);
+        setCurrentPage(1);
+        setTotalProductPages(0);
       }
     });
-  }, []);
+  // itemsPerPage와 config.productsPerPage도 초기 로직에 영향을 줄 수 있으므로 추가
+  }, [itemsPerPage, config.productsPerPage]);
   
   // 페이지 변경 시 제품 데이터 필터링
   useEffect(() => {
@@ -67,15 +78,18 @@ export const LocalDBTab: React.FC = () => {
         // pageId와 indexInPage 조합으로 No. 값 계산
         const aNo = (a.pageId || 0) * 12 + (a.indexInPage || 0);
         const bNo = (b.pageId || 0) * 12 + (b.indexInPage || 0);
-        return bNo - aNo; // 내림차순 정렬
+        return bNo - aNo; // 내림차순 정렬 (newest first)
       });
       
       // 현재 페이지에 표시할 제품들 필터링
-      const startIndex = (currentPage - 1) * itemsPerPage;
+      const currentDisplayPage = Math.min(currentPage, totalPages > 0 ? totalPages : 1);
+      const pageIndexForSlicing = (totalPages > 0 ? totalPages : 1) - currentDisplayPage;
+      
+      const startIndex = pageIndexForSlicing * itemsPerPage;
       const endIndex = startIndex + itemsPerPage;
       const pagedProducts = sortedProducts.slice(startIndex, endIndex);
       
-      console.log(`[UI] 현재 페이지(${currentPage})의 제품 정보:`, 
+      console.log(`[UI] 현재 페이지(${currentPage} -> UI상 ${currentDisplayPage}, sliceIndex ${pageIndexForSlicing})의 제품 정보:`,
         pagedProducts.map(p => ({
           no: (p.pageId || 0) * 12 + (p.indexInPage || 0) + 1,
           pageId: p.pageId,
@@ -84,9 +98,9 @@ export const LocalDBTab: React.FC = () => {
       );
       
       setDisplayProducts(pagedProducts);
-      setTotalPages(Math.ceil(sortedProducts.length / itemsPerPage));
+      const calculatedTotalPages = Math.ceil(sortedProducts.length / itemsPerPage);
+      setTotalPages(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
       
-      // 최대 페이지 ID 찾기
       if (sortedProducts.length > 0) {
         const maxId = Math.max(...sortedProducts.map(p => p.pageId || 0));
         setMaxPageId(maxId);
@@ -95,16 +109,17 @@ export const LocalDBTab: React.FC = () => {
           endPageId: maxId
         });
         
-        // 총 제품 페이지 수 계산 (페이지당 12개 제품 기준)
         const productsPerPage = config.productsPerPage || 12;
         setTotalProductPages(Math.ceil(sortedProducts.length / productsPerPage));
       }
     } else {
       setDisplayProducts([]);
       setTotalPages(1);
+      setCurrentPage(1);
       setTotalProductPages(0);
+      setMaxPageId(0);
     }
-  }, [products, currentPage, itemsPerPage, config.productsPerPage, dbSummary.totalProducts]);
+  }, [products, currentPage, itemsPerPage, config.productsPerPage, totalPages, dbSummary.totalProducts]);
 
   // 제품 데이터 로드 함수
   const loadProducts = async () => {
@@ -167,17 +182,15 @@ export const LocalDBTab: React.FC = () => {
         
         // 총 페이지 수 재계산
         const calculatedTotalPages = Math.ceil(sortedProducts.length / itemsPerPage);
-        
-        console.log(`[UI] 레코드 삭제 후 데이터 갱신 - 총 제품: ${updatedProducts.length}, 총 페이지: ${calculatedTotalPages}`);
+        setTotalPages(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
+
+        // 삭제 후, 데이터가 있으면 가장 최신 페이지(totalPages)로 이동
+        // 데이터가 없으면 1페이지로 설정
+        setCurrentPage(calculatedTotalPages > 0 ? calculatedTotalPages : 1); 
         
         // 페이지당 제품 수를 기준으로 총 제품 페이지 수 재계산
         const productsPerPage = config.productsPerPage || 12;
         setTotalProductPages(Math.ceil(sortedProducts.length / productsPerPage));
-        
-        // 최신 데이터를 보여주기 위해 첫 페이지(가장 높은 페이지 번호)로 이동
-        // 완전히 새로운 상태로 갱신하기 위해 일관된 순서로 상태 업데이트
-        setTotalPages(calculatedTotalPages);
-        setCurrentPage(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
         
         // 최대 pageId 업데이트
         if (sortedProducts.length > 0) {
