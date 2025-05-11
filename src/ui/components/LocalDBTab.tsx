@@ -46,7 +46,7 @@ export const LocalDBTab: React.FC = () => {
       const currentProducts = productsStore.get(); // 최신 products 상태 가져오기
       if (currentProducts && currentProducts.length > 0) {
         const calculatedTotalPages = Math.ceil(currentProducts.length / itemsPerPage);
-        
+        console.log(`[UI] 전체 제품 수: ${currentProducts.length}, 페이지 수: ${calculatedTotalPages}`);
         if (calculatedTotalPages > 0) {
           setTotalPages(calculatedTotalPages);
           // 최신 데이터 표시를 위해 첫 페이지를 가장 큰 페이지 번호로 설정
@@ -126,7 +126,7 @@ export const LocalDBTab: React.FC = () => {
     try {
       console.log('제품 데이터 로드 시작');
       // 백엔드에서 데이터를 가져옴 (내림차순 정렬 요청)
-      await searchProducts('', 1, 5000); // 최대한 많은 데이터 로드
+      await searchProducts('', 1, 6000); // 최대한 많은 데이터 로드
       
       // 데이터베이스 요약 정보도 함께 갱신
       await getDatabaseSummary();
@@ -373,7 +373,7 @@ export const LocalDBTab: React.FC = () => {
                   {totalProductPages?.toLocaleString() || '0'}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  (페이지당 {config.productsPerPage || 12}개 제품 기준)
+                  (DB 조회 제품 상한 6,000개 기준)
                 </div>
               </div>
               
