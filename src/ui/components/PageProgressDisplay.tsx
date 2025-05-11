@@ -13,7 +13,7 @@ export const PageProgressDisplay: React.FC = () => {
   
   // 페이지 수 계산 로직
   let displaySuccessPages = successPages;
-  let displayTotalPages: number | string = '${targetPageCount}';
+  let displayTotalPages: number | string = '-';
   
   // 크롤링 상태에 따른 표시 설정
   if (crawlingStatus === 'running' || crawlingStatus === 'completed' || crawlingStatus === 'completed_stage_1') {
