@@ -22,9 +22,16 @@ export class BrowserManager {
   private context: BrowserContext | null = null;
   private readonly config: CrawlerConfig;
   private pageContextMap: Map<Page, BrowserContext> = new Map();
+  
+  // 컨텍스트 풀 관련 속성 추가
+  private contextPool: BrowserContext[] = [];
+  private maxPoolSize: number = 6; // 기본 풀 크기 
 
   constructor(config: CrawlerConfig) {
     this.config = config;
+    
+    // 하드코딩된 풀 크기 설정 (필요시 설정에 추가할 수 있음)
+    this.maxPoolSize = 3; // 적절한 크기로 설정
   }
 
   /**
@@ -244,6 +251,9 @@ export class BrowserManager {
   public async close(): Promise<void> {
     debugLog('[BrowserManager] Closing all browser resources (isolated contexts, main context, and browser).');
     
+    // 컨텍스트 풀 정리
+    await this.cleanupContextPool();
+    
     // 페이지-컨텍스트 매핑에 있는 모든 페이지와 컨텍스트 정리
     if (this.pageContextMap.size > 0) {
       debugLog(`[BrowserManager] Cleaning up ${this.pageContextMap.size} page-context mappings.`);
@@ -392,6 +402,84 @@ export class BrowserManager {
     } catch (error) {
       debugLog('[BrowserManager] Error during page and context cleanup:', error);
       // 오류가 발생해도 계속 진행하여 리소스 누수 방지
+    }
+  }
+
+  /**
+   * 컨텍스트 풀에서 컨텍스트를 가져옵니다.
+   * 사용 가능한 컨텍스트가 없으면 새 컨텍스트를 생성합니다.
+   */
+  public async getContextFromPool(): Promise<BrowserContext> {
+    // 풀에 사용 가능한 컨텍스트가 있으면 반환
+    if (this.contextPool.length > 0) {
+      const context = this.contextPool.pop()!;
+      // debugLog(`[BrowserManager] Reusing context from pool. Remaining: ${this.contextPool.length}`);
+      return context;
+    }
+    
+    // 없으면 새 컨텍스트 생성
+    // debugLog(`[BrowserManager] No context available in pool. Creating new context.`);
+    return await this.createContext();
+  }
+
+  /**
+   * 컨텍스트를 풀에 반환합니다.
+   * 풀이 최대 크기에 도달한 경우 컨텍스트를 닫습니다.
+   */
+  public async returnContextToPool(context: BrowserContext): Promise<void> {
+    // 컨텍스트 유효성 검사
+    try {
+      await context.pages();
+    } catch (e) {
+      debugLog(`[BrowserManager] Cannot return invalid context to pool:`, e);
+      await this.safeCloseContext(context);
+      return;
+    }
+
+    // 열린 페이지가 있으면 닫기
+    const pages = await context.pages();
+    if (pages.length > 0) {
+      debugLog(`[BrowserManager] Closing ${pages.length} pages before returning context to pool.`);
+      await Promise.all(pages.map(page => page.close().catch(e => {
+        debugLog(`[BrowserManager] Error closing page in returned context:`, e);
+      })));
+    }
+
+    // 풀이 최대 크기 미만이면 컨텍스트 추가, 아니면 닫기
+    if (this.contextPool.length < this.maxPoolSize) {
+      this.contextPool.push(context);
+      // debugLog(`[BrowserManager] Returned context to pool. Pool size: ${this.contextPool.length}/${this.maxPoolSize}`);
+    } else {
+      // debugLog(`[BrowserManager] Pool is full (${this.maxPoolSize}). Closing returned context.`);
+      await this.safeCloseContext(context);
+    }
+  }
+
+  /**
+   * 컨텍스트와 해당 페이지를 안전하게 닫습니다.
+   */
+  private async safeCloseContext(context: BrowserContext): Promise<void> {
+    try {
+      await context.close();
+    } catch (e) {
+      debugLog(`[BrowserManager] Error closing context:`, e);
+    }
+  }
+
+  /**
+   * 컨텍스트 풀을 정리합니다.
+   */
+  private async cleanupContextPool(): Promise<void> {
+    if (this.contextPool.length > 0) {
+      debugLog(`[BrowserManager] Cleaning up context pool (${this.contextPool.length} contexts).`);
+      const contexts = [...this.contextPool];
+      this.contextPool = [];
+      
+      for (const context of contexts) {
+        await this.safeCloseContext(context);
+      }
+      
+      debugLog(`[BrowserManager] Context pool cleaned up.`);
     }
   }
 }

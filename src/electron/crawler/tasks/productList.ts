@@ -602,7 +602,7 @@ export class ProductListCollector {
       let page: Page | null = null;
       try {
         debugLog(`[ProductListCollector] _fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS}`);
-        context = await this.browserManager.createContext();
+        context = await this.browserManager.getContextFromPool();
         page = await this.browserManager.createPageInContext(context);
         if (!page) {
           throw new PageInitializationError('Failed to create page in new context for _fetchTotalPages', 0, attempt);
@@ -699,15 +699,24 @@ export class ProductListCollector {
       } finally {
         if (page) {
           try {
-            await this.browserManager.closePageAndContext(page);
+            // 페이지만 닫고 컨텍스트는 풀로 반환
+            if (!page.isClosed()) {
+              await page.close();
+            }
+            
+            // 컨텍스트 풀에 반환
+            if (context) {
+              await this.browserManager.returnContextToPool(context);
+            }
           } catch (e) {
             console.error(`[ProductListCollector] Error releasing page and context in _fetchTotalPages (Attempt ${attempt}):`, e);
           }
         } else if (context) { // If page creation failed but context was made
           try {
-            await context.close();
+            // 컨텍스트 풀에 반환
+            await this.browserManager.returnContextToPool(context);
           } catch (e) {
-            console.error(`[ProductListCollector] Error releasing context in _fetchTotalPages (Attempt ${attempt}):`, e);
+            console.error(`[ProductListCollector] Error returning context to pool in _fetchTotalPages (Attempt ${attempt}):`, e);
           }
         }
       }
@@ -841,7 +850,8 @@ export class ProductListCollector {
     let page: Page | null = null;
 
     try {
-      context = await this.browserManager.createContext();
+      // 컨텍스트 풀에서 컨텍스트 가져오기
+      context = await this.browserManager.getContextFromPool();
       page = await this.browserManager.createPageInContext(context);
       if (!page) {
         throw new PageInitializationError('Failed to create page in new context', pageNumber, attempt);
@@ -876,9 +886,20 @@ export class ProductListCollector {
       throw new PageOperationError(`Unknown error crawling page ${pageNumber} (attempt ${attempt}). URL: ${pageUrl}`, pageNumber, attempt);
     } finally {
       if (page) {
-        await this.browserManager.closePageAndContext(page);
+        // 페이지만 닫고 컨텍스트는 풀로 반환
+        if (!page.isClosed()) {
+          await page.close().catch(e => {
+            debugLog(`[ProductListCollector] Error closing page for ${pageNumber}: ${e}`);
+          });
+        }
+        
+        // 컨텍스트가 유효하면 풀에 반환
+        if (context) {
+          await this.browserManager.returnContextToPool(context);
+        }
       } else if (context) {
-        await context.close();
+        // 페이지 생성 실패 시 컨텍스트 반환
+        await this.browserManager.returnContextToPool(context);
       }
     }
   }
