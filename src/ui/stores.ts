@@ -421,6 +421,17 @@ export function updateCrawlingProgress(progress: Partial<CrawlingProgress>): voi
 // 크롤링 시작 함수
 export async function startCrawling(): Promise<void> {
   try {
+    // 상태 요약 정보가 비어있는지 확인하고, 비어있으면 자동으로 상태 체크 실행
+    const statusSummary = crawlingStatusSummaryStore.get();
+    const isStatusEmpty = Object.keys(statusSummary).length === 0;
+    
+    if (isStatusEmpty) {
+      addLog('자동 상태 체크를 먼저 실행합니다...', 'info');
+      await checkCrawlingStatus();
+      // 상태 체크 이후 잠시 대기하여 UI 업데이트 시간 제공
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
     crawlingStatusStore.set('running');
     addLog('크롤링을 시작합니다...', 'info');
     
@@ -432,10 +443,16 @@ export async function startCrawling(): Promise<void> {
     addLog(`설정: 페이지 범위 ${config.pageRangeLimit}, 제품 목록 재시도 ${config.productListRetryCount}회, 제품 상세 재시도 ${config.productDetailRetryCount}회`, 'info');
     
     // API를 통해 크롤링 시작 (설정 전달 기능 추가 필요)
-    const { success } = await api.invokeMethod('startCrawling', { 
+    const { success, status } = await api.invokeMethod<'startCrawling', { success: boolean; status?: CrawlingStatusSummary }>('startCrawling', { 
       mode: appModeStore.get(),
       config: configStore.get() // 설정 전달 (향후 백엔드 업데이트 필요)
     });
+    
+    // 백엔드에서 status 정보를 받아오면 상태 정보 업데이트
+    if (status) {
+      crawlingStatusSummaryStore.set(status);
+      addLog(`상태 정보 업데이트: DB 제품수: ${status.dbProductCount}, 사이트 제품수: ${status.siteProductCount}, 차이: ${status.diff}`, 'info');
+    }
     
     if (!success) {
       crawlingStatusStore.set('error');

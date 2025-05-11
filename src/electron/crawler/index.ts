@@ -24,6 +24,14 @@ export async function startCrawling(): Promise<boolean> {
   console.log('[Crawler] Final config before starting crawling:', JSON.stringify(finalConfig));
   console.log(`[Crawler] autoAddToLocalDB is set to: ${finalConfig.autoAddToLocalDB}`);
   
+  // CrawlerEngine.startCrawling() 메서드를 호출하면 내부에서 
+  // 자동으로 checkCrawlingStatus를 수행하므로 별도로 호출할 필요가 없음
+  // 이는 dist-electron/electron/crawler/core/CrawlerEngine.js 파일에 구현되어 있음:
+  // try {
+  //   console.log('[CrawlerEngine] Performing pre-crawl status check...');
+  //   this.state.setStage('preCheck', '사전 상태 확인 중...'); 
+  //   const summary = await this.checkCrawlingStatus();
+  //   ...
   return crawler.startCrawling();
 }
 
