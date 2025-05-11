@@ -14,23 +14,10 @@ const crawler = new CrawlerEngine();
 
 /**
  * 크롤링 작업을 시작하는 함수
- * @param userConfig UI에서 전달받은 사용자 설정 (옵션)
  * @returns 크롤링 작업 시작 성공 여부
  */
-export async function startCrawling(userConfig?: Partial<CrawlerConfig> | null): Promise<boolean> {
-  console.log('[Crawler] startCrawling called with config:', JSON.stringify(userConfig));
-  
-  if (userConfig) {
-    // UI에서 전달받은 설정이 있으면 크롤러 설정 업데이트
-    console.log('[Crawler] Applying user config from UI');
-    
-    // autoAddToLocalDB 설정값 명시적 로깅
-    if (userConfig.autoAddToLocalDB !== undefined) {
-      console.log(`[Crawler] Setting autoAddToLocalDB to: ${userConfig.autoAddToLocalDB}`);
-    }
-    
-    configManager.updateConfig(userConfig);
-  }
+export async function startCrawling(): Promise<boolean> {
+  console.log('[Crawler] startCrawling called');
   
   // 최종 설정값 로깅 (업데이트 후)
   const finalConfig = configManager.getConfig();

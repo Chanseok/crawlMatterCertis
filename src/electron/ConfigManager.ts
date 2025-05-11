@@ -7,7 +7,7 @@ import { CrawlerConfig } from '../../types.js';
 const MIN_RETRY_COUNT = 3;
 const MAX_RETRY_COUNT = 20;
 const MIN_PAGE_RANGE_LIMIT = 1;
-const MAX_PAGE_RANGE_LIMIT = 100;
+const MAX_PAGE_RANGE_LIMIT = 500;
 const MIN_PRODUCTS_PER_PAGE = 1;
 const MAX_PRODUCTS_PER_PAGE = 100; // Example: Max 100 products per page for sanity
 
@@ -23,8 +23,8 @@ const DEFAULT_CONFIG: CrawlerConfig = {
   // Fields previously in core/config.ts's defaultConfig
   baseUrl: 'https://csa-iot.org/csa-iot_products/',
   matterFilterUrl: 'https://csa-iot.org/csa-iot_products/?p_keywords=&p_type%5B%5D=14&p_program_type%5B%5D=1049&p_certificate=&p_family=&p_firmware_ver=',
-  pageTimeoutMs: 30000,
-  productDetailTimeoutMs: 30000,
+  pageTimeoutMs: 15000,
+  productDetailTimeoutMs: 10000,
   initialConcurrency: 16,
   detailConcurrency: 16,
   retryConcurrency: 9,

@@ -94,6 +94,12 @@ export type CrawlingStatusSummary = {
     diff: number;
     needCrawling: boolean;
     crawlingRange: { startPage: number; endPage: number };
+    lastPageProductCount?: number; 
+    selectedPageCount?: number; 
+    estimatedProductCount?: number; 
+    estimatedTotalTime?: number; 
+    userPageLimit?: number; 
+    error?: string; 
 };
 
 // 데이터베이스 요약 정보 타입
@@ -273,7 +279,7 @@ export interface IElectronAPI extends IPlatformAPI {
     // 설정 관련 메서드 추가
     getConfig: () => Promise<MethodReturnMapping['crawler:get-config']>;
     updateConfig: (config: MethodParamsMapping['crawler:update-config']) => Promise<MethodReturnMapping['crawler:update-config']>;
-    resetConfig: () => Promise<MethodReturnMapping['crawler:reset-config']>;
+    resetConfig: (config: MethodParamsMapping['crawler:reset-config']) => Promise<MethodReturnMapping['crawler:reset-config']>;
     
     // 페이지 범위로 레코드 삭제 메서드 추가
     deleteRecordsByPageRange: (params: MethodParamsMapping['deleteRecordsByPageRange']) => Promise<MethodReturnMapping['deleteRecordsByPageRange']>;

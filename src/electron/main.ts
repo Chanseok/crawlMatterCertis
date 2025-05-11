@@ -162,34 +162,35 @@ app.on('ready', async () => {
         
         // 안전한 매개변수 처리
         let mode: AppMode = 'development'; // 기본값
-        let config = null; // 설정 추가
         
         try {
             if (args && typeof args === 'object') {
                 if ('mode' in args) {
                     mode = args.mode as AppMode;
                 }
-                // 설정 데이터 추출
+                // 설정 데이터 추출 및 업데이트
                 if ('config' in args && args.config) {
-                    config = args.config;
-                    console.log('[IPC] Using config from UI:', JSON.stringify(config));
+                    const newConfig = args.config;
+                    console.log('[IPC] Updating config from UI:', JSON.stringify(newConfig));
                     
                     // autoAddToLocalDB 값 명시적 로깅
-                    console.log(`[IPC] autoAddToLocalDB setting: ${config.autoAddToLocalDB}`);
-                    
-                    // 설정 업데이트
-                    configManager.updateConfig(config);
+                    if (newConfig.autoAddToLocalDB !== undefined) {
+                        console.log(`[IPC] autoAddToLocalDB setting from UI: ${newConfig.autoAddToLocalDB}`);
+                    }
+                    configManager.updateConfig(newConfig); // Update central config store
                 }
             }
         } catch (err) {
-            console.error('[IPC] Error parsing startCrawling args:', err);
+            console.error('[IPC] Error parsing startCrawling args or updating config:', err);
+            // Optionally, return an error if config update itself fails critically
         }
         
-        console.log(`[IPC] Start crawling requested in ${mode} mode with config:`, config);
+        const currentConfigForCrawling = configManager.getConfig();
+        console.log(`[IPC] Start crawling requested in ${mode} mode with effective config:`, currentConfigForCrawling);
         
         try {
-            // 설정 전달하여 크롤링 시작
-            const success = await startCrawling(config);
+            // 크롤링 시작 (이제 config를 인자로 받지 않음)
+            const success = await startCrawling();
             return { success };
         } catch (error) {
             console.error('[IPC] Error during crawling:', error);

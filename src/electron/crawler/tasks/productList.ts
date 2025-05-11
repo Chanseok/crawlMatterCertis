@@ -18,6 +18,7 @@ import { type CrawlerConfig } from '../core/config.js';
 import { crawlerEvents, updateRetryStatus, logRetryError } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';
 import { BrowserManager } from '../browser/BrowserManager.js'; // Corrected path
+import { delay } from '../utils/delay.js';
 
 // --- 사용자 정의 오류 클래스 --- 
 class PageOperationError extends Error {
@@ -358,8 +359,10 @@ export class ProductListCollector {
       if (!this.config.matterFilterUrl) {
         throw new Error('Configuration error: matterFilterUrl is not defined.');
       }
+      delay(1000); // Optional delay before navigation
       debugLog(`[ProductListCollector] Navigating to ${this.config.matterFilterUrl} to fetch total pages.`);
       await page.goto(this.config.matterFilterUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
+      debugLog(`[ProductListCollector] Page loaded: ${page.url()} with pageTimeoutMs: ${this.config.pageTimeoutMs}`);
 
       const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
       let totalPages = 0;

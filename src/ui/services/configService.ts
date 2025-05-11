@@ -14,17 +14,18 @@ export async function getConfig(): Promise<CrawlerConfig> {
     if (response.success && response.config) {
       return response.config;
     }
-    throw new Error('설정을 가져오는데 실패했습니다.');
+    // If success is false, or config is missing, throw an error.
+    // The main process (ConfigManager) guarantees a valid config object (loaded or default).
+    const errorMessage = response.error || '설정을 가져오는데 실패했습니다. 응답 형식이 올바르지 않습니다.';
+    console.error('설정을 가져오는 중 오류 발생 (IPC):', errorMessage);
+    throw new Error(errorMessage);
   } catch (error) {
-    console.error('설정을 가져오는 중 오류 발생:', error);
-    // 기본값 반환
-    return {
-      pageRangeLimit: 10,
-      productListRetryCount: 9,
-      productDetailRetryCount: 9,
-      productsPerPage: 12,  // 필수 필드 추가
-      autoAddToLocalDB: false // 기본값 추가
-    };
+    // Log the error if it's not already logged by the above specific check
+    if (!(error instanceof Error && error.message.startsWith('설정을 가져오는 중 오류 발생 (IPC):'))) {
+        console.error('설정을 가져오는 중 예기치 않은 오류 발생:', error);
+    }
+    // Re-throw the original error or a new one
+    throw error instanceof Error ? error : new Error(String(error));
   }
 }
 

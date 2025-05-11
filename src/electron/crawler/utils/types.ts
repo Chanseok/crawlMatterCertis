@@ -53,6 +53,7 @@ export interface CrawlingSummary {
     estimatedProductCount?: number;    // 예상 제품 수집 개수
     estimatedTotalTime?: number;       // 예상 소요 시간 (밀리초)
     userPageLimit?: number;            // 사용자 지정 페이지 제한
+    lastPageProductCount?: number;     // 마지막 페이지의 제품 수 추가
 }
 
 /**
