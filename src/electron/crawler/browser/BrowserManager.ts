@@ -21,6 +21,7 @@ export class BrowserManager {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private readonly config: CrawlerConfig;
+  private pageContextMap: Map<Page, BrowserContext> = new Map();
 
   constructor(config: CrawlerConfig) {
     this.config = config;
@@ -237,20 +238,53 @@ export class BrowserManager {
    * 브라우저 및 컨텍스트 종료
    */
   public async close(): Promise<void> {
-    debugLog('[BrowserManager] Closing browser resources (context and browser).');
+    debugLog('[BrowserManager] Closing all browser resources (isolated contexts, main context, and browser).');
+    
+    // 페이지-컨텍스트 매핑에 있는 모든 페이지와 컨텍스트 정리
+    if (this.pageContextMap.size > 0) {
+      debugLog(`[BrowserManager] Cleaning up ${this.pageContextMap.size} page-context mappings.`);
+      const uniqueContexts = new Set<BrowserContext>();
+      
+      // 닫히지 않은 페이지들 먼저 닫기
+      for (const [page, context] of this.pageContextMap.entries()) {
+        uniqueContexts.add(context);
+        if (!page.isClosed()) {
+          try {
+            await page.close();
+          } catch (e) {
+            debugLog('[BrowserManager] Error closing page during cleanup:', e);
+          }
+        }
+      }
+      
+      // 발견된 모든 컨텍스트 닫기 (중복 없이)
+      for (const context of uniqueContexts) {
+        try {
+          await context.close();
+        } catch (e) {
+          debugLog('[BrowserManager] Error closing isolated context during cleanup:', e);
+        }
+      }
+      
+      this.pageContextMap.clear();
+      debugLog('[BrowserManager] All isolated page-context mappings cleaned up.');
+    }
+    
+    // 기본 컨텍스트 정리
     if (this.context) {
       try {
         await this.context.close();
-        debugLog('[BrowserManager] Browser context closed successfully.');
+        debugLog('[BrowserManager] Main browser context closed successfully.');
       } catch (e) {
-        debugLog('[BrowserManager] Error while closing context:', e);
+        debugLog('[BrowserManager] Error while closing main context:', e);
       } finally {
         this.context = null;
       }
     } else {
-      debugLog('[BrowserManager] No active context to close.');
+      debugLog('[BrowserManager] No active main context to close.');
     }
 
+    // 브라우저 정리
     if (this.browser && this.browser.isConnected()) {
       try {
         await this.browser.close();
@@ -263,9 +297,97 @@ export class BrowserManager {
     } else {
       debugLog('[BrowserManager] No active or connected browser to close.');
     }
-    // Ensure they are nullified even if already null or if close threw an error that was caught.
+    
+    // 모든 참조 정리
     this.browser = null;
     this.context = null;
     debugLog('[BrowserManager] All browser resources have been addressed for closure.');
+  }
+
+  /**
+   * 새로운 브라우저 컨텍스트를 생성합니다.
+   * 각 페이지별 격리된 컨텍스트가 필요할 때 사용합니다.
+   */
+  public async createContext(): Promise<BrowserContext> {
+    debugLog('[BrowserManager] Creating a new isolated browser context...');
+    
+    // 브라우저가 초기화되지 않았거나 연결되지 않은 경우 초기화
+    if (!this.browser || !this.browser.isConnected()) {
+      debugLog('[BrowserManager] Browser not initialized or not connected. Initializing browser first.');
+      await this.initializeBrowserInternal();
+      if (!this.browser) {
+        throw new Error('[BrowserManager] Browser initialization failed. Cannot create context.');
+      }
+    }
+    
+    try {
+      const newContext = await this.browser.newContext({
+        userAgent: getRandomUserAgent(),
+        // 필요한 경우 추가 컨텍스트 옵션 설정
+      });
+      debugLog('[BrowserManager] New isolated browser context created successfully.');
+      return newContext;
+    } catch (error) {
+      debugLog('[BrowserManager] Failed to create new isolated browser context:', error);
+      throw new Error(`Failed to create isolated browser context: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * 지정된 컨텍스트 내에서 새 페이지를 생성합니다.
+   * 이 메서드는 페이지와 컨텍스트 간의 연결을 관리합니다.
+   */
+  public async createPageInContext(context: BrowserContext): Promise<Page> {
+    debugLog('[BrowserManager] Creating a new page in the provided context...');
+    
+    try {
+      const page = await context.newPage();
+      this.pageContextMap.set(page, context); // 페이지-컨텍스트 매핑 기록
+      debugLog('[BrowserManager] New page created in isolated context successfully.');
+      return page;
+    } catch (error) {
+      debugLog('[BrowserManager] Failed to create new page in provided context:', error);
+      throw new Error(`Failed to create page in context: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * 페이지와 해당 컨텍스트를 함께 닫습니다.
+   * 이 메서드는 페이지 사용 후 리소스를 정리하는 데 사용됩니다.
+   */
+  public async closePageAndContext(page: Page): Promise<void> {
+    debugLog('[BrowserManager] Closing page and its associated context...');
+    
+    // 페이지가 유효한 경우에만 처리
+    if (!page || page.isClosed()) {
+      debugLog('[BrowserManager] Page is already closed or invalid.');
+      return;
+    }
+    
+    try {
+      // 페이지에 연결된 컨텍스트 찾기
+      const context = this.pageContextMap.get(page);
+      
+      // 페이지 닫기
+      await page.close();
+      debugLog('[BrowserManager] Page closed successfully.');
+      
+      // 페이지-컨텍스트 매핑에서 제거
+      this.pageContextMap.delete(page);
+      
+      // 해당 컨텍스트가 있으면 닫기 시도
+      if (context) {
+        try {
+          await context.close();
+          debugLog('[BrowserManager] Associated context closed successfully.');
+        } catch (e) {
+          // 이미 닫혔거나 다른 오류가 발생한 경우 로그만 남김
+          debugLog('[BrowserManager] Error closing context, may already be closed:', e);
+        }
+      }
+    } catch (error) {
+      debugLog('[BrowserManager] Error during page and context cleanup:', error);
+      // 오류가 발생해도 계속 진행하여 리소스 누수 방지
+    }
   }
 }

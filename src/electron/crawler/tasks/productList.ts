@@ -3,7 +3,7 @@
  * 제품 목록 수집을 담당하는 클래스
  */
 
-import { type Page } from 'playwright-chromium';
+import { type Page, type BrowserContext } from 'playwright-chromium';
 // import { getDatabaseSummaryFromDb } from '../../database.js';
 
 import { CrawlerState } from '../core/CrawlerState.js';
@@ -349,17 +349,19 @@ export class ProductListCollector {
   }
 
   private async _fetchTotalPages(): Promise<{ totalPages: number; lastPageProductCount: number }> {
+    let context: BrowserContext | null = null;
     let page: Page | null = null;
     try {
-      page = await this.browserManager.getPage();
+      context = await this.browserManager.createContext();
+      page = await this.browserManager.createPageInContext(context);
       if (!page) {
-        throw new Error('Failed to get a page from BrowserManager.');
+        throw new Error('Failed to create page in new context.');
       }
 
       if (!this.config.matterFilterUrl) {
         throw new Error('Configuration error: matterFilterUrl is not defined.');
       }
-      delay(1000); // Optional delay before navigation
+      await delay(1000); // Optional delay before navigation
       debugLog(`[ProductListCollector] Navigating to ${this.config.matterFilterUrl} to fetch total pages.`);
       await page.goto(this.config.matterFilterUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
       debugLog(`[ProductListCollector] Page loaded: ${page.url()} with pageTimeoutMs: ${this.config.pageTimeoutMs}`);
@@ -427,9 +429,9 @@ export class ProductListCollector {
     } finally {
       if (page) {
         try {
-          await this.browserManager.closePage(page);
+          await this.browserManager.closePageAndContext(page);
         } catch (e) {
-          console.error("[ProductListCollector] Error releasing page in _fetchTotalPages:", e);
+          console.error("[ProductListCollector] Error releasing page and context in _fetchTotalPages:", e);
         }
       }
     }
@@ -816,13 +818,22 @@ export class ProductListCollector {
     }
 
     const pageUrl = `${this.config.matterFilterUrl}&paged=${pageNumber}`;
+    let context: BrowserContext | null = null;
     let page: Page | null = null;
     const timeout = this.config.pageTimeoutMs ?? 60000; // Default to 60 seconds
 
     try {
-      page = await this.browserManager.getPage();
+      // 매 페이지마다 독립된 컨텍스트를 생성하여 안정성 확보
+      context = await this.browserManager.createContext();
+      page = await this.browserManager.createPageInContext(context);
+      
       if (!page) {
-        throw new PageInitializationError('Failed to get a page from BrowserManager.', pageNumber, attempt);
+        throw new PageInitializationError('Failed to create page in new context', pageNumber, attempt);
+      }
+
+      // 잠시 대기하여 네트워크 부하 분산 (선택적)
+      if (attempt > 1) {
+        await delay(Math.random() * 1000 + 500); // 재시도 시 500-1500ms 사이의 무작위 딜레이
       }
 
       await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout });
@@ -849,7 +860,8 @@ export class ProductListCollector {
       }
     } finally {
       if (page) {
-        await this.browserManager.closePage(page);
+        // 페이지와 연관된 컨텍스트를 함께 정리
+        await this.browserManager.closePageAndContext(page);
       }
     }
   }
