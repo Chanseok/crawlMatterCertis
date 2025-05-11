@@ -1,6 +1,5 @@
-import { useStore } from '@nanostores/react'
+import { useStore } from '@nanostores/react';
 import { crawlingProgressStore, crawlingStatusStore, configStore, crawlingStatusSummaryStore } from '../stores';
-import { format } from 'date-fns';
 import { useEffect, useState, useRef } from 'react';
 
 /**
@@ -162,66 +161,62 @@ export function CrawlingDashboard() {
 
   const [animatedDigits, setAnimatedDigits] = useState({
     currentPage: false,
+    processedItems: false,
     retryCount: false,
     newItems: false,
-    updatedItems: false
+    updatedItems: false,
+    elapsedTime: false,
+    remainingTime: false
   });
 
   // 단계 전환 애니메이션을 위한 상태
   const [prevStage, setPrevStage] = useState<number | null>(null);
-  const [stageTransition, setStageTransition] = useState(false);
 
-  // 단계 변경 감지 및 애니메이션 처리
+  // 단계 변경 감지
   useEffect(() => {
     if (prevStage !== null && prevStage !== progress.currentStage) {
       // 단계 전환 애니메이션 시작
-      setStageTransition(true);
-
       // 애니메이션 종료 후 상태 리셋
-      setTimeout(() => {
-        setStageTransition(false);
-      }, 1000); // 애니메이션 시간과 맞춤
     }
 
-    // 명시적으로 타입 체크 후 할당
     if (progress.currentStage !== undefined) {
       setPrevStage(progress.currentStage);
     }
-  }, [progress.currentStage]);
+  }, [progress.currentStage, prevStage]);
 
   // 애니메이션 효과를 위한 useEffect
   const prevProgress = useRef(progress);
   useEffect(() => {
-    // 값이 변경되었을 때만 애니메이션 적용
     if (prevProgress.current) {
-      // 1단계: 페이지 수집 진행 상태
       if (progress.currentPage !== prevProgress.current.currentPage) {
         setAnimatedDigits(prev => ({ ...prev, currentPage: true }));
         setTimeout(() => setAnimatedDigits(prev => ({ ...prev, currentPage: false })), 300);
       }
-
-      // 2단계: 제품 상세 수집 진행 상태
       if (progress.processedItems !== prevProgress.current.processedItems) {
         setAnimatedDigits(prev => ({ ...prev, processedItems: true }));
         setTimeout(() => setAnimatedDigits(prev => ({ ...prev, processedItems: false })), 300);
       }
-
       if (progress.retryCount !== prevProgress.current.retryCount) {
         setAnimatedDigits(prev => ({ ...prev, retryCount: true }));
         setTimeout(() => setAnimatedDigits(prev => ({ ...prev, retryCount: false })), 300);
       }
-
+      if (progress.newItems !== prevProgress.current.newItems) {
+        setAnimatedDigits(prev => ({ ...prev, newItems: true }));
+        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, newItems: false })), 300);
+      }
+      if (progress.updatedItems !== prevProgress.current.updatedItems) {
+        setAnimatedDigits(prev => ({ ...prev, updatedItems: true }));
+        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, updatedItems: false })), 300);
+      }
       if (progress.elapsedTime !== prevProgress.current.elapsedTime) {
         setAnimatedDigits(prev => ({ ...prev, elapsedTime: true }));
         setTimeout(() => setAnimatedDigits(prev => ({ ...prev, elapsedTime: false })), 300);
       }
-
       if (progress.remainingTime !== prevProgress.current.remainingTime) {
         setAnimatedDigits(prev => ({ ...prev, remainingTime: true }));
         setTimeout(() => setAnimatedDigits(prev => ({ ...prev, remainingTime: false })), 300);
       }
     }
-
     prevProgress.current = progress;
   }, [progress]);
 
@@ -289,160 +284,125 @@ export function CrawlingDashboard() {
   }, [progress.percentage, progress.currentPage, progress.processedItems, progress.newItems, progress.updatedItems, progress.retryCount, calculatedPercentage]);
 
   // 시간 형식 변환 함수
-  const formatDuration = (milliseconds: number | undefined): string => {
-    if (!milliseconds) return '0초';
+  const formatDuration = (milliseconds: number | undefined | null): string => {
+    if (milliseconds === undefined || milliseconds === null || isNaN(milliseconds)) return '0초';
+    if (milliseconds === 0) return '0초';
 
-    const seconds = Math.floor(milliseconds / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
 
     if (hours > 0) {
-      return `${hours}시간 ${minutes % 60}분 ${seconds % 60}초`;
+      return `${hours}시간 ${minutes}분 ${seconds}초`;
     } else if (minutes > 0) {
-      return `${minutes}분 ${seconds % 60}초`;
+      return `${minutes}분 ${seconds}초`;
     } else {
       return `${seconds}초`;
     }
   };
 
-  // 상태에 따른 배지 컬러 선택
-  const getStatusBadgeColor = () => {
+  const isInitialState = status !== 'running' &&
+    (!progress.elapsedTime || progress.elapsedTime === 0) &&
+    (!progress.currentPage || progress.currentPage === 0) &&
+    (!progress.processedItems || progress.processedItems === 0);
+
+  let collectionStatusText = "제품 상세 수집 현황";
+  let retryStatusText = "제품 상세 재시도";
+
+  if (isInitialState) {
+    collectionStatusText = "수집 현황 준비";
+    retryStatusText = "재시도 준비";
+  } else if (status === 'running' && (progress.currentStage === 1 || progress.currentStage === 2)) {
+    collectionStatusText = "제품 정보 수집";
+    retryStatusText = "제품 정보 재시도";
+  }
+
+  let remainingTimeDisplay: string;
+  if (isInitialState && (localTime.remainingTime === 0 || localTime.remainingTime === undefined || localTime.remainingTime === null || isNaN(localTime.remainingTime))) {
+    remainingTimeDisplay = "--";
+  } else {
+    remainingTimeDisplay = formatDuration(localTime.remainingTime);
+  }
+
+  function getStatusBadgeColor() {
     switch (status) {
+      case 'idle':
+        return 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
       case 'running':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 animate-pulse';
+      case 'paused':
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
       case 'completed':
         return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
       case 'error':
         return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
-      case 'paused':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
+      case 'stopped':
+        return 'bg-red-200 text-red-900 dark:bg-red-800 dark:text-red-200';
+      case 'initializing':
+        return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300';
       default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+        return 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
     }
-  };
+  }
 
-  // 단계별 표시 헬퍼 함수
-  const getStageBadge = () => {
-    if (progress.currentStage === 1) {
-      return (
-        <span className={`px-2 py-1 text-xs font-medium rounded-md bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 ${stageTransition ? 'animate-stage-transition' : ''}`}>
-          1/2단계: 제품 목록 수집
-        </span>
-      );
-    } else if (progress.currentStage === 2) {
-      return (
-        <span className={`px-2 py-1 text-xs font-medium rounded-md bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300 ${stageTransition ? 'animate-stage-transition' : ''}`}>
-          2/2단계: 제품 상세 정보 수집
-        </span>
-      );
+  function getStageBadge() {
+    let stageText = '대기중';
+    let stageColor = 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+
+    if (status === 'running' || status === 'completed' || status === 'paused') {
+      if (progress.currentStage === 1) {
+        stageText = '1단계: 목록 수집';
+        stageColor = 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300';
+      } else if (progress.currentStage === 2) {
+        stageText = '2단계: 상세 수집';
+        stageColor = 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300';
+      } else if (status === 'completed' && !progress.currentStage) {
+        // 크롤링이 완료되었지만 currentStage가 없는 경우 (예: 초기 완료 상태)
+         stageText = '완료';
+         stageColor = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
+      }
+    } else if (status === 'error') {
+      stageText = '오류 발생';
+      stageColor = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
+    } else if (status === 'stopped') {
+      stageText = '중단됨';
+      stageColor = 'bg-red-200 text-red-900 dark:bg-red-800 dark:text-red-200';
+    } else if (status === 'initializing') {
+      stageText = '초기화 중';
+      stageColor = 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300';
     }
+
+
     return (
-      <span className="px-2 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
-        대기 중
+      <span className={`px-2 py-1 text-xs font-medium rounded-full ${stageColor}`}>
+        {stageText}
       </span>
     );
-  };
+  }
 
-  // 재시도 정보 표시
-  const getRetryInfo = () => {
-    const hasRetryInfo = progress &&
-      (progress.retryCount !== undefined ||
-        progress.retryItem !== undefined);
-
-    if (!hasRetryInfo) return null;
-
-    return (
-      <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/30 rounded-md border border-yellow-200 dark:border-yellow-800">
-        <div className="text-sm text-yellow-800 dark:text-yellow-300 flex justify-between">
-          <span>재시도:</span>
-          <span className={`${animatedDigits.retryCount ? 'animate-pulse' : ''}`}>
-            {animatedValues.retryCount || 0}/{progress.maxRetries || config.productListRetryCount || '?'}
-          </span>
-        </div>
-        {progress.retryItem && (
-          <div className="text-sm text-yellow-700 dark:text-yellow-400 mt-1 truncate">
-            항목: {progress.retryItem}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // 추정 시간 계산
-  const getEstimatedEndTime = () => {
-    if (!progress.estimatedEndTime) return null;
-
-    const endTime = new Date(progress.estimatedEndTime);
-    return (
-      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-        예상 완료 시간: {format(endTime, 'HH:mm:ss')}
-      </div>
-    );
-  };
-
-  // 페이지 정보 컴포넌트
-  const getPageInfoComponent = () => {
-    const currentStage = progress.currentStage;
-    const isCompleted = status === 'completed';
-
-    // 2단계가 완료되었을 때 레이블 특별히 처리
-    if (currentStage === 2 && isCompleted) {
-      const totalItems = progress.totalItems ||
-        statusSummary?.siteProductCount ||
-        (targetPageCount * (config.productsPerPage || 12));
-      const processedItems = progress.processedItems || 0;
-      const isSuccessful = processedItems >= totalItems;
-
+  function getRetryInfo() {
+    if (progress.retryCount !== undefined && progress.retryCount > 0 ) {
       return (
-        <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
-          <div className={`text-xs ${isSuccessful ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400'} font-medium`}>
-            {isSuccessful ? "제품 상세 수집 완료" : "제품 상세 수집 실패"}
-          </div>
-          <div className={`text-2xl font-digital font-medium mt-1 transition-all transform duration-300 ${animatedDigits.currentPage ? 'animate-flip' : ''}`} style={{
-            color: isSuccessful ? '#10b981' : '#ef4444'
-          }}>
-            {Math.round(processedItems)} <span className="text-sm text-gray-500">/ {totalItems}</span>
-          </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {isSuccessful
-              ? `모든 제품 정보가 성공적으로 수집되었습니다.`
-              : `일부 제품 정보를 수집하지 못했습니다.`}
-          </div>
+        <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-md border border-yellow-100 dark:border-yellow-800 text-sm text-yellow-800 dark:text-yellow-300">
+          재시도 대기열: {config.productListRetryCount}개 항목 (현재 재시도: {progress.retryCount}회)
         </div>
       );
     }
+    return null;
+  }
 
-    // 일반적인 상황 (진행 중이거나 1단계)
-    return (
-      <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
-        <div className="text-xs text-gray-500 dark:text-gray-400">
-          {progress.currentStage === 1 ? "페이지 수집 현황(Buggy)" : "제품 상세 수집 현황"}
+  function getEstimatedEndTime() {
+    if (status === 'running' && localTime.remainingTime > 0 && !isNaN(localTime.remainingTime)) {
+      const endTime = new Date(Date.now() + localTime.remainingTime);
+      return (
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-center">
+          예상 완료 시각: {endTime.toLocaleTimeString()}
         </div>
-        <div className={`text-2xl font-bold font-digital mt-1 transition-all transform duration-300 ${animatedDigits.currentPage ? 'animate-flip' : ''}`} style={{
-          color: animatedValues.currentPage > 0 ? '#3b82f6' : '#6b7280'
-        }}>
-          {progress.currentStage === 1
-            ? Math.round(animatedValues.currentPage)
-            : Math.round(animatedValues.processedItems)}
-          <span className="text-sm text-gray-500"> / {
-            progress.currentStage === 2
-              ? progress.totalItems || statusSummary?.siteProductCount || (targetPageCount * (config.productsPerPage || 12))
-              : targetPageCount
-          }</span>
-        </div>
-        {progress.currentStage === 1 && progress.totalPages && progress.totalPages > 0 && targetPageCount !== progress.totalPages && (
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            사이트 전체: {progress.totalPages}페이지
-          </div>
-        )}
-        {progress.currentStage === 2 && (
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            예상 제품 수: {statusSummary?.siteProductCount || (targetPageCount * (config.productsPerPage || 12))}개
-          </div>
-        )}
-      </div>
-    );
-  };
+      );
+    }
+    return null;
+  }
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-4">
@@ -497,32 +457,27 @@ export function CrawlingDashboard() {
         )}
       </div>
 
-      {/* 정보 그리드 */}
-      <div className="grid grid-cols-2 gap-2 mt-4">
-        {/* 페이지 정보 */}
-        {getPageInfoComponent()}
-
-        {/* 재시도 정보 */}
-        <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            {progress.currentStage === 1 ? "재시도 진행 상태" : "제품 상세 재시도"}
-          </div>
-          <div className={`text-2xl font-bold font-digital mt-1 transition-all transform duration-300 ${animatedDigits.retryCount ? 'animate-flip' : ''}`} style={{
-            color: animatedValues.retryCount > 0 ? '#f59e0b' : '#6b7280'
-          }}>
-            {animatedValues.retryCount} <span className="text-sm text-gray-500">/ {
-              progress.currentStage === 1
-                ? config.productListRetryCount || progress.maxRetries || 0
-                : config.productDetailRetryCount || progress.maxRetries || 0
-            }회</span>
-          </div>
-          {progress.retryItem && (
-            <div className="text-xs text-amber-600 dark:text-amber-400 mt-1 truncate">
-              현재: {progress.retryItem.substring(0, 20)}{progress.retryItem.length > 20 ? '...' : ''}
-            </div>
-          )}
+      {/* 상세 정보 카드 */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 text-center mb-3 px-2">
+        {/* 수집 현황 */}
+        <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded-md">
+          <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap overflow-hidden text-ellipsis" title={collectionStatusText}>
+            {collectionStatusText}
+          </p>
+          <p className={`text-lg sm:text-xl font-bold ${animatedDigits.processedItems ? 'animate-pulse-once' : ''}`}>
+            {status === 'running' && progress.currentStage === 1 ? `${Math.round(animatedValues.currentPage)} / ${targetPageCount}` : `${Math.round(animatedValues.processedItems)} / ${progress.totalItems || statusSummary?.siteProductCount || 0}`}
+          </p>
         </div>
 
+        {/* 재시도 현황 */}
+        <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded-md">
+          <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap overflow-hidden text-ellipsis" title={retryStatusText}>
+            {retryStatusText}
+          </p>
+          <p className={`text-lg sm:text-xl font-bold ${animatedDigits.retryCount ? 'animate-pulse-once' : ''}`}>
+            {Math.round(animatedValues.retryCount)}{config.retryMax !== undefined ? ` / ${config.retryMax}` : '회'}
+          </p>
+        </div>
 
         {/* 소요 시간 */}
         <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
@@ -530,9 +485,7 @@ export function CrawlingDashboard() {
             {progress.currentStage === 1 ? "1단계 소요 시간" : progress.currentStage === 2 ? "2단계 소요 시간" : "소요 시간"}
           </div>
           <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center justify-center">
-            {/* status가 running일 때는 localTime, 아닐 때는 progress store 값 사용 */}
-            {formatDuration(status === 'running' ? localTime.elapsedTime : progress.elapsedTime)}
-            {/* 모래시계 아이콘은 running 상태일 때만 표시 */}
+            {formatDuration(localTime.elapsedTime)}
             {status === 'running' && (
               <div className={`ml-2 ${flipTimer % 2 === 0 ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}>
                 <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -544,23 +497,16 @@ export function CrawlingDashboard() {
         </div>
 
         {/* 예상 남은 시간 */}
-        <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            {progress.currentStage === 1 ? "1단계 예상 남은 시간" : progress.currentStage === 2 ? "2단계 예상 남은 시간" : "예상 남은 시간"}
-          </div>
-          <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center justify-center">
-            {formatDuration(localTime.remainingTime)}
-            <div className={`ml-2 ${flipTimer % 2 === 0 ? 'opacity-100 rotate-0' : 'opacity-70 rotate-180'} transition-all duration-500`}>
-              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
+        <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded-md">
+          <p className="text-xs text-gray-500 dark:text-gray-400">예상 남은 시간</p>
+          <p className={`text-lg sm:text-xl font-bold ${animatedDigits.remainingTime ? 'animate-pulse-once' : ''}`}>
+            {remainingTimeDisplay}
+          </p>
         </div>
       </div>
 
       {/* 수집 결과 요약 - 2단계(제품 상세 정보 수집)에서만 표시 */}
-      {/* {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
+      {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
         <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-md">
           <div className="text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">수집 결과</div>
           <div className="grid grid-cols-2 gap-2">
@@ -580,7 +526,7 @@ export function CrawlingDashboard() {
             </div>
           </div>
         </div>
-      )} */}
+      )}
 
       {/* 재시도 정보 */}
       {getRetryInfo()}
