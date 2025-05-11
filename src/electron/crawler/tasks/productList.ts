@@ -577,96 +577,123 @@ export class ProductListCollector {
   }
 
   private async _fetchTotalPages(): Promise<{ totalPages: number; lastPageProductCount: number }> {
-    let context: BrowserContext | null = null;
-    let page: Page | null = null;
-    try {
-      context = await this.browserManager.createContext();
-      page = await this.browserManager.createPageInContext(context);
-      if (!page) {
-        throw new PageInitializationError('Failed to create page in new context for _fetchTotalPages', 0, 0);
-      }
+    const MAX_FETCH_ATTEMPTS = 3;
+    const RETRY_DELAY_MS = 2500; // 2.5 seconds delay
 
-      if (!this.config.matterFilterUrl) {
-        throw new Error('Configuration error: matterFilterUrl is not defined.');
-      }
-      await delay(1000); 
-      debugLog(`[ProductListCollector] Navigating to ${this.config.matterFilterUrl} to fetch total pages.`);
-      await page.goto(this.config.matterFilterUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
-      
-      const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
-      let totalPages = 0;
-      if (pageElements.length > 0) {
-        const pageNumbers = await Promise.all(
-          pageElements.map(async (el) => {
-            const text = await el.textContent();
-            return text ? parseInt(text.trim(), 10) : 0;
-          })
-        );
-        totalPages = Math.max(...pageNumbers.filter(n => !isNaN(n) && n > 0), 0);
-      }
-      debugLog(`[ProductListCollector] Determined ${totalPages} total pages from pagination elements.`);
-
-      let lastPageProductCount = 0;
-      if (totalPages > 0) {
-        const lastPageUrl = `${this.config.matterFilterUrl}&paged=${totalPages}`;
-        debugLog(`[ProductListCollector] Navigating to last page: ${lastPageUrl}`);
-        if (page && lastPageUrl !== page.url()) { 
-          await page.goto(lastPageUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
+    for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
+      let context: BrowserContext | null = null;
+      let page: Page | null = null;
+      try {
+        debugLog(`[ProductListCollector] _fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS}`);
+        context = await this.browserManager.createContext();
+        page = await this.browserManager.createPageInContext(context);
+        if (!page) {
+          throw new PageInitializationError('Failed to create page in new context for _fetchTotalPages', 0, attempt);
         }
 
-        if (page) { 
+        if (!this.config.matterFilterUrl) {
+          throw new Error('Configuration error: matterFilterUrl is not defined.');
+        }
+        
+        if (attempt > 1) {
+          await delay(RETRY_DELAY_MS / 2); 
+        }
+        
+        debugLog(`[ProductListCollector] Navigating to ${this.config.matterFilterUrl} to fetch total pages (Attempt ${attempt}).`);
+        await page.goto(this.config.matterFilterUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
+        
+        const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
+        let totalPages = 0;
+        if (pageElements.length > 0) {
+          const pageNumbers = await Promise.all(
+            pageElements.map(async (el) => {
+              const text = await el.textContent();
+              return text ? parseInt(text.trim(), 10) : 0;
+            })
+          );
+          totalPages = Math.max(...pageNumbers.filter(n => !isNaN(n) && n > 0), 0);
+        }
+        debugLog(`[ProductListCollector] Determined ${totalPages} total pages from pagination elements (Attempt ${attempt}).`);
+
+        let lastPageProductCount = 0;
+        if (totalPages > 0) {
+          const lastPageUrl = `${this.config.matterFilterUrl}&paged=${totalPages}`;
+          debugLog(`[ProductListCollector] Navigating to last page: ${lastPageUrl} (Attempt ${attempt})`);
+          if (page && lastPageUrl !== page.url()) { 
+            await page.goto(lastPageUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
+          }
+
+          if (page) { 
+            try {
+              lastPageProductCount = await page.evaluate(() => {
+                return document.querySelectorAll('div.post-feed article').length;
+              });
+            } catch (evalError: any) {
+              throw new PageContentExtractionError(`Failed to count products on last page ${totalPages} (Attempt ${attempt}): ${evalError?.message || String(evalError)}`, totalPages, attempt);
+            }
+            debugLog(`[ProductListCollector] Last page ${totalPages} has ${lastPageProductCount} products (Attempt ${attempt}).`);
+          }
+        } else { // totalPages is 0 or less
+          debugLog(`[ProductListCollector] No pagination elements found or totalPages is 0. Checking current page for products (Attempt ${attempt}).`);
+          if (page) { 
+            try {
+              lastPageProductCount = await page.evaluate(() => {
+                return document.querySelectorAll('div.post-feed article').length;
+              });
+            } catch (evalError: any) {
+              // If counting products on the "first" page (when no pagination) fails, it's an extraction error.
+              throw new PageContentExtractionError(`Failed to count products on initial page (no pagination) (Attempt ${attempt}): ${evalError?.message || String(evalError)}`, 1, attempt);
+            }
+
+            if (lastPageProductCount > 0 && totalPages <= 0) { // Products found, but no pagination indicated more pages
+              totalPages = 1;
+              debugLog(`[ProductListCollector] Found ${lastPageProductCount} products on the first page. Setting totalPages to 1 (Attempt ${attempt}).`);
+            } else if (totalPages <= 0 && lastPageProductCount <= 0) { // Still no pages and no products
+              debugLog(`[ProductListCollector] No products found on the first page and no pagination. totalPages remains 0 (Attempt ${attempt}).`);
+              // This is the critical point: if totalPages is still 0, it's an error for this attempt.
+              throw new PageContentExtractionError(`No pages or products found on the site (Attempt ${attempt}).`, 0, attempt);
+            }
+          } else { // page is null, should have been caught by PageInitializationError earlier
+             throw new PageInitializationError('Page object was null when trying to count products on initial page.', 0, attempt);
+          }
+        }
+
+        // After all checks, if totalPages is still not positive, it's a failure for this attempt.
+        if (totalPages <= 0) {
+          throw new PageContentExtractionError(`Site reported ${totalPages} pages. This is considered an error (Attempt ${attempt}).`, totalPages, attempt);
+        }
+        
+        // If successful and totalPages > 0, return the result
+        return { totalPages, lastPageProductCount };
+
+      } catch (error: unknown) {
+        const attemptError = error instanceof PageOperationError ? error : 
+                             new PageOperationError(error instanceof Error ? error.message : String(error), 0, attempt);
+        
+        console.warn(`[ProductListCollector] _fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS} failed: ${attemptError.message}`);
+        
+        if (attempt === MAX_FETCH_ATTEMPTS) {
+          console.error(`[ProductListCollector] _fetchTotalPages - All ${MAX_FETCH_ATTEMPTS} attempts failed. Last error: ${attemptError.message}`, attemptError);
+          throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts: ${attemptError.message}`, 0, attempt);
+        }
+        await delay(RETRY_DELAY_MS);
+      } finally {
+        if (page) {
           try {
-            lastPageProductCount = await page.evaluate(() => {
-              return document.querySelectorAll('div.post-feed article').length;
-            });
-          } catch (evalError: any) {
-            throw new PageContentExtractionError(`Failed to count products on last page ${totalPages}: ${evalError?.message || String(evalError)}`, totalPages, 0);
+            await this.browserManager.closePageAndContext(page); 
+          } catch (e) {
+            console.error(`[ProductListCollector] Error releasing page and context in _fetchTotalPages (Attempt ${attempt}):`, e);
           }
-          debugLog(`[ProductListCollector] Last page ${totalPages} has ${lastPageProductCount} products.`);
+        } else if (context) { // If page creation failed but context was made
+           try {
+              await context.close(); 
+           } catch (e) {
+              console.error(`[ProductListCollector] Error releasing context in _fetchTotalPages (Attempt ${attempt}):`, e);
+           }
         }
-      } else {
-        debugLog(`[ProductListCollector] No pagination elements found or totalPages is 0. Checking current page for products.`);
-        if (page) { 
-          try {
-            lastPageProductCount = await page.evaluate(() => {
-              return document.querySelectorAll('div.post-feed article').length;
-            });
-          } catch (evalError: any) {
-            throw new PageContentExtractionError(`Failed to count products on initial page (no pagination): ${evalError?.message || String(evalError)}`, 1, 0);
-          }
-
-          if (lastPageProductCount > 0) {
-            totalPages = 1;
-            debugLog(`[ProductListCollector] Found ${lastPageProductCount} products on the first page. Setting totalPages to 1.`);
-          } else {
-            debugLog(`[ProductListCollector] No products found on the first page. Setting totalPages to 0.`);
-          }
-        }
-      }
-      return { totalPages, lastPageProductCount };
-    } catch (error: unknown) {
-      if (error instanceof PageOperationError) {
-        console.error(`[ProductListCollector] Error getting total pages: ${error.message}`, error);
-        throw error;
-      }
-      console.error('[ProductListCollector] Generic error getting total pages:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new PageInitializationError(`Failed to get total pages: ${errorMessage}`, 0, 0);
-    } finally {
-      if (page) { // page might be null if createContext failed
-        try {
-          await this.browserManager.closePageAndContext(page); 
-        } catch (e) {
-          console.error("[ProductListCollector] Error releasing page and context in _fetchTotalPages:", e);
-        }
-      } else if (context) { // If page creation failed but context was made
-         try {
-            await context.close(); 
-         } catch (e) {
-            console.error("[ProductListCollector] Error releasing context in _fetchTotalPages:", e);
-         }
       }
     }
+    throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts (unexpectedly reached end of retry loop).`, 0, MAX_FETCH_ATTEMPTS);
   }
 
   private async executeParallelCrawling(

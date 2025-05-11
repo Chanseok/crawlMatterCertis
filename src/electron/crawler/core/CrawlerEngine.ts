@@ -256,7 +256,6 @@ export class CrawlerEngine {
    * 크롤링 상태 체크 요약 정보 반환
    */
   public async checkCrawlingStatus(): Promise<CrawlingSummary> {
-    // 항상 최신 설정을 가져옴
     const currentConfig = configManager.getConfig(); 
     console.log('[CrawlerEngine] checkCrawlingStatus called with latest config:', JSON.stringify(currentConfig));
     
@@ -264,54 +263,68 @@ export class CrawlerEngine {
     let createdTempBrowserManager = false;
 
     try {
-      // 데이터베이스 요약 정보 가져오기
       const dbSummary = await getDatabaseSummaryFromDb();
       console.log('[CrawlerEngine] Database summary fetched:', JSON.stringify(dbSummary));
       
       let totalPages = 0;
-      let lastPageProductCount = 0; // 마지막 페이지의 제품 수 초기화
+      let lastPageProductCount = 0;
 
-      // Determine which BrowserManager to use
-      // Check if the existing browserManager is valid (initialized and not cleaned up)
       if (this.browserManager && await this.browserManager.isValid()) {
         tempBrowserManager = this.browserManager;
       } else {
-        // If no valid global browserManager, create a temporary one for this check
         tempBrowserManager = new BrowserManager(currentConfig);
         await tempBrowserManager.initialize();
         createdTempBrowserManager = true;
       }
 
       if (!await tempBrowserManager.isValid()) {
-        throw new Error('Failed to initialize or use a valid BrowserManager for status check.');
+        throw new Error('Failed to initialize a valid BrowserManager for status check.');
       }
 
       const tempController = new AbortController();
-      // Pass the currentConfig to the ProductListCollector for this status check
       const collector = new ProductListCollector(this.state, tempController, currentConfig, tempBrowserManager);
       
-      // Force refresh cache for status check and get both totalPages and lastPageProductCount
-      const pageData = await collector.fetchTotalPagesCached(true); 
-      totalPages = pageData.totalPages;
-      lastPageProductCount = pageData.lastPageProductCount;
+      try {
+        const pageData = await collector.fetchTotalPagesCached(true); 
+        totalPages = pageData.totalPages;
+        lastPageProductCount = pageData.lastPageProductCount;
+      } catch (fetchError: any) {
+        const criticalErrorMessage = `사이트의 전체 페이지 정보를 가져오는데 실패했습니다 (재시도 포함): ${fetchError.message}`;
+        console.error(`[CrawlerEngine] Critical error in checkCrawlingStatus during fetchTotalPagesCached: ${criticalErrorMessage}`, fetchError);
+        
+        crawlerEvents.emit('criticalError', criticalErrorMessage); 
 
-      // Calculate siteProductCount more accurately
+        return {
+          error: criticalErrorMessage,
+          dbLastUpdated: null,
+          dbProductCount: 0,
+          siteTotalPages: 0,
+          siteProductCount: 0,
+          diff: 0,
+          needCrawling: false,
+          crawlingRange: { startPage: 0, endPage: 0 },
+          selectedPageCount: 0,
+          estimatedProductCount: 0,
+          estimatedTotalTime: 0,
+          lastPageProductCount: 0
+        };
+      }
+
       const siteProductCount = totalPages > 0 
         ? ((totalPages - 1) * currentConfig.productsPerPage) + lastPageProductCount 
         : 0;
       
       const userPageLimit = currentConfig.pageRangeLimit;
 
-      let crawlingRange = { startPage: 0, endPage: 0 }; // Default to invalid/empty range
-      if (totalPages > 0) { // Proceed only if totalPages is valid
+      let crawlingRange = { startPage: 0, endPage: 0 };
+      if (totalPages > 0) {
           crawlingRange = await PageIndexManager.calculateCrawlingRange(
               totalPages,
-              lastPageProductCount, // Pass lastPageProductCount here
+              lastPageProductCount,
               userPageLimit
           );
       }
     
-      // Calculate selectedPageCount carefully, ensuring startPage >= endPage for a valid range
       const selectedPageCount = crawlingRange.startPage > 0 && crawlingRange.endPage > 0 && crawlingRange.startPage >= crawlingRange.endPage
         ? crawlingRange.startPage - crawlingRange.endPage + 1 
         : 0;
@@ -319,18 +332,10 @@ export class CrawlerEngine {
       let estimatedProductCount = 0;
       if (selectedPageCount > 0) {
         if (selectedPageCount === 1 && totalPages === 1) {
-            // Only one page in total, and it's selected.
             estimatedProductCount = lastPageProductCount;
         } else {
-            // Check if the range includes the very last page of the site.
-            // PageIndexManager.calculateCrawlingRange returns site page numbers (1-based, descending for startPage)
-            // The actual last page of the site is page 1 in that reversed context if startPage is totalPages.
-            // A simpler way: if the range includes the page that *is* the last page.
             let includesLastSitePage = false;
-            if (crawlingRange.endPage === 1) { // Site page 1 is the last page in sequence
-                // Check if this page 1 (site's last page) is within the selected range from PageIndexManager
-                // The range from PageIndexManager is [endPage, startPage] in terms of site page numbers (1 to N)
-                // So if crawlingRange.endPage (smallest site page number in range) is 1, it means the last site page is included.
+            if (crawlingRange.endPage === 1) {
                 includesLastSitePage = true;
             }
 
@@ -342,7 +347,7 @@ export class CrawlerEngine {
         }
       }
             
-      const estimatedTimePerPage = 5000; // 5초
+      const estimatedTimePerPage = 5000;
       const estimatedTotalTime = selectedPageCount * estimatedTimePerPage;
       
       const safeDbSummary = {
@@ -356,32 +361,35 @@ export class CrawlerEngine {
         siteTotalPages: totalPages,
         siteProductCount,
         diff: siteProductCount - dbSummary.productCount,
-        needCrawling: siteProductCount > dbSummary.productCount && selectedPageCount > 0, // Ensure selectedPageCount > 0 for needCrawling
+        needCrawling: siteProductCount > dbSummary.productCount && selectedPageCount > 0,
         crawlingRange,
         selectedPageCount,
         estimatedProductCount,
         estimatedTotalTime,
         userPageLimit: userPageLimit > 0 ? userPageLimit : undefined,
-        lastPageProductCount // Include lastPageProductCount in the summary
+        lastPageProductCount
       };
     } catch (error) {
-      console.error("[CrawlerEngine] Error in checkCrawlingStatus:", error);
+      const generalErrorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[CrawlerEngine] General error in checkCrawlingStatus: ${generalErrorMessage}`, error);
+      if (!(error instanceof Error && error.name === 'PageInitializationError')) { 
+         crawlerEvents.emit('criticalError', `상태 확인 중 오류 발생: ${generalErrorMessage}`);
+      }
       return {
-        error: error instanceof Error ? error.message : String(error),
+        error: generalErrorMessage,
         dbLastUpdated: null,
         dbProductCount: 0,
         siteTotalPages: 0,
         siteProductCount: 0,
         diff: 0,
         needCrawling: false,
-        crawlingRange: { startPage: 0, endPage: 0 }, // Default to 0
+        crawlingRange: { startPage: 0, endPage: 0 },
         selectedPageCount: 0,
         estimatedProductCount: 0,
         estimatedTotalTime: 0,
-        lastPageProductCount: 0 // Include lastPageProductCount in error summary
+        lastPageProductCount: 0
       };
     } finally {
-      // Only clean up the tempBrowserManager if it was created specifically for this method
       if (createdTempBrowserManager && tempBrowserManager) {
         await tempBrowserManager.cleanupResources();
       }
