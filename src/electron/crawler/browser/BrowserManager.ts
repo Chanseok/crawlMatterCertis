@@ -93,7 +93,7 @@ export class BrowserManager {
    * 브라우저 및 컨텍스트 초기화
    */
   public async initialize(): Promise<void> {
-    debugLog('[BrowserManager] Full initialization process started.');
+    // debugLog('[BrowserManager] Full initialization process started.');
     if (await this.isValid()) {
       debugLog('[BrowserManager] Browser and context are already valid. Skipping initialization.');
       return;
@@ -309,7 +309,7 @@ export class BrowserManager {
    * 각 페이지별 격리된 컨텍스트가 필요할 때 사용합니다.
    */
   public async createContext(): Promise<BrowserContext> {
-    debugLog('[BrowserManager] Creating a new isolated browser context...');
+    // debugLog('[BrowserManager] Creating a new isolated browser context...');
     
     // 브라우저가 초기화되지 않았거나 연결되지 않은 경우 초기화
     if (!this.browser || !this.browser.isConnected()) {
@@ -325,7 +325,7 @@ export class BrowserManager {
         userAgent: getRandomUserAgent(),
         // 필요한 경우 추가 컨텍스트 옵션 설정
       });
-      debugLog('[BrowserManager] New isolated browser context created successfully.');
+      // debugLog('[BrowserManager] New isolated browser context created successfully.');
       return newContext;
     } catch (error) {
       debugLog('[BrowserManager] Failed to create new isolated browser context:', error);
@@ -338,7 +338,7 @@ export class BrowserManager {
    * 이 메서드는 페이지와 컨텍스트 간의 연결을 관리합니다.
    */
   public async createPageInContext(context: BrowserContext): Promise<Page> {
-    debugLog('[BrowserManager] Creating a new page in the provided context...');
+    // debugLog('[BrowserManager] Creating a new page in the provided context...');
     
     try {
       const page = await context.newPage();
@@ -356,7 +356,7 @@ export class BrowserManager {
    * 이 메서드는 페이지 사용 후 리소스를 정리하는 데 사용됩니다.
    */
   public async closePageAndContext(page: Page): Promise<void> {
-    debugLog('[BrowserManager] Closing page and its associated context...');
+    // debugLog('[BrowserManager] Closing page and its associated context...');
     
     // 페이지가 유효한 경우에만 처리
     if (!page || page.isClosed()) {
@@ -370,7 +370,7 @@ export class BrowserManager {
       
       // 페이지 닫기
       await page.close();
-      debugLog('[BrowserManager] Page closed successfully.');
+      // debugLog('[BrowserManager] Page closed successfully.');
       
       // 페이지-컨텍스트 매핑에서 제거
       this.pageContextMap.delete(page);
@@ -379,7 +379,7 @@ export class BrowserManager {
       if (context) {
         try {
           await context.close();
-          debugLog('[BrowserManager] Associated context closed successfully.');
+          // debugLog('[BrowserManager] Associated context closed successfully.');
         } catch (e) {
           // 이미 닫혔거나 다른 오류가 발생한 경우 로그만 남김
           debugLog('[BrowserManager] Error closing context, may already be closed:', e);

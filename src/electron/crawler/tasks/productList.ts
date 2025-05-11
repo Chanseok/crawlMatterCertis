@@ -364,7 +364,7 @@ export class ProductListCollector {
       await delay(1000); // Optional delay before navigation
       debugLog(`[ProductListCollector] Navigating to ${this.config.matterFilterUrl} to fetch total pages.`);
       await page.goto(this.config.matterFilterUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
-      debugLog(`[ProductListCollector] Page loaded: ${page.url()} with pageTimeoutMs: ${this.config.pageTimeoutMs}`);
+      
 
       const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
       let totalPages = 0;
