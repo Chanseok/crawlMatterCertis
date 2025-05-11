@@ -165,8 +165,7 @@ export interface CrawlerConfig {
 }
 
 // 동시 처리 작업 상태 타입
-export type ConcurrentTaskStatus = 'pending' | 'running' | 'success' | 'error' | 'stopped';
-
+export type ConcurrentTaskStatus = 'pending' | 'running' | 'success' | 'error' | 'stopped' | 'waiting' | 'attempting' | 'failed' | 'incomplete';
 export type ConcurrentCrawlingTask = {
     pageNumber: number;
     status: ConcurrentTaskStatus;

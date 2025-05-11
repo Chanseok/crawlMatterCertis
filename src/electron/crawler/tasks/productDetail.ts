@@ -68,7 +68,7 @@ export class ProductDetailCollector {
       }
       // 불필요한 리소스 차단 예시
       await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
-      await page.goto(product.url, { waitUntil: 'load', timeout: config.productDetailTimeoutMs ?? 60000 });
+      await page.goto(product.url, { waitUntil: 'domcontentloaded', timeout: config.productDetailTimeoutMs ?? 60000 });
 
       if (signal.aborted) {
         throw new Error('Aborted after page.goto');

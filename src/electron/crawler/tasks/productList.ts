@@ -12,10 +12,10 @@ import {
 } from '../utils/concurrency.js';
 
 import type { CrawlResult, CrawlError } from '../utils/types.js';
-import type { Product, PageProcessingStatusItem, CrawlingProgress as FullCrawlingProgress, PageProcessingStatusValue } from '../../../../types.js';
+import type { Product, PageProcessingStatusItem, PageProcessingStatusValue } from '../../../../types.js';
 import { debugLog } from '../../util.js';
 import { type CrawlerConfig } from '../core/config.js';
-import { crawlerEvents, updateRetryStatus, logRetryError, CRAWLING_PHASES, CRAWLING_STAGE } from '../utils/progress.js';
+import { crawlerEvents, updateRetryStatus  } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';
 import { BrowserManager } from '../browser/BrowserManager.js'; // Corrected path
 import { delay } from '../utils/delay.js';
@@ -113,7 +113,7 @@ export class ProductListCollector {
   // _emitPageCrawlStatus is kept for potential specific, non-animation task updates via 'crawlingTaskStatus'
   private _emitPageCrawlStatus(
     pageNumber: number,
-    status: 'success' | 'error' | 'running' | 'stopped',
+    status: PageProcessingStatusValue,
     data: Record<string, any>
   ): void {
     const messagePayload: Record<string, any> = {
@@ -122,7 +122,8 @@ export class ProductListCollector {
       pageNumber,
       ...data
     };
-    if (status === 'running') {
+    // 'running' 대신 'attempting'으로 변경 (PageProcessingStatusValue에 'running'이 없을 경우 대비)
+    if (status === 'attempting') { 
       messagePayload.startTime = new Date().toISOString();
       if (data.url) messagePayload.url = data.url;
     } else {
@@ -340,12 +341,13 @@ export class ProductListCollector {
     let crawlError: CrawlError | undefined;
 
     this._updatePageStatusInternal(pageNumber, 'attempting', attempt);
-    this._emitPageCrawlStatus(pageNumber, 'running', { url, attempt });
-    updateTaskStatus(pageNumber, 'running');
+    // 'running' 대신 'attempting'으로 변경
+    this._emitPageCrawlStatus(pageNumber, 'attempting', { url, attempt }); 
+    updateTaskStatus(pageNumber, 'running'); 
 
     if (signal.aborted) {
-      this._updatePageStatusInternal(pageNumber, 'failed', attempt);
-      updateTaskStatus(pageNumber, 'stopped');
+      this._updatePageStatusInternal(pageNumber, 'failed', attempt); 
+      updateTaskStatus(pageNumber, 'stopped'); 
       crawlError = { type: 'Abort', message: 'Aborted before start', pageNumber, attempt };
       const cachedProducts = this.productCache.get(pageNumber) || [];
       return {
@@ -374,16 +376,21 @@ export class ProductListCollector {
       currentProductsOnPage = allProductsForPage;
       isComplete = currentProductsOnPage.length >= targetProductCount;
 
-      this._updatePageStatusInternal(pageNumber, isComplete ? 'success' : 'incomplete', attempt);
-      this._emitPageCrawlStatus(pageNumber, 'success', {
+      const currentProcessingStatus: PageProcessingStatusValue = isComplete ? 'success' : 'incomplete';
+      this._updatePageStatusInternal(pageNumber, currentProcessingStatus, attempt);
+      this._emitPageCrawlStatus(pageNumber, currentProcessingStatus, {
         productsCount: currentProductsOnPage.length,
         newlyFetchedCount: newlyFetchedProducts.length,
         isComplete, targetCount: targetProductCount, attempt
       });
-      updateTaskStatus(pageNumber, 'success');
+      updateTaskStatus(pageNumber, isComplete ? 'success' : 'incomplete'); 
     } catch (err) {
       this._updatePageStatusInternal(pageNumber, 'failed', attempt);
-      const finalStatusForTask = signal.aborted ? 'stopped' : 'error';
+      const finalStatusForTaskSignal = signal.aborted ? 'stopped' : 'error';
+      
+      // _emitPageCrawlStatus는 PageProcessingStatusValue를 기대하므로, 'stopped'의 경우 'failed'로 전달
+      const errorStatusForEmit: PageProcessingStatusValue = finalStatusForTaskSignal === 'stopped' ? 'failed' : 'failed';
+
       if (err instanceof PageTimeoutError) {
         crawlError = { type: 'Timeout', message: err.message, pageNumber, attempt, originalError: err };
       } else if (err instanceof PageAbortedError) {
@@ -397,9 +404,9 @@ export class ProductListCollector {
       } else {
         crawlError = { type: 'Generic', message: err instanceof Error ? err.message : String(err), pageNumber, attempt, originalError: err };
       }
-      this._emitPageCrawlStatus(pageNumber, finalStatusForTask as 'error' | 'stopped', { error: crawlError, attempt });
-      updateTaskStatus(pageNumber, finalStatusForTask, crawlError.message);
-      isComplete = currentProductsOnPage.length >= targetProductCount;
+      this._emitPageCrawlStatus(pageNumber, errorStatusForEmit, { error: crawlError, attempt });
+      updateTaskStatus(pageNumber, finalStatusForTaskSignal, crawlError.message);
+      isComplete = currentProductsOnPage.length >= targetProductCount; 
     }
 
     return {
@@ -471,7 +478,7 @@ export class ProductListCollector {
         overallAttemptNumberForPagesInThisCycle
       );
 
-      pagesForThisRetryCycle.forEach(pageNumberAttempted => {
+      pagesForThisRetryCycle.forEach(() => {
         // ... (existing detailed logging for each page in retry batch)
       });
 
@@ -509,9 +516,9 @@ export class ProductListCollector {
   }
 
   private _summarizeCollectionOutcome(
-    pageNumbersToCrawl: number[],
+    _pageNumbersToCrawl: number[],
     totalPages: number,
-    allPageErrors: Record<string, CrawlError[]>,
+    _allPageErrors: Record<string, CrawlError[]>,
     collectedProducts: Product[]
   ): void {
     let finalFailedCount = 0;
@@ -559,7 +566,7 @@ export class ProductListCollector {
       ProductListCollector.lastPageProductCount !== null &&
       cachedTotalPagesFetchedAt &&
       (now - cachedTotalPagesFetchedAt < cacheTtl)) {
-      debugLog('[ProductListCollector] Returning cached total pages data.');
+      // debugLog('[ProductListCollector] Returning cached total pages data.');
       return {
         totalPages: cachedTotalPages,
         lastPageProductCount: ProductListCollector.lastPageProductCount!
@@ -601,7 +608,7 @@ export class ProductListCollector {
 
         debugLog(`[ProductListCollector] Navigating to ${this.config.matterFilterUrl} to fetch total pages (Attempt ${attempt}).`);
         await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
-        await page.goto(this.config.matterFilterUrl, { waitUntil: 'load', timeout: this.config.pageTimeoutMs ?? 60000 });
+        await page.goto(this.config.matterFilterUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
 
         const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
         let totalPages = 0;
@@ -622,7 +629,7 @@ export class ProductListCollector {
           debugLog(`[ProductListCollector] Navigating to last page: ${lastPageUrl} (Attempt ${attempt})`);
           if (page && lastPageUrl !== page.url()) {
             await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
-            await page.goto(lastPageUrl, { waitUntil: 'load', timeout: this.config.pageTimeoutMs ?? 60000 });
+            await page.goto(lastPageUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
           }
 
           if (page) {
@@ -809,7 +816,7 @@ export class ProductListCollector {
 
   private async crawlPageWithTimeout(
     pageNumber: number,
-    siteTotalPages: number,
+    _siteTotalPages: number,
     signal: AbortSignal,
     attempt: number
   ): Promise<Product[]> {
@@ -834,7 +841,7 @@ export class ProductListCollector {
         await delay(this.config.minRequestDelayMs ?? 500);
       }
       await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
-      await page.goto(pageUrl, { waitUntil: 'load', timeout });
+      await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout });
 
       const rawProducts = await page.evaluate<RawProductData[]>(
         ProductListCollector._extractProductsFromPageDOM

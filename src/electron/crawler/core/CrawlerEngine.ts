@@ -35,7 +35,6 @@ export class CrawlerEngine {
   private state: CrawlerState;
   private isCrawling: boolean = false;
   private abortController: AbortController | null = null;
-  private startTime: number = 0;
   private browserManager: BrowserManager | null = null;
 
   constructor() {
@@ -65,7 +64,6 @@ export class CrawlerEngine {
     initializeCrawlingState();
     this.isCrawling = true;
     this.abortController = new AbortController();
-    this.startTime = Date.now();
 
     // Use the latest config for BrowserManager
     // Ensure browserManager is always (re)created with the latest config for a new crawling session
