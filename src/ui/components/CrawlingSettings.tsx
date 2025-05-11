@@ -118,16 +118,16 @@ export function CrawlingSettings() {
         {/* 제품 목록 재시도 횟수 */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            1단계 기본 정보, 재시도 (3~20)
+            1단계 기본 정보, 재시도 (3~50)
           </label>
           <input
             type="number"
             min="3"
-            max="20"
+            max="50"
             value={productListRetry}
             onChange={(e) => {
               const value = parseInt(e.target.value);
-              if (!isNaN(value) && value >= 3 && value <= 20) {
+              if (!isNaN(value) && value >= 3 && value <= 50) {
                 setProductListRetry(value);
               }
             }}
@@ -138,16 +138,16 @@ export function CrawlingSettings() {
         {/* 제품 상세 재시도 횟수 */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            2단계 상세 수집, 재시도 (3~20)
+            2단계 상세 수집, 재시도 (3~50)
           </label>
           <input
             type="number"
             min="3"
-            max="20"
+            max="50"
             value={productDetailRetry}
             onChange={(e) => {
               const value = parseInt(e.target.value);
-              if (!isNaN(value) && value >= 3 && value <= 20) {
+              if (!isNaN(value) && value >= 3 && value <= 50) {
                 setProductDetailRetry(value);
               }
             }}

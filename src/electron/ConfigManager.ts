@@ -5,7 +5,7 @@ import { CrawlerConfig } from '../../types.js';
 
 // Define constants for validation limits
 const MIN_RETRY_COUNT = 3;
-const MAX_RETRY_COUNT = 20;
+const MAX_RETRY_COUNT = 50;
 const MIN_PAGE_RANGE_LIMIT = 1;
 const MAX_PAGE_RANGE_LIMIT = 500;
 const MIN_PRODUCTS_PER_PAGE = 1;

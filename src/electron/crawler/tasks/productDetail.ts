@@ -3,7 +3,7 @@
  * 제품 상세 정보 수집을 담당하는 클래스
  */
 
-import { type Page } from 'playwright-chromium';
+import { type Page, type BrowserContext } from 'playwright-chromium';
 import { getRandomDelay, delay } from '../utils/delay.js';
 import { CrawlerState } from '../core/CrawlerState.js';
 import {
@@ -26,6 +26,11 @@ export class ProductDetailCollector {
   private abortController: AbortController;
   private readonly config: CrawlerConfig;
   private browserManager: BrowserManager;
+  
+  // 설정 캐싱 관련 변수 (1. 설정 캐싱)
+  private cachedMinDelay: number;
+  private cachedMaxDelay: number;
+  private cachedDetailTimeout: number;
 
   constructor(
     state: CrawlerState,
@@ -37,6 +42,11 @@ export class ProductDetailCollector {
     this.abortController = abortController;
     this.config = config;
     this.browserManager = browserManager;
+    
+    // 설정 캐싱 초기화 (1. 설정 캐싱)
+    this.cachedMinDelay = config.minRequestDelayMs ?? 100;
+    this.cachedMaxDelay = config.maxRequestDelayMs ?? 2200;
+    this.cachedDetailTimeout = config.productDetailTimeoutMs ?? 60000;
   }
 
   /**
@@ -48,27 +58,96 @@ export class ProductDetailCollector {
   }
 
   /**
+   * 페이지 최적화를 위한 메서드 (2. 리소스 로딩 최적화)
+   */
+  private async optimizePage(page: Page): Promise<void> {
+    // 더 공격적인 리소스 차단
+    await page.route('**/*', (route) => {
+      const request = route.request();
+      const resourceType = request.resourceType();
+      const url = request.url();
+      
+      // HTML과 필수 CSS만 허용
+      if (resourceType === 'document' || 
+          (resourceType === 'stylesheet' && url.includes('main'))) {
+        route.continue();
+      } else {
+        route.abort();
+      }
+    });
+  }
+
+  /**
+   * 최적화된 네비게이션 함수 (4. 페이지 네비게이션 최적화)
+   */
+  private async optimizedNavigation(page: Page, url: string, timeout: number): Promise<boolean> {
+    let navigationSucceeded = false;
+    
+    try {
+      // 첫 시도: 매우 짧은 타임아웃으로 시도
+      await page.goto(url, { 
+        waitUntil: 'domcontentloaded', // 더 가벼운 로드 조건
+        timeout: Math.min(5000, timeout / 3) // 매우 짧은 타임아웃
+      });
+      navigationSucceeded = true;
+    } catch (error: any) {
+      if (error && error.name === 'TimeoutError') {
+        // 타임아웃 발생해도 HTML이 로드되었다면 성공으로 간주
+        const readyState = await page.evaluate(() => document.readyState).catch(() => 'unknown');
+        if (readyState !== 'loading' && readyState !== 'unknown') {
+          navigationSucceeded = true;
+          debugLog(`Navigation timed out but document is in '${readyState}' state. Continuing...`);
+        } else {
+          // 첫 시도 실패 시, 두 번째 시도 - 조금 더 긴 타임아웃
+          try {
+            await page.goto(url, { 
+              waitUntil: 'domcontentloaded',
+              timeout: timeout / 2
+            });
+            navigationSucceeded = true;
+          } catch (secondError: any) {
+            // 최종 실패 시 오류 로깅
+            debugLog(`Navigation failed after retry: ${secondError && secondError.message ? secondError.message : 'Unknown error'}`);
+          }
+        }
+      }
+    }
+    
+    return navigationSucceeded;
+  }
+
+  /**
    * 제품 상세 정보를 크롤링하는 함수
    */
   private async crawlProductDetail(product: Product, signal: AbortSignal): Promise<MatterProduct> {
-    const config = this.config;
-    
-    const minDelay = config.minRequestDelayMs ?? 100;
-    const maxDelay = config.maxRequestDelayMs ?? 2200;
-    const delayTime = getRandomDelay(minDelay, maxDelay);
+    const delayTime = getRandomDelay(this.cachedMinDelay, this.cachedMaxDelay);
     await delay(delayTime);
     
-    let page: Page | null = null;
+    let page = null;
+    let context = null;
 
     try {
-      page = await this.browserManager.getPage();
+      // 컨텍스트 풀에서 컨텍스트 가져오기 (3. 브라우저 컨텍스트 재사용)
+      context = await this.browserManager.getContextFromPool();
+      page = await this.browserManager.createPageInContext(context);
+
+      if (!page) {
+        throw new Error('Failed to create page in new context');
+      }
 
       if (signal.aborted) {
         throw new Error('Aborted before page operations');
       }
-      // 불필요한 리소스 차단 예시
-      await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
-      await page.goto(product.url, { waitUntil: 'domcontentloaded', timeout: config.productDetailTimeoutMs ?? 60000 });
+
+      // 페이지 최적화 적용 (2. 리소스 로딩 최적화)
+      await this.optimizePage(page);
+      
+      // 최적화된 네비게이션 적용 (4. 페이지 네비게이션 최적화)
+      const navigated = await this.optimizedNavigation(page, product.url, this.cachedDetailTimeout);
+      
+      if (!navigated) {
+        throw new Error(`Navigation failed for ${product.url}`);
+      }
 
       if (signal.aborted) {
         throw new Error('Aborted after page.goto');
@@ -88,7 +167,7 @@ export class ProductDetailCollector {
       return matterProduct;
 
     } catch (error: unknown) {
-      debugLog(`${config.productDetailTimeoutMs} ms timeout for ${product.model}`);
+      debugLog(`Error or ${this.cachedDetailTimeout} ms timeout for ${product.model}`);
       if (signal.aborted) {
         throw new Error(`Aborted crawling for ${product.url} during operation.`);
       }
@@ -96,8 +175,23 @@ export class ProductDetailCollector {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to crawl product detail for ${product.url}: ${errorMessage}`);
     } finally {
-      if (page) {
-        await this.browserManager.closePage(page);
+      if (page && !page.isClosed()) {
+        try {
+          await page.close().catch(e => {
+            debugLog(`[ProductDetailCollector] Error closing page: ${e}`);
+          });
+        } catch (e) {
+          debugLog(`[ProductDetailCollector] Error closing page: ${e}`);
+        }
+      }
+      
+      // 컨텍스트가 유효하면 풀에 반환 (3. 브라우저 컨텍스트 재사용)
+      if (context) {
+        try {
+          await this.browserManager.returnContextToPool(context);
+        } catch (e) {
+          debugLog(`[ProductDetailCollector] Error returning context to pool: ${e}`);
+        }
       }
     }
   }
@@ -265,6 +359,10 @@ export class ProductDetailCollector {
       });
       
       crawlerEvents.emit('crawlingStageChanged', 'productDetail:processing', '2단계: 제품 상세 정보 처리 완료');
+      
+      // Note: We don't need to explicitly clean up the context pool here
+      // as it's managed by BrowserManager's close/cleanupResources method
+      // which is called by the main crawler after all collectors are done
     } catch (error) {
       console.error('[ProductDetailCollector] Error during final state update in cleanupResources:', error);
     }
@@ -308,7 +406,7 @@ export class ProductDetailCollector {
       const detailProduct = await Promise.race([
         this.crawlProductDetail(product, signal),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), config.productDetailTimeoutMs)
+          setTimeout(() => reject(new Error('Timeout')), this.cachedDetailTimeout)
         )
       ]);
 
