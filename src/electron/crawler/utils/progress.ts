@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
-import type { CrawlingProgress, ConcurrentTaskStatus } from '../../../../types.js';
+import type { CrawlingProgress, ConcurrentTaskStatus, PageProcessingStatusItem } from '../../../../types.js';
 import type { RetryStatusInfo, RetryLogItem } from './types.js';
 
 // 크롤링 이벤트 이미터
@@ -150,7 +150,8 @@ export function initializeCrawlingProgress(currentStep: string, currentStage: nu
         currentStage, // 단계 정보 추가
         remainingTime: -1,
         elapsedTime: 0,
-        message: `크롤링 초기화 중: ${currentStep}` // 명확한 메시지 추가
+        message: `크롤링 초기화 중: ${currentStep}`, // 명확한 메시지 추가
+        stage1PageStatuses: [] // Initialize with empty array
     };
     crawlerEvents.emit('crawlingProgress', progress);
     return progress;
@@ -160,18 +161,21 @@ export function initializeCrawlingProgress(currentStep: string, currentStage: nu
  * 1/2단계: 제품 목록 수집 상태 업데이트
  */
 export function updateProductListProgress(
-    processedPages: number,
-    totalPages: number,
-    startTime: number,
+    processedPages: number, // 성공적으로 완료된 페이지 수
+    totalPages: number,     // 1단계의 총 페이지 수
+    startTime: number,      // 1단계 시작 시간
+    stage1PageStatuses: PageProcessingStatusItem[], // 각 페이지의 현재 상태
+    currentRetryCount: number, // 현재까지의 총 재시도 횟수 (1단계)
+    maxConfigRetries: number, // 설정된 최대 재시도 횟수 (1단계)
     isCompleted: boolean = false
 ): void {
     const now = Date.now();
     const elapsedTime = now - startTime;
-    const percentage = (processedPages / Math.max(totalPages, 1)) * 100;
+    // processedPages는 성공적으로 완료된 페이지 기준
+    const percentage = totalPages > 0 ? (processedPages / totalPages) * 100 : 0;
     let remainingTime: number | undefined = undefined;
 
-    // 10% 이상 진행된 경우에만 남은 시간 예측
-    if (processedPages > totalPages * 0.1 && processedPages > 0) {
+    if (processedPages > 0 && processedPages > totalPages * 0.1) { // 10% 이상 진행 및 1페이지 이상 완료 시
         const avgTimePerPage = elapsedTime / processedPages;
         remainingTime = (totalPages - processedPages) * avgTimePerPage;
     }
@@ -180,23 +184,30 @@ export function updateProductListProgress(
         ? `1단계 완료: ${totalPages}개 제품 목록 페이지 수집 완료`
         : `1단계: 제품 목록 페이지 ${processedPages}/${totalPages} 처리 중 (${percentage.toFixed(1)}%)`;
 
-    crawlerEvents.emit('crawlingProgress', {
+    const progressData: CrawlingProgress = {
+        current: processedPages, // Overall progress current value for stage 1
+        total: totalPages,       // Overall progress total value for stage 1
         status: isCompleted ? 'completed_stage_1' : 'running',
-        currentPage: processedPages,
-        totalPages,
-        processedItems: processedPages, // 1단계에서는 페이지 수 = 처리 아이템 수
+        currentPage: processedPages, // 성공한 페이지 수
+        totalPages,                  // 전체 대상 페이지 수
+        processedItems: processedPages, 
         totalItems: totalPages,
         percentage,
         currentStep: CRAWLING_PHASES.PRODUCT_LIST,
-        currentStage: CRAWLING_STAGE.PRODUCT_LIST, // 단계 정보
+        currentStage: CRAWLING_STAGE.PRODUCT_LIST,
         remainingTime: isCompleted ? 0 : remainingTime,
         elapsedTime,
         startTime,
-        estimatedEndTime: remainingTime ? now + remainingTime : 0,
-        newItems: 0, // 아직 항목 미집계
+        estimatedEndTime: remainingTime && !isCompleted ? now + remainingTime : (isCompleted ? now : 0),
+        newItems: 0, 
         updatedItems: 0,
-        message: message // 명확한 메시지
-    });
+        message: message,
+        retryCount: currentRetryCount,
+        maxRetries: maxConfigRetries,
+        stage1PageStatuses: stage1PageStatuses
+    };
+
+    crawlerEvents.emit('crawlingProgress', progressData);
 }
 
 /**

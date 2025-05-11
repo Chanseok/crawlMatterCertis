@@ -27,7 +27,7 @@ import type {
   FailedPageReport,
   FailedProductReport
 } from '../utils/types.js';
-import type { Product, MatterProduct } from '../../../../types.js';
+import type { Product, MatterProduct, PageProcessingStatusItem } from '../../../../types.js'; // Added PageProcessingStatusItem
 import { debugLog } from '../../util.js';
 import { configManager } from '../../ConfigManager.js';
 
@@ -99,25 +99,42 @@ export class CrawlerEngine {
       // 제품 목록 수집기 생성 (1단계) - Pass the latest currentConfig
       const productListCollector = new ProductListCollector(this.state, this.abortController, currentConfig, this.browserManager!);
       
-      // Get totalPages and lastPageProductCount from cache (populated by checkCrawlingStatus or previous run) for initial progress
-      // ProductListCollector.collect() will also use fetchTotalPagesCached(false) internally.
-      const { totalPages: totalPagesFromCache, lastPageProductCount: lastPageProductCountFromCache } = await productListCollector.fetchTotalPagesCached(false); 
-      updateProductListProgress(0, totalPagesFromCache, this.startTime);
-      
-      const listStartTime = Date.now();
-      const progressUpdater = (processedPages: number) => {
-        // 진행 상황 업데이트 - 1단계, use totalPagesFromCache for consistency in progress reporting
-        updateProductListProgress(processedPages, totalPagesFromCache, listStartTime);
+      // The old way of getting totalPagesFromCache for an initial simple progress update might still be useful 
+      // for a very brief moment before the detailed one from ProductListCollector arrives.
+      // However, ProductListCollector now sends its own initial update with page statuses.
+      // So, this immediate call to updateProductListProgress might be redundant or show brief intermediate state.
+      // For now, let's keep it to see the effect, but it might be removable.
+      const { totalPages: totalPagesFromCacheForBriefUpdate } = await productListCollector.fetchTotalPagesCached(false); 
+      // updateProductListProgress(0, totalPagesFromCacheForBriefUpdate, this.startTime); // Old simple call
+
+      // Define the new enhanced progress callback
+      const enhancedProgressUpdater = (
+        processedSuccessfully: number, 
+        totalPagesInStage: number, 
+        stage1PageStatuses: PageProcessingStatusItem[], 
+        currentOverallRetryCountForStage: number, 
+        stage1StartTime: number, // Received from ProductListCollector
+        isStageComplete: boolean = false
+      ) => {
+        updateProductListProgress(
+          processedSuccessfully, 
+          totalPagesInStage, 
+          stage1StartTime, // Use the startTime from ProductListCollector for accurate duration of stage 1
+          stage1PageStatuses, 
+          currentOverallRetryCountForStage, 
+          currentConfig.productListRetryCount, // Max retries from config
+          isStageComplete
+        );
       };
       
-      productListCollector.setProgressCallback(progressUpdater);
+      productListCollector.setProgressCallback(enhancedProgressUpdater);
       
       // 제품 목록 수집 실행
       const products = await productListCollector.collect(userPageLimit);
       
-      // After collection, we might have a more definitive totalPages if cache was stale.
-      // Use the totalPagesFromCache for the completion event of phase 1, as this was the basis for the progress.
-      updateProductListProgress(totalPagesFromCache, totalPagesFromCache, listStartTime, true);
+      // The final progress update for stage 1 completion is now handled internally by productListCollector.collect() calling _sendProgressUpdate(true)
+      // So, this explicit call might be redundant if productListCollector guarantees a final update.
+      // updateProductListProgress(totalPagesFromCache, totalPagesFromCache, listStartTime, true); // Old completion call
 
       // 중단 여부 확인 - 명시적으로 요청된 중단만 처리
       if (this.abortController.signal.aborted) {
@@ -146,13 +163,13 @@ export class CrawlerEngine {
 
       // 성공률 확인
       const failedPages = this.state.getFailedPages();
-      // Use totalPagesFromCache for success rate calculation if it's the basis of the collection range
-      const successRate = totalPagesFromCache > 0 ? (totalPagesFromCache - failedPages.length) / totalPagesFromCache : 1;
+      // Use totalPagesFromCacheForBriefUpdate for success rate calculation if it's the basis of the collection range
+      const successRate = totalPagesFromCacheForBriefUpdate > 0 ? (totalPagesFromCacheForBriefUpdate - failedPages.length) / totalPagesFromCacheForBriefUpdate : 1;
       const successRatePercent = (successRate * 100).toFixed(1);
       
       // 1단계에서 실패 페이지가 있으면 중단 (원래 동작으로 복원)
       if (failedPages.length > 0) {
-        const message = `[경고] 제품 목록 수집 성공률: ${successRatePercent}% (${totalPagesFromCache - failedPages.length}/${totalPagesFromCache}). 실패한 페이지가 있어 크롤링을 중단합니다.`;
+        const message = `[경고] 제품 목록 수집 성공률: ${successRatePercent}% (${totalPagesFromCacheForBriefUpdate - failedPages.length}/${totalPagesFromCacheForBriefUpdate}). 실패한 페이지가 있어 크롤링을 중단합니다.`;
         console.warn(`[CrawlerEngine] ${message}`);
         
         // 경고 이벤트 발생 및 크롤링 중단
@@ -160,7 +177,7 @@ export class CrawlerEngine {
           message,
           successRate: parseFloat(successRatePercent),
           failedPages: failedPages.length,
-          totalPages: totalPagesFromCache, // Use totalPagesFromCache
+          totalPages: totalPagesFromCacheForBriefUpdate, // Use totalPagesFromCacheForBriefUpdate
           continueProcess: false // 중단 설정
         });
         

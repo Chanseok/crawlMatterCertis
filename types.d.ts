@@ -57,32 +57,42 @@ export type CrawlingStatus =
     | 'stopped' 
     | 'completed_stage_1';
 
+// 1단계 각 페이지 처리 상태
+export type PageProcessingStatusValue = 'waiting' | 'attempting' | 'success' | 'failed' | 'incomplete';
+
+export type PageProcessingStatusItem = {
+    pageNumber: number;
+    status: PageProcessingStatusValue;
+    attempt?: number; // 현재 시도 횟수 (해당 페이지에 대해)
+};
+
 // 크롤링 진행 상태 타입 (통합)
 export type CrawlingProgress = {
-    current: number;
-    total: number;
+    current: number; // 전체 진행률의 현재 값 (예: 총 처리 항목 수)
+    total: number;   // 전체 진행률의 총 값 (예: 총 수집 대상 항목 수)
     percentage: number;
     currentStep: string;
     remainingTime?: number;
     elapsedTime: number;
-    // 명확한 타입으로 정의
     status?: CrawlingStatus;
-    currentPage?: number;
-    totalPages?: number;
-    processedItems?: number;
-    totalItems?: number;
+    currentPage?: number;      // 1단계: 현재 처리/완료된 페이지 수, 2단계: 현재 처리/완료된 제품 수
+    totalPages?: number;       // 1단계: 수집 대상 총 페이지 수, 2단계: 수집 대상 총 제품 수
+    processedItems?: number; // 전체 단계에서 총 처리된 아이템 수 (페이지 또는 제품)
+    totalItems?: number;     // 전체 단계에서 총 아이템 수 (페이지 또는 제품)
     startTime?: number;
     estimatedEndTime?: number;
     newItems?: number;
     updatedItems?: number;
     currentStage?: number; // 1=목록 수집, 2=상세정보 수집
-    message?: string; // 사용자에게 표시할 메시지
-    criticalError?: string; // 크롤링 중 발생한 심각한 오류 메시지
+    message?: string; 
+    criticalError?: string; 
     
-    // 재시도 관련 정보 (UI 개선을 위해 추가)
-    retryCount?: number; // 현재 재시도 횟수 
-    maxRetries?: number; // 최대 재시도 횟수
-    retryItem?: string; // 재시도 중인 항목의 식별자 (URL, ID 등)
+    retryCount?: number;      // 현재 스테이지의 총 재시도 횟수
+    maxRetries?: number;      // 현재 스테이지의 최대 재시도 횟수
+    retryItem?: string; 
+
+    // 1단계 제품 목록 페이지 읽기 현황
+    stage1PageStatuses?: PageProcessingStatusItem[];
 };
 
 // 크롤링 상태 요약 정보 타입
