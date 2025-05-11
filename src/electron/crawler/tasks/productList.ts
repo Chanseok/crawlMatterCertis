@@ -744,13 +744,59 @@ export class ProductListCollector {
   }
 
   private static _extractProductsFromPageDOM(): RawProductData[] {
-    const articles = Array.from(document.querySelectorAll('div.post-feed article'));
+    console.log("DOM extraction started");
+    
+    // 첫 번째 방법: 표준 셀렉터
+    let articles = Array.from(document.querySelectorAll('div.post-feed article'));
+    console.log(`Found ${articles.length} articles with standard selector`);
+    
+    // 대체 셀렉터 시도 (기본 셀렉터가 충분한 항목을 찾지 못한 경우)
+    if (articles.length < 12) {
+      // 대체 셀렉터 시도 1
+      const altArticles1 = Array.from(document.querySelectorAll('.post-feed article'));
+      console.log(`Found ${altArticles1.length} articles with alternative selector 1`);
+      
+      if (altArticles1.length > articles.length) {
+        articles = altArticles1;
+      }
+      
+      // 대체 셀렉터 시도 2
+      const altArticles2 = Array.from(document.querySelectorAll('article.post'));
+      console.log(`Found ${altArticles2.length} articles with alternative selector 2`);
+      
+      if (altArticles2.length > articles.length) {
+        articles = altArticles2;
+      }
+    }
+    
+    // 페이지 분석 로그 (디버깅용)
+    console.log("페이지 구조:", 
+      {
+        postFeedExists: !!document.querySelector('.post-feed'),
+        totalArticleTags: document.querySelectorAll('article').length,
+        bodyContent: document.body.innerHTML.substring(0, 300) + '...'
+      }
+    );
+
+    // 추출 로직 - 더 안정적인 버전
     return articles.reverse().map((article, siteIndexInPage) => {
-      const link = article.querySelector('a');
-      const manufacturerEl = article.querySelector('p.entry-company.notranslate');
-      const modelEl = article.querySelector('h3.entry-title');
-      const certificateIdEl = article.querySelector('span.entry-cert-id');
-      const certificateIdPEl = article.querySelector('p.entry-certificate-id');
+      // 가능한 모든 셀렉터 시도 (기본 + 대체)
+      const link = article.querySelector('a') || article.querySelector('a[href]');
+      const manufacturerEl = 
+        article.querySelector('p.entry-company.notranslate') || 
+        article.querySelector('.entry-company') || 
+        article.querySelector('.manufacturer');
+      const modelEl = 
+        article.querySelector('h3.entry-title') || 
+        article.querySelector('.entry-title') || 
+        article.querySelector('h3');
+      const certificateIdEl = 
+        article.querySelector('span.entry-cert-id') || 
+        article.querySelector('.cert-id');
+      const certificateIdPEl = 
+        article.querySelector('p.entry-certificate-id') || 
+        article.querySelector('.certificate-id');
+      
       let certificateId;
 
       if (certificateIdPEl && certificateIdPEl.textContent) {
@@ -764,13 +810,21 @@ export class ProductListCollector {
         certificateId = certificateIdEl.textContent.trim();
       }
 
-      return {
+      // 디버깅을 위한 요소 정보 로깅
+      const itemInfo = {
         url: link && link.href ? link.href : '',
         manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
         model: modelEl ? modelEl.textContent?.trim() : undefined,
         certificateId,
         siteIndexInPage
       };
+      
+      // 각 제품 아이템 로깅 (첫 5개만)
+      if (siteIndexInPage < 5) {
+        console.log(`Product ${siteIndexInPage + 1} info:`, itemInfo);
+      }
+      
+      return itemInfo;
     });
   }
 
@@ -862,7 +916,15 @@ export class ProductListCollector {
       }
       await this.optimizePage(page);
       await this.optimizedNavigation(page, pageUrl, timeout);
-
+      
+      // 제품 목록 컨테이너가 완전히 로드될 때까지 대기 (최대 10초)
+      await page.waitForSelector('div.post-feed article', { timeout: 10000 }).catch(e => {
+        debugLog(`[ProductListCollector] Warning: Waiting for article elements timed out: ${e.message}`);
+      });
+      
+      // 안정성을 위한 추가 대기 시간
+      await delay(1000);
+      
       const rawProducts = await page.evaluate<RawProductData[]>(
         ProductListCollector._extractProductsFromPageDOM
       );
@@ -906,53 +968,111 @@ export class ProductListCollector {
 
   // 페이지 최적화를 위한 새로운 메서드
   private async optimizePage(page: Page): Promise<void> {
-    // 더 공격적인 리소스 차단 (2. 리소스 로딩 최적화)
+    // 덜 공격적인 리소스 차단 정책 (필요한 JS 허용)
     await page.route('**/*', (route) => {
       const request = route.request();
       const resourceType = request.resourceType();
       const url = request.url();
       
-      // HTML과 필수 CSS만 허용
+      // 필수 리소스 허용 목록 확장
       if (resourceType === 'document' || 
-          (resourceType === 'stylesheet' && url.includes('main'))) {
+          resourceType === 'script' ||  // JavaScript 허용
+          (resourceType === 'stylesheet') || // 모든 CSS 허용
+          (resourceType === 'fetch' || resourceType === 'xhr')) { // AJAX 요청 허용
         route.continue();
       } else {
+        // 여전히 불필요한 리소스는 차단 (이미지, 폰트, 미디어 등)
         route.abort();
       }
     });
   }
 
-  // 최적화된 네비게이션 함수 (4. 페이지 네비게이션 최적화)
+  // 개선된 네비게이션 함수
   private async optimizedNavigation(page: Page, url: string, timeout: number): Promise<boolean> {
     let navigationSucceeded = false;
     
     try {
-      // 첫 시도: 매우 짧은 타임아웃으로 시도
+      // 적절한 타임아웃과 네트워크 유휴 상태 추가된 네비게이션
       await page.goto(url, { 
-        waitUntil: 'domcontentloaded', // 더 가벼운 로드 조건
-        timeout: Math.min(5000, timeout / 3) // 매우 짧은 타임아웃
+        waitUntil: 'networkidle', // 'networkidle'은 네트워크 요청이 완료되기를 기다림
+        timeout: Math.max(10000, timeout / 2) // 최소 10초 이상의 타임아웃 보장
       });
       navigationSucceeded = true;
+      
+      // 페이지가 제대로 로드되었는지 추가 검증
+      const readyState = await page.evaluate(() => document.readyState).catch(() => 'unknown');
+      debugLog(`Page ready state: ${readyState}`);
+      
+      // 내용이 완전히 로드될 때까지 짧게 대기 (초기 JS 실행을 위한 시간)
+      await delay(500);
+      
     } catch (error: any) {
       if (error && error.name === 'TimeoutError') {
         // 타임아웃 발생해도 HTML이 로드되었다면 성공으로 간주
         const readyState = await page.evaluate(() => document.readyState).catch(() => 'unknown');
-        if (readyState !== 'loading' && readyState !== 'unknown') {
+        if (readyState === 'interactive' || readyState === 'complete') {
           navigationSucceeded = true;
           debugLog(`Navigation timed out but document is in '${readyState}' state. Continuing...`);
+          
+          // 타임아웃이 발생했지만 문서가 로드되었으면 추가 대기
+          await delay(1000);
         } else {
-          // 첫 시도 실패 시, 두 번째 시도 - 조금 더 긴 타임아웃
+          // 첫 시도 실패 시, 두 번째 시도 - 조금 더 긴 타임아웃과 단순한 로드 조건
           try {
+            debugLog(`Retrying navigation with simpler load condition...`);
             await page.goto(url, { 
-              waitUntil: 'domcontentloaded',
-              timeout: timeout / 2
+              waitUntil: 'load', // 기본 load 이벤트만 기다림
+              timeout: timeout
             });
             navigationSucceeded = true;
+            
+            // 성공했지만 추가 대기
+            await delay(500);
           } catch (secondError: any) {
-            // 최종 실패 시 오류 로깅
-            debugLog(`Navigation failed after retry: ${secondError && secondError.message ? secondError.message : 'Unknown error'}`);
+            // 마지막 시도: 단순 요청 후 준비 상태 확인
+            try {
+              debugLog(`Final navigation attempt with basic request...`);
+              await page.goto(url, { timeout });
+              const finalReadyState = await page.evaluate(() => document.readyState).catch(() => 'unknown');
+              
+              if (finalReadyState === 'interactive' || finalReadyState === 'complete') {
+                navigationSucceeded = true;
+                debugLog(`Basic navigation succeeded with state: ${finalReadyState}`);
+                await delay(1500); // 더 긴 대기
+              } else {
+                debugLog(`Navigation failed after all attempts. Final state: ${finalReadyState}`);
+              }
+            } catch (finalError: any) {
+              debugLog(`Final navigation attempt failed: ${finalError.message}`);
+            }
           }
         }
+      }
+    }
+    
+    // 네비게이션 성공 시 추가 검증
+    if (navigationSucceeded) {
+      try {
+        // 페이지 내용 검증 (기본 구조가 있는지)
+        const hasContent = await page.evaluate(() => {
+          return {
+            hasBody: !!document.body,
+            hasPosts: !!document.querySelector('.post-feed') || 
+                     !!document.querySelector('article') ||
+                     !!document.querySelector('.entry-title'),
+            documentHeight: document.body?.scrollHeight || 0
+          };
+        });
+        
+        debugLog(`Page content validation: ${JSON.stringify(hasContent)}`);
+        
+        // 콘텐츠가 너무 작거나 필요한 요소가 없으면 추가 대기
+        if (!hasContent.hasPosts || hasContent.documentHeight < 500) {
+          debugLog(`Page seems to be incompletely loaded, waiting additional time...`);
+          await delay(2000);
+        }
+      } catch (e) {
+        debugLog(`Error during page content validation: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
     

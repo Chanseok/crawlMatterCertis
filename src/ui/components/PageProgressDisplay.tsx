@@ -46,7 +46,7 @@ export const PageProgressDisplay: React.FC = () => {
     <div className="flex justify-between items-center mb-2">
       <span className="text-sm text-gray-600 dark:text-gray-400">페이지 진행 상황:</span>
       <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-        {displaySuccessPages} / {displayTotalPages} 페이지
+        {displaySuccessPages} 수집
       </span>
     </div>
   );

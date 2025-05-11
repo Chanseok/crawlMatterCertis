@@ -203,3 +203,70 @@ private async crawlProductDetail(product: Product, signal: AbortSignal): Promise
 특히 브라우저 컨텍스트 풀링과 같은 기법은 대규모 크롤링 작업에서 리소스 관리의 중요성을 보여줍니다. 또한 타임아웃 처리와 리소스 로딩 최적화는 불안정한 네트워크 환경에서의 크롤링 안정성을 크게 향상시킬 수 있습니다.
 
 이러한 최적화 기법들은 Matter 인증 제품 크롤링뿐만 아니라 다양한 웹 자동화 및 데이터 수집 프로젝트에 적용 가능한 범용적인 접근법입니다.
+
+## 추가 학습 내용: DOM 콘텐츠 추출 안정성 향상
+
+### 5. DOM 콘텐츠 추출 개선 (DOM Content Extraction Enhancement)
+
+**문제 상황:**
+- 기존 코드에서는 제품 목록 페이지에서 12개 항목이 모두 추출되지 않고, 일부만 추출되는 문제 발생
+- 리소스 차단이 과도하거나 페이지 로드 이벤트 처리가 적절하지 않아 DOM 요소가 완전히 로드되지 않은 상태에서 추출 시도
+
+**구현 내용:**
+- 다중 셀렉터 전략 적용 (셀렉터 다양화)
+- 요소 로드 완료 대기 메커니즘 추가
+- 리소스 차단 정책 완화
+- 네비게이션 방식 개선
+
+```typescript
+// 제품 목록 컨테이너가 완전히 로드될 때까지 대기
+await page.waitForSelector('div.post-feed article', { timeout: 10000 }).catch(e => {
+  debugLog(`[ProductListCollector] Warning: Waiting for article elements timed out: ${e.message}`);
+});
+
+// 안정성을 위한 추가 대기 시간
+await delay(1000);
+
+// 여러 셀렉터 시도를 통한 안정적 요소 추출
+private static _extractProductsFromPageDOM(): RawProductData[] {
+  console.log("DOM extraction started");
+  
+  // 첫 번째 방법: 표준 셀렉터
+  let articles = Array.from(document.querySelectorAll('div.post-feed article'));
+  console.log(`Found ${articles.length} articles with standard selector`);
+  
+  // 대체 셀렉터 시도 (기본 셀렉터가 충분한 항목을 찾지 못한 경우)
+  if (articles.length < 12) {
+    // 대체 셀렉터 시도들...
+    const altArticles1 = Array.from(document.querySelectorAll('.post-feed article'));
+    // ...
+  }
+  
+  // 추출 및 데이터 매핑 로직
+}
+
+// 덜 공격적인 리소스 차단 정책
+await page.route('**/*', (route) => {
+  const request = route.request();
+  const resourceType = request.resourceType();
+  
+  // 필수 리소스 허용 목록 확장
+  if (resourceType === 'document' || 
+      resourceType === 'script' ||  // JavaScript 허용
+      (resourceType === 'stylesheet') || // 모든 CSS 허용
+      (resourceType === 'fetch' || resourceType === 'xhr')) { // AJAX 요청 허용
+    route.continue();
+  } else {
+    route.abort();
+  }
+});
+```
+
+**교훈:**
+- **요소 로드 확인의 중요성**: DOM 요소가 완전히 로드될 때까지 기다리는 것이 안정적인 데이터 추출의 핵심
+- **리소스 차단과 로딩 완료의 균형**: 효율성(리소스 차단)과 완전성(페이지 로드) 사이의 균형이 중요
+- **다중 셀렉터 접근법**: 웹사이트 구조 변화에 대응하기 위해 여러 셀렉터를 시도하는 전략이 효과적
+- **진단 로깅의 가치**: 콘솔 로깅을 통한 요소 추출 과정 가시화가 디버깅과 최적화에 큰 도움
+- **단계적 대기 전략**: 요소 대기 → 추가 지연 → 요소 추출의 단계적 접근으로 안정성 향상
+
+이 개선을 통해 제품 목록 페이지에서의 항목 추출 완전성이 크게 향상되었으며, 이는 전체 크롤링 품질을 결정하는 핵심 요소로 작용했습니다. 특히 동적으로 로드되는 콘텐츠가 많은 현대 웹사이트에서는 이러한 DOM 추출 전략이 더욱 중요합니다.
