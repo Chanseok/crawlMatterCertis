@@ -71,13 +71,13 @@ export function CrawlingSettings() {
       {/* 페이지 범위 설정 */}
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-          수집할 페이지 수 (1~100)
+          수집할 페이지 수 (1~500)
         </label>
         <div className="flex items-center">
           <input
             type="range"
             min="1"
-            max="100"
+            max="500"
             value={pageLimit}
             onChange={(e) => setPageLimit(parseInt(e.target.value))}
             className="w-full mr-3"

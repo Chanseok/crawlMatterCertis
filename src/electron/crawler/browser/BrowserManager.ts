@@ -45,10 +45,14 @@ export class BrowserManager {
     const headless = this.config.headlessBrowser ?? true;
     debugLog(`[BrowserManager] Initializing new browser instance (headless: ${headless})...`);
     try {
-      this.browser = await chromium.launch({ headless });
-      debugLog('[BrowserManager] New browser instance initialized.');
+      this.browser = await chromium.launch({ 
+        headless,
+        // 디스크 캐시 활성화로 반복 방문 성능 향상
+        args: ['--disk-cache-size=104857600'] // 100MB 캐시
+      });
+      debugLog('[BrowserManager] New Chromium browser instance initialized.');
     } catch (error) {
-      debugLog('[BrowserManager] Failed to initialize browser instance:', error);
+      debugLog('[BrowserManager] Failed to initialize Chromium browser instance:', error);
       this.browser = null; // Ensure browser is null if launch fails
       throw new Error(`Failed to initialize browser: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -78,8 +82,8 @@ export class BrowserManager {
     try {
       this.context = await this.browser.newContext({
         userAgent: getRandomUserAgent(),
-        // Consider other context options from your config if necessary
-        // e.g., viewport, locale, permissions, etc.
+        bypassCSP: true,
+        // 타임아웃은 페이지 레벨에서 설정
       });
       debugLog('[BrowserManager] New browser context created.');
     } catch (error) {
@@ -323,7 +327,7 @@ export class BrowserManager {
     try {
       const newContext = await this.browser.newContext({
         userAgent: getRandomUserAgent(),
-        // 필요한 경우 추가 컨텍스트 옵션 설정
+        bypassCSP: true
       });
       // debugLog('[BrowserManager] New isolated browser context created successfully.');
       return newContext;

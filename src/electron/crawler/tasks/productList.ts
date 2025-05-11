@@ -74,12 +74,22 @@ export class ProductListCollector {
   private totalPagesForThisStage1Collection: number = 0; // Number of pages being attempted in current collect() call
   private stage1StartTime: number = 0;
 
+  // Cached configuration values
+  private pageTimeoutMs: number;
+  private productsPerPage: number;
+  private matterFilterUrl: string;
+
   constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig, browserManager: BrowserManager) {
     this.state = state;
     this.abortController = abortController;
     this.config = config;
     this.browserManager = browserManager;
     this.productCache = new Map();
+    
+    // 자주 사용하는 설정값 미리 추출
+    this.pageTimeoutMs = config.pageTimeoutMs || 60000;
+    this.productsPerPage = config.productsPerPage || 12;
+    this.matterFilterUrl = config.matterFilterUrl || '';
   }
 
   public setProgressCallback(callback: EnhancedProgressCallback): void {
@@ -227,7 +237,7 @@ export class ProductListCollector {
           dbCrawlingStartPageId: startPage,
           dbCrawlingEndPageId: endPage,
           pagesToCrawlCount: pageNumbersToCrawl.length,
-          estimatedProductCount: pageNumbersToCrawl.length * (this.config.productsPerPage || 12),
+          estimatedProductCount: pageNumbersToCrawl.length * this.productsPerPage,
           lastPageProductCount
         })
       });
@@ -333,10 +343,10 @@ export class ProductListCollector {
     signal: AbortSignal,
     attempt: number = 1
   ): Promise<CrawlResult | null> {
-    const url = `${this.config.matterFilterUrl}&paged=${pageNumber}`;
+    const url = `${this.matterFilterUrl}&paged=${pageNumber}`;
     const sitePageNumberForTargetCount = PageIndexManager.toSitePageNumber(pageNumber, siteTotalPages);
     const actualLastPageProductCount = ProductListCollector.lastPageProductCount ?? 0;
-    const targetProductCount = sitePageNumberForTargetCount === 0 ? actualLastPageProductCount : (this.config.productsPerPage || 12);
+    const targetProductCount = sitePageNumberForTargetCount === 0 ? actualLastPageProductCount : this.productsPerPage;
 
     let crawlError: CrawlError | undefined;
 
@@ -364,7 +374,7 @@ export class ProductListCollector {
       newlyFetchedProducts = await Promise.race([
         this.crawlPageWithTimeout(pageNumber, siteTotalPages, signal, attempt),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new PageTimeoutError('Timeout', pageNumber, attempt)), this.config.pageTimeoutMs ?? 60000)
+          setTimeout(() => reject(new PageTimeoutError('Timeout', pageNumber, attempt)), this.pageTimeoutMs)
         )
       ]);
 
@@ -598,7 +608,7 @@ export class ProductListCollector {
           throw new PageInitializationError('Failed to create page in new context for _fetchTotalPages', 0, attempt);
         }
 
-        if (!this.config.matterFilterUrl) {
+        if (!this.matterFilterUrl) {
           throw new Error('Configuration error: matterFilterUrl is not defined.');
         }
 
@@ -606,9 +616,9 @@ export class ProductListCollector {
           await delay(RETRY_DELAY_MS / 2);
         }
 
-        debugLog(`[ProductListCollector] Navigating to ${this.config.matterFilterUrl} to fetch total pages (Attempt ${attempt}).`);
-        await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
-        await page.goto(this.config.matterFilterUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
+        debugLog(`[ProductListCollector] Navigating to ${this.matterFilterUrl} to fetch total pages (Attempt ${attempt}).`);
+        await this.optimizePage(page);
+        await this.optimizedNavigation(page, this.matterFilterUrl, this.pageTimeoutMs);
 
         const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
         let totalPages = 0;
@@ -625,11 +635,11 @@ export class ProductListCollector {
 
         let lastPageProductCount = 0;
         if (totalPages > 0) {
-          const lastPageUrl = `${this.config.matterFilterUrl}&paged=${totalPages}`;
+          const lastPageUrl = `${this.matterFilterUrl}&paged=${totalPages}`;
           debugLog(`[ProductListCollector] Navigating to last page: ${lastPageUrl} (Attempt ${attempt})`);
           if (page && lastPageUrl !== page.url()) {
-            await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
-            await page.goto(lastPageUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
+            await this.optimizePage(page);
+            await this.optimizedNavigation(page, lastPageUrl, this.pageTimeoutMs);
           }
 
           if (page) {
@@ -824,8 +834,8 @@ export class ProductListCollector {
       throw new PageAbortedError('Aborted before crawlPageWithTimeout call', pageNumber, attempt);
     }
 
-    const pageUrl = `${this.config.matterFilterUrl}&paged=${pageNumber}`;
-    const timeout = this.config.pageTimeoutMs ?? 60000;
+    const pageUrl = `${this.matterFilterUrl}&paged=${pageNumber}`;
+    const timeout = this.pageTimeoutMs;
 
     let context: BrowserContext | null = null;
     let page: Page | null = null;
@@ -840,8 +850,8 @@ export class ProductListCollector {
       if (attempt > 1) {
         await delay(this.config.minRequestDelayMs ?? 500);
       }
-      await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
-      await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout });
+      await this.optimizePage(page);
+      await this.optimizedNavigation(page, pageUrl, timeout);
 
       const rawProducts = await page.evaluate<RawProductData[]>(
         ProductListCollector._extractProductsFromPageDOM
@@ -871,5 +881,60 @@ export class ProductListCollector {
         await context.close();
       }
     }
+  }
+
+  // 페이지 최적화를 위한 새로운 메서드
+  private async optimizePage(page: Page): Promise<void> {
+    // 더 공격적인 리소스 차단 (2. 리소스 로딩 최적화)
+    await page.route('**/*', (route) => {
+      const request = route.request();
+      const resourceType = request.resourceType();
+      const url = request.url();
+      
+      // HTML과 필수 CSS만 허용
+      if (resourceType === 'document' || 
+          (resourceType === 'stylesheet' && url.includes('main'))) {
+        route.continue();
+      } else {
+        route.abort();
+      }
+    });
+  }
+
+  // 최적화된 네비게이션 함수 (4. 페이지 네비게이션 최적화)
+  private async optimizedNavigation(page: Page, url: string, timeout: number): Promise<boolean> {
+    let navigationSucceeded = false;
+    
+    try {
+      // 첫 시도: 매우 짧은 타임아웃으로 시도
+      await page.goto(url, { 
+        waitUntil: 'domcontentloaded', // 더 가벼운 로드 조건
+        timeout: Math.min(5000, timeout / 3) // 매우 짧은 타임아웃
+      });
+      navigationSucceeded = true;
+    } catch (error: any) {
+      if (error && error.name === 'TimeoutError') {
+        // 타임아웃 발생해도 HTML이 로드되었다면 성공으로 간주
+        const readyState = await page.evaluate(() => document.readyState).catch(() => 'unknown');
+        if (readyState !== 'loading' && readyState !== 'unknown') {
+          navigationSucceeded = true;
+          debugLog(`Navigation timed out but document is in '${readyState}' state. Continuing...`);
+        } else {
+          // 첫 시도 실패 시, 두 번째 시도 - 조금 더 긴 타임아웃
+          try {
+            await page.goto(url, { 
+              waitUntil: 'domcontentloaded',
+              timeout: timeout / 2
+            });
+            navigationSucceeded = true;
+          } catch (secondError: any) {
+            // 최종 실패 시 오류 로깅
+            debugLog(`Navigation failed after retry: ${secondError && secondError.message ? secondError.message : 'Unknown error'}`);
+          }
+        }
+      }
+    }
+    
+    return navigationSucceeded;
   }
 }
