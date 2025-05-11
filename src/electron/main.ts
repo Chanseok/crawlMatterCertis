@@ -185,25 +185,30 @@ app.on('ready', async () => {
             // Optionally, return an error if config update itself fails critically
         }
         
+        // 항상 최신 설정 적용 보장
         const currentConfigForCrawling = configManager.getConfig();
         console.log(`[IPC] Start crawling requested in ${mode} mode with effective config:`, currentConfigForCrawling);
         
         try {
-            // 시작 전 상태 확인
-            // CrawlerEngine의 startCrawling은 내부적으로 checkCrawlingStatus를 실행하지만
-            // 그 결과를 직접 UI에 반환하지는 않음. 따라서 여기서 상태 체크를 추가로 수행하여
-            // 사이트 로컬 비교 패널에 정보가 표시되도록 한다.
+            // 항상 시작 전 상태 확인 수행
+            // '상태 체크'를 누르지 않고 '크롤링'을 누르는 경우에도
+            // 사이트 로컬 비교 패널에 올바른 정보를 표시하기 위함
+            console.log('[IPC] Performing mandatory status check before crawling...');
             let statusSummary;
             try {
                 statusSummary = await checkCrawlingStatus();
+                console.log('[IPC] Pre-crawling status check completed successfully');
                 // 상태 정보가 UI로 전송될 수 있도록 이벤트 발생
+                // 이 이벤트는 UI에서 사이트 로컬 비교 패널 업데이트에 사용됨
                 crawlerEvents.emit('crawlingStatusSummary', statusSummary);
             } catch (statusError) {
-                console.error('[IPC] Error during pre-crawling status check:', statusError);
-                // 상태 체크에 실패해도 크롤링 자체는 진행
+                console.error('[IPC] Error during mandatory pre-crawling status check:', statusError);
+                // 상태 체크에 실패해도 크롤링 자체는 진행시킴
+                // 하지만 이런 경우는 크롤링 범위 파악에 오류가 발생할 수 있음
             }
             
-            // 크롤링 시작 (이제 config를 인자로 받지 않음)
+            // 크롤링 시작 - 내부에서도 checkCrawlingStatus 호출하지만
+            // 이미 위에서 호출했으므로 내부에서는 캐시된 정보를 활용할 것임
             const success = await startCrawling();
             // 상태 체크 결과를 함께 반환
             return { success, status: statusSummary };

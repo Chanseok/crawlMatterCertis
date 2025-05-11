@@ -239,15 +239,20 @@ export class CrawlerEngine {
    * 크롤링 상태 체크 요약 정보 반환
    */
   public async checkCrawlingStatus(): Promise<CrawlingSummary> {
-    const currentConfig = configManager.getConfig(); // Get the latest configuration
+    // 항상 최신 설정을 가져옴
+    const currentConfig = configManager.getConfig(); 
+    console.log('[CrawlerEngine] checkCrawlingStatus called with latest config:', JSON.stringify(currentConfig));
+    
     let tempBrowserManager: BrowserManager | null = null;
     let createdTempBrowserManager = false;
 
     try {
+      // 데이터베이스 요약 정보 가져오기
       const dbSummary = await getDatabaseSummaryFromDb();
+      console.log('[CrawlerEngine] Database summary fetched:', JSON.stringify(dbSummary));
       
       let totalPages = 0;
-      let lastPageProductCount = 0; // Initialize lastPageProductCount
+      let lastPageProductCount = 0; // 마지막 페이지의 제품 수 초기화
 
       // Determine which BrowserManager to use
       // Check if the existing browserManager is valid (initialized and not cleaned up)

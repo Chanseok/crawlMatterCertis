@@ -191,15 +191,35 @@ function App() {
   };
 
   // 크롤링 시작/중지 핸들러
-  const handleCrawlToggle = () => {
+  const handleCrawlToggle = async () => {
     if (crawlingStatus === 'running') {
       stopCrawling();
     } else {
-      startCrawling();
-      // 크롤링 시작 시 애니메이션과 함께 비교 섹션 축소
-      setTimeout(() => {
-        setCompareExpanded(false);
-      }, 300);
+      try {
+        // 크롤링 시작 전 최신 설정이 적용되도록 보장
+        await loadConfig();
+        
+        // 이미 상태 체크를 한 경우를 판단하기 위해 상태 요약 정보 확인
+        const currentSummary = crawlingStatusSummaryStore.get();
+        const hasStatusData = currentSummary && 
+                             currentSummary.siteTotalPages !== undefined && 
+                             currentSummary.siteTotalPages > 0;
+        
+        // 상태 체크를 하지 않았다면 자동으로 수행
+        if (!hasStatusData) {
+          addLog('크롤링을 시작하기 전에 상태 확인을 자동으로 수행합니다...', 'info');
+        }
+        
+        // 어느 경우든 크롤링 시작 (내부에서 상태 체크 수행)
+        await startCrawling();
+        
+        // 크롤링 시작 시 애니메이션과 함께 비교 섹션 축소
+        setTimeout(() => {
+          setCompareExpanded(false);
+        }, 300);
+      } catch (error) {
+        addLog(`크롤링 시작 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      }
     }
   };
 

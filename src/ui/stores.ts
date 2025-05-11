@@ -421,15 +421,35 @@ export function updateCrawlingProgress(progress: Partial<CrawlingProgress>): voi
 // 크롤링 시작 함수
 export async function startCrawling(): Promise<void> {
   try {
-    // 상태 요약 정보가 비어있는지 확인하고, 비어있으면 자동으로 상태 체크 실행
-    const statusSummary = crawlingStatusSummaryStore.get();
-    const isStatusEmpty = Object.keys(statusSummary).length === 0;
+    // 항상 최신 설정을 로드
+    try {
+      const latestConfig = await getConfig();
+      console.log('[UI] 크롤링 시작 전 최신 설정 로드됨:', latestConfig);
+      configStore.set(latestConfig);
+    } catch (configError) {
+      console.error('[UI] 크롤링 시작 전 설정 로드 실패:', configError);
+      addLog('설정을 로드하는데 문제가 있습니다. 기존 설정을 사용합니다.', 'warning');
+      // 설정 로드 실패해도 기존 설정으로 진행
+    }
     
+    // 상태 요약 정보 확인
+    const statusSummary = crawlingStatusSummaryStore.get();
+    const isStatusEmpty = !statusSummary || Object.keys(statusSummary).length === 0 || 
+                          statusSummary.siteTotalPages === undefined || 
+                          statusSummary.siteTotalPages <= 0;
+    
+    // 상태 정보가 없거나 부족하면 상태 체크부터 진행
     if (isStatusEmpty) {
-      addLog('자동 상태 체크를 먼저 실행합니다...', 'info');
-      await checkCrawlingStatus();
-      // 상태 체크 이후 잠시 대기하여 UI 업데이트 시간 제공
-      await new Promise(resolve => setTimeout(resolve, 500));
+      addLog('크롤링 전 상태 체크를 먼저 실행합니다...', 'info');
+      try {
+        await checkCrawlingStatus();
+        // 상태 체크 이후 잠시 대기하여 UI 업데이트 시간 제공
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (statusError) {
+        addLog('상태 체크 중 오류가 발생했지만, 크롤링은 계속 진행합니다.', 'warning');
+        console.error('[UI] 크롤링 전 자동 상태 체크 오류:', statusError);
+        // 상태 체크 실패해도 크롤링은 계속 진행
+      }
     }
     
     crawlingStatusStore.set('running');
@@ -442,10 +462,11 @@ export async function startCrawling(): Promise<void> {
     const config = configStore.get();
     addLog(`설정: 페이지 범위 ${config.pageRangeLimit}, 제품 목록 재시도 ${config.productListRetryCount}회, 제품 상세 재시도 ${config.productDetailRetryCount}회`, 'info');
     
-    // API를 통해 크롤링 시작 (설정 전달 기능 추가 필요)
+    // API를 통해 크롤링 시작 (최신 설정 전달)
+    console.log('[UI] 크롤링 시작 요청, 설정:', config);
     const { success, status } = await api.invokeMethod<'startCrawling', { success: boolean; status?: CrawlingStatusSummary }>('startCrawling', { 
       mode: appModeStore.get(),
-      config: configStore.get() // 설정 전달 (향후 백엔드 업데이트 필요)
+      config: config // 최신 설정 전달
     });
     
     // 백엔드에서 status 정보를 받아오면 상태 정보 업데이트
@@ -584,11 +605,26 @@ export async function deleteRecordsByPageRange(startPageId: number, endPageId: n
 export async function checkCrawlingStatus(): Promise<void> {
   try {
     addLog('상태 체크를 시작합니다...', 'info');
+    
+    // 최신 설정 로드 - 이 부분이 중요함
+    // 설정을 변경하고 저장한 후 '상태 체크'를 누르면 최신 설정이 로드되도록 보장
+    try {
+      const latestConfig = await getConfig();
+      console.log('[UI] 상태 체크 전 최신 설정 로드됨:', latestConfig);
+      configStore.set(latestConfig);
+    } catch (configError) {
+      console.error('[UI] 상태 체크 전 설정 로드 실패:', configError);
+      // 설정 로드 실패해도 기존 설정으로 진행
+    }
+    
     // 이전 상태 저장
     const prev = crawlingStatusSummaryStore.get();
     if (prev) lastCrawlingStatusSummaryStore.set(prev);
+    
     const { success, status, error } = await api.invokeMethod<'checkCrawlingStatus', { success: boolean; status?: CrawlingStatusSummary; error?: string }>('checkCrawlingStatus');
+    
     if (success && status) {
+      console.log('[UI] 상태 체크 성공, 결과:', status);
       crawlingStatusSummaryStore.set(status);
       // 변경점 비교 및 로그/알림
       if (prev) {
