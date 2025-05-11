@@ -343,7 +343,7 @@ export class BrowserManager {
     try {
       const page = await context.newPage();
       this.pageContextMap.set(page, context); // 페이지-컨텍스트 매핑 기록
-      debugLog('[BrowserManager] New page created in isolated context successfully.');
+      // debugLog('[BrowserManager] New page created in isolated context successfully.');
       return page;
     } catch (error) {
       debugLog('[BrowserManager] Failed to create new page in provided context:', error);

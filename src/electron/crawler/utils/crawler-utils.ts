@@ -49,7 +49,8 @@ async function getTotalPages(): Promise<number> {
     }
     
     console.log(`[CrawlerUtils] Navigating to ${config.matterFilterUrl}`);
-    await page.goto(config.matterFilterUrl, { waitUntil: 'domcontentloaded' });
+    await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
+    await page.goto(config.matterFilterUrl, { waitUntil: 'load' });
     
     // 페이지네이션 정보 추출
     const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();

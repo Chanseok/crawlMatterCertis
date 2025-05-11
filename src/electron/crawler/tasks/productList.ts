@@ -45,7 +45,7 @@ export type EnhancedProgressCallback = (
   stage1PageStatuses: PageProcessingStatusItem[],
   currentOverallRetryCountForStage: number, // Overall retries for stage 1
   stage1StartTime: number, // Start time of the current stage 1 processing
-  isStageComplete?: boolean 
+  isStageComplete?: boolean
 ) => void;
 
 // page.evaluate가 반환하는 원시 데이터 타입
@@ -61,28 +61,28 @@ export class ProductListCollector {
   private state: CrawlerState;
   private abortController: AbortController;
   private enhancedProgressCallback: EnhancedProgressCallback | null = null;
-  private processedPagesSuccessfully: number = 0; 
+  private processedPagesSuccessfully: number = 0;
   private readonly config: CrawlerConfig;
-  private readonly browserManager: BrowserManager; 
+  private readonly browserManager: BrowserManager;
 
   private static lastPageProductCount: number | null = null;
   private productCache: Map<number, Product[]>;
-  
+
   // New members for detailed stage 1 progress
   private stage1PageStatuses: PageProcessingStatusItem[] = [];
   private currentStageRetryCount: number = 0; // Tracks the number of retry *cycles* for the stage
   private totalPagesForThisStage1Collection: number = 0; // Number of pages being attempted in current collect() call
   private stage1StartTime: number = 0;
 
-  constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig, browserManager: BrowserManager) { 
+  constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig, browserManager: BrowserManager) {
     this.state = state;
     this.abortController = abortController;
-    this.config = config; 
-    this.browserManager = browserManager; 
-    this.productCache = new Map(); 
+    this.config = config;
+    this.browserManager = browserManager;
+    this.productCache = new Map();
   }
 
-  public setProgressCallback(callback: EnhancedProgressCallback): void { 
+  public setProgressCallback(callback: EnhancedProgressCallback): void {
     this.enhancedProgressCallback = callback;
   }
 
@@ -92,14 +92,14 @@ export class ProductListCollector {
       this.enhancedProgressCallback(
         this.processedPagesSuccessfully,
         this.totalPagesForThisStage1Collection, // Use the count of pages we are actually trying to process
-        [...this.stage1PageStatuses], 
+        [...this.stage1PageStatuses],
         this.currentStageRetryCount,
         this.stage1StartTime, // Pass the stage1StartTime
         isStageComplete
       );
     }
   }
-  
+
   private _updatePageStatusInternal(pageNumber: number, newStatus: PageProcessingStatusValue, attempt?: number): void {
     const pageStatusItem = this.stage1PageStatuses.find(p => p.pageNumber === pageNumber);
     if (pageStatusItem) {
@@ -111,16 +111,16 @@ export class ProductListCollector {
   }
 
   // _emitPageCrawlStatus is kept for potential specific, non-animation task updates via 'crawlingTaskStatus'
-  private _emitPageCrawlStatus( 
+  private _emitPageCrawlStatus(
     pageNumber: number,
     status: 'success' | 'error' | 'running' | 'stopped',
     data: Record<string, any>
   ): void {
     const messagePayload: Record<string, any> = {
       stage: 1,
-      type: 'page', 
+      type: 'page',
       pageNumber,
-      ...data 
+      ...data
     };
     if (status === 'running') {
       messagePayload.startTime = new Date().toISOString();
@@ -145,32 +145,32 @@ export class ProductListCollector {
     this.currentStageRetryCount = 0;
     this.stage1PageStatuses = [];
     this.totalPagesForThisStage1Collection = 0;
-    this.stage1StartTime = Date.now(); 
+    this.stage1StartTime = Date.now();
 
     try {
       const prepResult = await this._preparePageRange(userPageLimit);
       if (!prepResult || prepResult.pageNumbersToCrawl.length === 0) {
-        this._sendProgressUpdate(true); 
-        return []; 
+        this._sendProgressUpdate(true);
+        return [];
       }
       // siteTotalPages is the total number of pages on the site, used for PageIndexManager
       const { totalPages: siteTotalPages, pageNumbersToCrawl, lastPageProductCount } = prepResult;
       ProductListCollector.lastPageProductCount = lastPageProductCount;
-      this.totalPagesForThisStage1Collection = pageNumbersToCrawl.length; 
+      this.totalPagesForThisStage1Collection = pageNumbersToCrawl.length;
 
       this.stage1PageStatuses = pageNumbersToCrawl.map(pn => ({
         pageNumber: pn,
         status: 'waiting',
         attempt: 0
       }));
-      this._sendProgressUpdate(); 
+      this._sendProgressUpdate();
 
-      const { incompletePages: incompletePagesAfterInitialCrawl, allPageErrors } = 
+      const { incompletePages: incompletePagesAfterInitialCrawl, allPageErrors } =
         await this._executeInitialCrawl(pageNumbersToCrawl, siteTotalPages);
-      
+
       if (this.abortController.signal.aborted) {
         console.log('[ProductListCollector] Crawling stopped after initial list collection.');
-        this._sendProgressUpdate(true); 
+        this._sendProgressUpdate(true);
         return this.finalizeCollectedProducts(pageNumbersToCrawl);
       }
 
@@ -178,27 +178,27 @@ export class ProductListCollector {
         console.log(`[ProductListCollector] ${incompletePagesAfterInitialCrawl.length} pages incomplete after initial crawl. Retrying...`);
         await this.retryFailedPages(
           incompletePagesAfterInitialCrawl,
-          siteTotalPages, 
+          siteTotalPages,
           allPageErrors
         );
       }
-      
+
       if (this.abortController.signal.aborted) {
         console.log('[ProductListCollector] Crawling stopped during/after retries.');
-        this._sendProgressUpdate(true); 
+        this._sendProgressUpdate(true);
         return this.finalizeCollectedProducts(pageNumbersToCrawl);
       }
 
       const finalProducts = this.finalizeCollectedProducts(pageNumbersToCrawl);
       this._summarizeCollectionOutcome(pageNumbersToCrawl, siteTotalPages, allPageErrors, finalProducts);
-      this._sendProgressUpdate(true); 
+      this._sendProgressUpdate(true);
       return finalProducts;
 
     } finally {
       this.cleanupResources();
     }
   }
-  
+
   private async _preparePageRange(userPageLimit: number): Promise<{
     totalPages: number; // Site's total pages
     pageNumbersToCrawl: number[]; // DB pageIds to crawl
@@ -215,18 +215,18 @@ export class ProductListCollector {
 
       const pageNumbersToCrawl = Array.from({ length: startPage - endPage + 1 }, (_, i) => endPage + i).reverse();
       debugLog(`[ProductListCollector] DB Page numbers to crawl: ${pageNumbersToCrawl.join(', ')}`);
-      
+
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'list-range',
         status: 'running',
         message: JSON.stringify({
           stage: 1,
           type: 'range',
-          siteTotalPages: totalPages, 
+          siteTotalPages: totalPages,
           dbCrawlingStartPageId: startPage,
           dbCrawlingEndPageId: endPage,
           pagesToCrawlCount: pageNumbersToCrawl.length,
-          estimatedProductCount: pageNumbersToCrawl.length * (this.config.productsPerPage || 12), 
+          estimatedProductCount: pageNumbersToCrawl.length * (this.config.productsPerPage || 12),
           lastPageProductCount
         })
       });
@@ -245,7 +245,7 @@ export class ProductListCollector {
         });
         return null;
       }
-      return { totalPages, pageNumbersToCrawl, lastPageProductCount }; 
+      return { totalPages, pageNumbersToCrawl, lastPageProductCount };
     } catch (error) {
       const crawlError: CrawlError = {
         type: 'Initialization',
@@ -257,7 +257,7 @@ export class ProductListCollector {
         status: 'error',
         message: JSON.stringify({ stage: 1, type: 'range', error: crawlError })
       });
-      throw new Error(`Initialization failed: ${crawlError.message}`); 
+      throw new Error(`Initialization failed: ${crawlError.message}`);
     }
   }
 
@@ -265,14 +265,14 @@ export class ProductListCollector {
     incompletePages: number[];
     allPageErrors: Record<string, CrawlError[]>;
   }> {
-    initializeTaskStates(pageNumbersToCrawl); 
+    initializeTaskStates(pageNumbersToCrawl);
 
     const incompletePages: number[] = [];
     const allPageErrors: Record<string, CrawlError[]> = {};
     const initialAttemptNumber = 1;
 
     debugLog(`[ProductListCollector] Starting initial crawl for ${pageNumbersToCrawl.length} pages.`);
-    
+
     pageNumbersToCrawl.forEach(pNum => {
       this._updatePageStatusInternal(pNum, 'attempting', initialAttemptNumber);
     });
@@ -280,7 +280,7 @@ export class ProductListCollector {
 
     const { results } = await this.executeParallelCrawling(
       pageNumbersToCrawl,
-      siteTotalPages, 
+      siteTotalPages,
       this.config.initialConcurrency ?? 5,
       initialAttemptNumber
     );
@@ -288,10 +288,10 @@ export class ProductListCollector {
     this._processBatchResultsAndUpdateStatus(results, incompletePages, allPageErrors, initialAttemptNumber);
     return { incompletePages, allPageErrors };
   }
-  
+
   private _processBatchResultsAndUpdateStatus(
     results: (CrawlResult | null)[],
-    incompletePageListToPopulate: number[], 
+    incompletePageListToPopulate: number[],
     errorLog: Record<string, CrawlError[]>,
     attemptNumber: number
   ): void {
@@ -306,10 +306,10 @@ export class ProductListCollector {
           newStatus = 'failed';
         } else if (!result.isComplete) {
           newStatus = 'incomplete';
-        } else { 
+        } else {
           newStatus = 'success';
         }
-        
+
         this._updatePageStatusInternal(result.pageNumber, newStatus, attemptNumber);
 
         if (newStatus === 'incomplete' || newStatus === 'failed') {
@@ -323,12 +323,12 @@ export class ProductListCollector {
       }
     });
     debugLog(`[_processBatchResultsAndUpdateStatus attempt ${attemptNumber}] Processed ${results.length} results. ${incompletePageListToPopulate.length} pages currently marked as incomplete/failed.`);
-    this._sendProgressUpdate(); 
+    this._sendProgressUpdate();
   }
 
   private async processPageCrawl(
-    pageNumber: number, 
-    siteTotalPages: number, 
+    pageNumber: number,
+    siteTotalPages: number,
     signal: AbortSignal,
     attempt: number = 1
   ): Promise<CrawlResult | null> {
@@ -338,10 +338,10 @@ export class ProductListCollector {
     const targetProductCount = sitePageNumberForTargetCount === 0 ? actualLastPageProductCount : (this.config.productsPerPage || 12);
 
     let crawlError: CrawlError | undefined;
-    
+
     this._updatePageStatusInternal(pageNumber, 'attempting', attempt);
-    this._emitPageCrawlStatus(pageNumber, 'running', { url, attempt }); 
-    updateTaskStatus(pageNumber, 'running'); 
+    this._emitPageCrawlStatus(pageNumber, 'running', { url, attempt });
+    updateTaskStatus(pageNumber, 'running');
 
     if (signal.aborted) {
       this._updatePageStatusInternal(pageNumber, 'failed', attempt);
@@ -371,19 +371,19 @@ export class ProductListCollector {
         existingProductsFromCache, newlyFetchedProducts
       );
       this.productCache.set(pageNumber, allProductsForPage);
-      currentProductsOnPage = allProductsForPage; 
+      currentProductsOnPage = allProductsForPage;
       isComplete = currentProductsOnPage.length >= targetProductCount;
 
       this._updatePageStatusInternal(pageNumber, isComplete ? 'success' : 'incomplete', attempt);
-      this._emitPageCrawlStatus(pageNumber, 'success', { 
+      this._emitPageCrawlStatus(pageNumber, 'success', {
         productsCount: currentProductsOnPage.length,
         newlyFetchedCount: newlyFetchedProducts.length,
-        isComplete, targetCount: targetProductCount, attempt 
+        isComplete, targetCount: targetProductCount, attempt
       });
       updateTaskStatus(pageNumber, 'success');
     } catch (err) {
       this._updatePageStatusInternal(pageNumber, 'failed', attempt);
-      const finalStatusForTask = signal.aborted ? 'stopped' : 'error'; 
+      const finalStatusForTask = signal.aborted ? 'stopped' : 'error';
       if (err instanceof PageTimeoutError) {
         crawlError = { type: 'Timeout', message: err.message, pageNumber, attempt, originalError: err };
       } else if (err instanceof PageAbortedError) {
@@ -399,9 +399,9 @@ export class ProductListCollector {
       }
       this._emitPageCrawlStatus(pageNumber, finalStatusForTask as 'error' | 'stopped', { error: crawlError, attempt });
       updateTaskStatus(pageNumber, finalStatusForTask, crawlError.message);
-      isComplete = currentProductsOnPage.length >= targetProductCount; 
+      isComplete = currentProductsOnPage.length >= targetProductCount;
     }
-    
+
     return {
       pageNumber, products: currentProductsOnPage, error: crawlError, isComplete
     };
@@ -409,25 +409,25 @@ export class ProductListCollector {
 
   private async retryFailedPages(
     pagesToRetryInitially: number[],
-    siteTotalPages: number, 
+    siteTotalPages: number,
     failedPageErrors: Record<string, CrawlError[]>
   ): Promise<void> {
     const productListRetryCount = this.config.productListRetryCount ?? 3;
     const retryConcurrency = this.config.retryConcurrency ?? 1;
 
     if (productListRetryCount <= 0) {
-      pagesToRetryInitially.forEach(pNum => this._updatePageStatusInternal(pNum, 'failed', 1)); 
-      this._sendProgressUpdate(); 
+      pagesToRetryInitially.forEach(pNum => this._updatePageStatusInternal(pNum, 'failed', 1));
+      this._sendProgressUpdate();
       return;
     }
 
-    let currentIncompletePages = [...pagesToRetryInitially]; 
-    const firstRetryCycleAttemptNumber = 1; 
+    let currentIncompletePages = [...pagesToRetryInitially];
+    const firstRetryCycleAttemptNumber = 1;
 
     for (let retryCycleIndex = 0; retryCycleIndex < productListRetryCount && currentIncompletePages.length > 0; retryCycleIndex++) {
-      this.currentStageRetryCount = firstRetryCycleAttemptNumber + retryCycleIndex; 
-      const overallAttemptNumberForPagesInThisCycle = 1 + this.currentStageRetryCount; 
-      
+      this.currentStageRetryCount = firstRetryCycleAttemptNumber + retryCycleIndex;
+      const overallAttemptNumberForPagesInThisCycle = 1 + this.currentStageRetryCount;
+
       if (this.abortController.signal.aborted) {
         currentIncompletePages.forEach(pNum => this._updatePageStatusInternal(pNum, 'failed', overallAttemptNumberForPagesInThisCycle));
         this._sendProgressUpdate();
@@ -440,14 +440,14 @@ export class ProductListCollector {
       pagesForThisRetryCycle.forEach(pNum => {
         this._updatePageStatusInternal(pNum, 'attempting', overallAttemptNumberForPagesInThisCycle);
       });
-      this._sendProgressUpdate(); 
+      this._sendProgressUpdate();
 
       updateRetryStatus('list-retry', {
         stage: 'productList',
-        currentAttempt: this.currentStageRetryCount, 
+        currentAttempt: this.currentStageRetryCount,
         maxAttempt: productListRetryCount,
         remainingItems: pagesForThisRetryCycle.length,
-        totalItems: pagesToRetryInitially.length, 
+        totalItems: pagesToRetryInitially.length,
         startTime: Date.now(),
         itemIds: pagesForThisRetryCycle.map(p => p.toString())
       });
@@ -459,22 +459,22 @@ export class ProductListCollector {
 
       const { results: retryBatchResults } = await this.executeParallelCrawling(
         pagesForThisRetryCycle,
-        siteTotalPages, 
+        siteTotalPages,
         retryConcurrency,
-        overallAttemptNumberForPagesInThisCycle 
+        overallAttemptNumberForPagesInThisCycle
       );
 
       this._processBatchResultsAndUpdateStatus(
         retryBatchResults,
-        currentIncompletePages, 
-        failedPageErrors,       
+        currentIncompletePages,
+        failedPageErrors,
         overallAttemptNumberForPagesInThisCycle
       );
 
       pagesForThisRetryCycle.forEach(pageNumberAttempted => {
         // ... (existing detailed logging for each page in retry batch)
       });
-      
+
       updateRetryStatus('list-retry', {
         remainingItems: currentIncompletePages.length,
         itemIds: currentIncompletePages.map(p => p.toString())
@@ -486,37 +486,37 @@ export class ProductListCollector {
           taskId: 'list-retry', status: 'success',
           message: `Product list retry successful after cycle ${this.currentStageRetryCount}.`
         });
-        break; 
+        break;
       }
     }
-    
+
     if (currentIncompletePages.length > 0) {
-       debugLog(`[RETRY] After ${this.currentStageRetryCount} retry cycles, ${currentIncompletePages.length} pages remain incomplete.`);
-       crawlerEvents.emit('crawlingTaskStatus', {
+      debugLog(`[RETRY] After ${this.currentStageRetryCount} retry cycles, ${currentIncompletePages.length} pages remain incomplete.`);
+      crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'list-retry', status: 'error',
         message: `Product list retry finished: ${currentIncompletePages.length} pages still incomplete after ${this.currentStageRetryCount} cycles.`
       });
     } else {
-      if (this.currentStageRetryCount > 0) { 
-         debugLog(`[RETRY] All product list pages completed within ${this.currentStageRetryCount} retry cycles.`);
-         crawlerEvents.emit('crawlingTaskStatus', {
+      if (this.currentStageRetryCount > 0) {
+        debugLog(`[RETRY] All product list pages completed within ${this.currentStageRetryCount} retry cycles.`);
+        crawlerEvents.emit('crawlingTaskStatus', {
           taskId: 'list-retry', status: 'success',
           message: 'Product list retry successful: All initially incomplete pages completed within retry cycles.'
         });
       }
     }
-    this._sendProgressUpdate(); 
+    this._sendProgressUpdate();
   }
 
   private _summarizeCollectionOutcome(
     pageNumbersToCrawl: number[],
-    totalPages: number, 
+    totalPages: number,
     allPageErrors: Record<string, CrawlError[]>,
     collectedProducts: Product[]
   ): void {
     let finalFailedCount = 0;
     finalFailedCount = this.stage1PageStatuses.filter(p => p.status === 'failed' || p.status === 'incomplete').length;
-    
+
     const successPagesCount = this.totalPagesForThisStage1Collection - finalFailedCount;
     const successRate = this.totalPagesForThisStage1Collection > 0 ? (successPagesCount / this.totalPagesForThisStage1Collection) : 1;
 
@@ -525,8 +525,8 @@ export class ProductListCollector {
     crawlerEvents.emit('crawlingTaskStatus', {
       taskId: 'list-complete', status: 'success',
       message: JSON.stringify({
-        stage: 1, type: 'complete', 
-        siteTotalPages: totalPages, 
+        stage: 1, type: 'complete',
+        siteTotalPages: totalPages,
         pagesAttemptedInStage: this.totalPagesForThisStage1Collection,
         successfullyCollectedPagesInStage: successPagesCount,
         collectedProducts: collectedProducts.length,
@@ -548,16 +548,16 @@ export class ProductListCollector {
   }
 
   public async fetchTotalPagesCached(force = false): Promise<{
-    totalPages: number; 
+    totalPages: number;
     lastPageProductCount: number;
   }> {
     const now = Date.now();
     const cacheTtl = this.config.cacheTtlMs ?? 3600000;
 
     if (!force &&
-      cachedTotalPages && 
-      ProductListCollector.lastPageProductCount !== null && 
-      cachedTotalPagesFetchedAt && 
+      cachedTotalPages &&
+      ProductListCollector.lastPageProductCount !== null &&
+      cachedTotalPagesFetchedAt &&
       (now - cachedTotalPagesFetchedAt < cacheTtl)) {
       debugLog('[ProductListCollector] Returning cached total pages data.');
       return {
@@ -594,14 +594,15 @@ export class ProductListCollector {
         if (!this.config.matterFilterUrl) {
           throw new Error('Configuration error: matterFilterUrl is not defined.');
         }
-        
+
         if (attempt > 1) {
-          await delay(RETRY_DELAY_MS / 2); 
+          await delay(RETRY_DELAY_MS / 2);
         }
-        
+
         debugLog(`[ProductListCollector] Navigating to ${this.config.matterFilterUrl} to fetch total pages (Attempt ${attempt}).`);
-        await page.goto(this.config.matterFilterUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
-        
+        await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
+        await page.goto(this.config.matterFilterUrl, { waitUntil: 'load', timeout: this.config.pageTimeoutMs ?? 60000 });
+
         const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
         let totalPages = 0;
         if (pageElements.length > 0) {
@@ -619,11 +620,12 @@ export class ProductListCollector {
         if (totalPages > 0) {
           const lastPageUrl = `${this.config.matterFilterUrl}&paged=${totalPages}`;
           debugLog(`[ProductListCollector] Navigating to last page: ${lastPageUrl} (Attempt ${attempt})`);
-          if (page && lastPageUrl !== page.url()) { 
-            await page.goto(lastPageUrl, { waitUntil: 'domcontentloaded', timeout: this.config.pageTimeoutMs ?? 60000 });
+          if (page && lastPageUrl !== page.url()) {
+            await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
+            await page.goto(lastPageUrl, { waitUntil: 'load', timeout: this.config.pageTimeoutMs ?? 60000 });
           }
 
-          if (page) { 
+          if (page) {
             try {
               lastPageProductCount = await page.evaluate(() => {
                 return document.querySelectorAll('div.post-feed article').length;
@@ -635,7 +637,7 @@ export class ProductListCollector {
           }
         } else { // totalPages is 0 or less
           debugLog(`[ProductListCollector] No pagination elements found or totalPages is 0. Checking current page for products (Attempt ${attempt}).`);
-          if (page) { 
+          if (page) {
             try {
               lastPageProductCount = await page.evaluate(() => {
                 return document.querySelectorAll('div.post-feed article').length;
@@ -654,7 +656,7 @@ export class ProductListCollector {
               throw new PageContentExtractionError(`No pages or products found on the site (Attempt ${attempt}).`, 0, attempt);
             }
           } else { // page is null, should have been caught by PageInitializationError earlier
-             throw new PageInitializationError('Page object was null when trying to count products on initial page.', 0, attempt);
+            throw new PageInitializationError('Page object was null when trying to count products on initial page.', 0, attempt);
           }
         }
 
@@ -662,16 +664,16 @@ export class ProductListCollector {
         if (totalPages <= 0) {
           throw new PageContentExtractionError(`Site reported ${totalPages} pages. This is considered an error (Attempt ${attempt}).`, totalPages, attempt);
         }
-        
+
         // If successful and totalPages > 0, return the result
         return { totalPages, lastPageProductCount };
 
       } catch (error: unknown) {
-        const attemptError = error instanceof PageOperationError ? error : 
-                             new PageOperationError(error instanceof Error ? error.message : String(error), 0, attempt);
-        
+        const attemptError = error instanceof PageOperationError ? error :
+          new PageOperationError(error instanceof Error ? error.message : String(error), 0, attempt);
+
         console.warn(`[ProductListCollector] _fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS} failed: ${attemptError.message}`);
-        
+
         if (attempt === MAX_FETCH_ATTEMPTS) {
           console.error(`[ProductListCollector] _fetchTotalPages - All ${MAX_FETCH_ATTEMPTS} attempts failed. Last error: ${attemptError.message}`, attemptError);
           throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts: ${attemptError.message}`, 0, attempt);
@@ -680,16 +682,16 @@ export class ProductListCollector {
       } finally {
         if (page) {
           try {
-            await this.browserManager.closePageAndContext(page); 
+            await this.browserManager.closePageAndContext(page);
           } catch (e) {
             console.error(`[ProductListCollector] Error releasing page and context in _fetchTotalPages (Attempt ${attempt}):`, e);
           }
         } else if (context) { // If page creation failed but context was made
-           try {
-              await context.close(); 
-           } catch (e) {
-              console.error(`[ProductListCollector] Error releasing context in _fetchTotalPages (Attempt ${attempt}):`, e);
-           }
+          try {
+            await context.close();
+          } catch (e) {
+            console.error(`[ProductListCollector] Error releasing context in _fetchTotalPages (Attempt ${attempt}):`, e);
+          }
         }
       }
     }
@@ -698,26 +700,26 @@ export class ProductListCollector {
 
   private async executeParallelCrawling(
     pageNumbersToCrawl: number[],
-    siteTotalPages: number, 
+    siteTotalPages: number,
     concurrency: number,
     currentAttemptNumber: number
   ): Promise<{ results: (CrawlResult | null)[] }> {
     const results: (CrawlResult | null)[] = await promisePool(
       pageNumbersToCrawl,
-      async (pageNumber, signalFromPool) => { 
+      async (pageNumber, signalFromPool) => {
         return this.processPageCrawl(
           pageNumber, siteTotalPages, signalFromPool, currentAttemptNumber
         );
       },
       concurrency,
-      this.abortController 
+      this.abortController
     );
     return { results };
   }
-  
+
   private static _extractProductsFromPageDOM(): RawProductData[] {
     const articles = Array.from(document.querySelectorAll('div.post-feed article'));
-    return articles.reverse().map((article, siteIndexInPage) => { 
+    return articles.reverse().map((article, siteIndexInPage) => {
       const link = article.querySelector('a');
       const manufacturerEl = article.querySelector('p.entry-company.notranslate');
       const modelEl = article.querySelector('h3.entry-title');
@@ -741,28 +743,28 @@ export class ProductListCollector {
         manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
         model: modelEl ? modelEl.textContent?.trim() : undefined,
         certificateId,
-        siteIndexInPage 
+        siteIndexInPage
       };
     });
   }
 
   private _mapRawProductsToProducts(
     rawProducts: RawProductData[],
-    sitePageNumber: number, 
-    offset: number 
+    sitePageNumber: number,
+    offset: number
   ): Product[] {
     return rawProducts.map((product) => {
-      const { siteIndexInPage } = product; 
+      const { siteIndexInPage } = product;
       const { pageId, indexInPage } = PageIndexManager.mapToLocalIndexing(
-        sitePageNumber, 
-        siteIndexInPage, 
+        sitePageNumber,
+        siteIndexInPage,
         offset
       );
       const { siteIndexInPage: _, ...rest } = product;
       return {
         ...rest,
-        pageId, 
-        indexInPage 
+        pageId,
+        indexInPage
       };
     });
   }
@@ -772,13 +774,13 @@ export class ProductListCollector {
     newProducts: Product[]
   ): Product[] {
     const productMap = new Map<string, Product>();
-    
-    for (const product of existingProducts) { 
+
+    for (const product of existingProducts) {
       if (product.url) {
         productMap.set(product.url, product);
       }
     }
-    for (const product of newProducts) { 
+    for (const product of newProducts) {
       if (product.url) {
         productMap.set(product.url, product);
       }
@@ -801,13 +803,13 @@ export class ProductListCollector {
       const productsOnPage = this.productCache.get(pageNum) || [];
       allCollectedProducts.push(...productsOnPage);
     }
-    this.productCache.clear(); 
+    this.productCache.clear();
     return allCollectedProducts;
   }
 
   private async crawlPageWithTimeout(
-    pageNumber: number, 
-    siteTotalPages: number, 
+    pageNumber: number,
+    siteTotalPages: number,
     signal: AbortSignal,
     attempt: number
   ): Promise<Product[]> {
@@ -815,7 +817,7 @@ export class ProductListCollector {
       throw new PageAbortedError('Aborted before crawlPageWithTimeout call', pageNumber, attempt);
     }
 
-    const pageUrl = `${this.config.matterFilterUrl}&paged=${pageNumber}`; 
+    const pageUrl = `${this.config.matterFilterUrl}&paged=${pageNumber}`;
     const timeout = this.config.pageTimeoutMs ?? 60000;
 
     let context: BrowserContext | null = null;
@@ -828,16 +830,17 @@ export class ProductListCollector {
         throw new PageInitializationError('Failed to create page in new context', pageNumber, attempt);
       }
 
-      if (attempt > 1) { 
+      if (attempt > 1) {
         await delay(this.config.minRequestDelayMs ?? 500);
       }
-      await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout });
+      await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
+      await page.goto(pageUrl, { waitUntil: 'load', timeout });
 
       const rawProducts = await page.evaluate<RawProductData[]>(
         ProductListCollector._extractProductsFromPageDOM
       );
-      
-      const { totalPages: siteTotal, lastPageProductCount: siteLastPageCount } = await this.fetchTotalPagesCached(); 
+
+      const { totalPages: siteTotal, lastPageProductCount: siteLastPageCount } = await this.fetchTotalPagesCached();
       const sitePageNumber = PageIndexManager.toSitePageNumber(pageNumber, siteTotal);
       const offset = PageIndexManager.calculateOffset(siteLastPageCount);
 
@@ -845,10 +848,10 @@ export class ProductListCollector {
       return products;
 
     } catch (error: unknown) {
-      if (error instanceof PageOperationError) throw error; 
-      
+      if (error instanceof PageOperationError) throw error;
+
       if (error instanceof Error) {
-        if (error.name === 'TimeoutError') { 
+        if (error.name === 'TimeoutError') {
           throw new PageTimeoutError(`Page ${pageNumber} timed out after ${timeout}ms on attempt ${attempt}. URL: ${pageUrl}`, pageNumber, attempt);
         }
         throw new PageOperationError(`Error crawling page ${pageNumber} (attempt ${attempt}): ${error.message}. URL: ${pageUrl}`, pageNumber, attempt);

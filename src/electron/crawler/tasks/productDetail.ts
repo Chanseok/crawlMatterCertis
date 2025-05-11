@@ -66,8 +66,9 @@ export class ProductDetailCollector {
       if (signal.aborted) {
         throw new Error('Aborted before page operations');
       }
-
-      await page.goto(product.url, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs ?? 60000 });
+      // 불필요한 리소스 차단 예시
+      await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
+      await page.goto(product.url, { waitUntil: 'load', timeout: config.productDetailTimeoutMs ?? 60000 });
 
       if (signal.aborted) {
         throw new Error('Aborted after page.goto');
@@ -87,6 +88,7 @@ export class ProductDetailCollector {
       return matterProduct;
 
     } catch (error: unknown) {
+      debugLog(`${config.productDetailTimeoutMs} ms timeout for ${product.model}`);
       if (signal.aborted) {
         throw new Error(`Aborted crawling for ${product.url} during operation.`);
       }
