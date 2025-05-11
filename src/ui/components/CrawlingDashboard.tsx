@@ -285,27 +285,23 @@ export function CrawlingDashboard() {
 
   // 시간 형식 변환 함수
   const formatDuration = (milliseconds: number | undefined | null): string => {
-    if (milliseconds === undefined || milliseconds === null || isNaN(milliseconds)) return '0초';
-    if (milliseconds === 0) return '0초';
+    if (milliseconds === undefined || milliseconds === null || isNaN(milliseconds) || milliseconds <= 0) return '00:00:00';
 
     const totalSeconds = Math.floor(milliseconds / 1000);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
 
-    if (hours > 0) {
-      return `${hours}시간 ${minutes}분 ${seconds}초`;
-    } else if (minutes > 0) {
-      return `${minutes}분 ${seconds}초`;
-    } else {
-      return `${seconds}초`;
-    }
+    const pad = (num: number) => String(num).padStart(2, '0');
+
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
   };
 
-  const isInitialState = status !== 'running' &&
+  const isInitialState = status === 'idle' || (
     (!progress.elapsedTime || progress.elapsedTime === 0) &&
     (!progress.currentPage || progress.currentPage === 0) &&
-    (!progress.processedItems || progress.processedItems === 0);
+    (!progress.processedItems || progress.processedItems === 0)
+  );
 
   let collectionStatusText = "제품 상세 수집 현황";
   let retryStatusText = "제품 상세 재시도";
@@ -319,8 +315,8 @@ export function CrawlingDashboard() {
   }
 
   let remainingTimeDisplay: string;
-  if (isInitialState && (localTime.remainingTime === 0 || localTime.remainingTime === undefined || localTime.remainingTime === null || isNaN(localTime.remainingTime))) {
-    remainingTimeDisplay = "--";
+  if (isInitialState || localTime.remainingTime === 0 || localTime.remainingTime === undefined || localTime.remainingTime === null || isNaN(localTime.remainingTime)) {
+    remainingTimeDisplay = "-:--:--";
   } else {
     remainingTimeDisplay = formatDuration(localTime.remainingTime);
   }
@@ -465,7 +461,10 @@ export function CrawlingDashboard() {
             {collectionStatusText}
           </p>
           <p className={`text-lg sm:text-xl font-bold ${animatedDigits.processedItems ? 'animate-pulse-once' : ''}`}>
-            {status === 'running' && progress.currentStage === 1 ? `${Math.round(animatedValues.currentPage)} / ${targetPageCount}` : `${Math.round(animatedValues.processedItems)} / ${progress.totalItems || statusSummary?.siteProductCount || 0}`}
+            {isInitialState ? `0 / ${targetPageCount}` :
+              status === 'running' && progress.currentStage === 1 ? `${Math.round(animatedValues.currentPage)} / ${targetPageCount}` :
+                `${Math.round(animatedValues.processedItems)} / ${progress.totalItems || statusSummary?.siteProductCount || 0}`
+            }
           </p>
         </div>
 
@@ -475,7 +474,10 @@ export function CrawlingDashboard() {
             {retryStatusText}
           </p>
           <p className={`text-lg sm:text-xl font-bold ${animatedDigits.retryCount ? 'animate-pulse-once' : ''}`}>
-            {Math.round(animatedValues.retryCount)}{config.retryMax !== undefined ? ` / ${config.retryMax}` : '회'}
+            {isInitialState ? 
+              `${config.productListRetryCount || 0}, ${config.productDetailRetryCount || 0}` :
+              `${Math.round(animatedValues.retryCount)}${config.retryMax !== undefined ? ` / ${config.retryMax}` : '회'}`
+            }
           </p>
         </div>
 
