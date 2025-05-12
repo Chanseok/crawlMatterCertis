@@ -18,7 +18,8 @@ export async function promisePool<T, U>(
     worker: (item: T, signal: AbortSignal) => Promise<U>,
     concurrency: number,
     abortController: AbortController,
-    shouldStopCrawling?: boolean
+    shouldStopCrawling?: boolean,
+    onEachItemComplete?: (item: T, result: U) => void
 ): Promise<U[]> {
     const results: U[] = [];
     let nextIndex = 0;
@@ -35,6 +36,10 @@ export async function promisePool<T, U>(
             const currentIndex = nextIndex++;
             try {
                 results[currentIndex] = await worker(items[currentIndex], abortController.signal);
+                // 개별 작업이 완료될 때마다 이벤트 발생 (onEachItemComplete가 있는 경우)
+                if (items[currentIndex] && typeof onEachItemComplete === 'function') {
+                    onEachItemComplete(items[currentIndex], results[currentIndex]);
+                }
             } catch (error) {
                 console.error(`Worker error processing index ${currentIndex}:`, error);
             }

@@ -194,12 +194,17 @@ export class ProductListCollector {
       const { totalPages: siteTotalPages, pageNumbersToCrawl, lastPageProductCount } = prepResult;
       ProductListCollector.lastPageProductCount = lastPageProductCount;
       this.totalPagesForThisStage1Collection = pageNumbersToCrawl.length;
-
+      
+      debugLog(`[ProductListCollector] 시작 평균 페이지 처리 시간: ${this.averagePageProcessingTimeMs}ms`);
+      
+      // 초기 상태 설정
       this.stage1PageStatuses = pageNumbersToCrawl.map(pn => ({
         pageNumber: pn,
         status: 'waiting',
         attempt: 0
       }));
+      
+      // 초기 진행 상태 업데이트
       this._sendProgressUpdate();
 
       const { incompletePages: incompletePagesAfterInitialCrawl, allPageErrors } =
@@ -426,9 +431,11 @@ export class ProductListCollector {
       });
       updateTaskStatus(pageNumber, isComplete ? 'success' : 'incomplete'); 
       
-      // 성공한 페이지의 경우 처리 완료 시간 기록
+      // 성공한 페이지의 경우 처리 완료 시간 기록 및 즉시 UI 업데이트
       if (isComplete) {
         this._recordPageProcessingEnd(pageNumber);
+        // 성공적인 페이지 완료 즉시 UI 업데이트 (즉각적인 피드백을 위해)
+        this._sendProgressUpdate();
       }
     } catch (err) {
       this._updatePageStatusInternal(pageNumber, 'failed', attempt);
@@ -787,7 +794,14 @@ export class ProductListCollector {
         );
       },
       concurrency,
-      this.abortController
+      this.abortController,
+      false, // shouldStopCrawling
+      (pageNumber, result) => {
+        // 각 페이지 처리 완료 시마다 즉시 UI 업데이트
+        if (result && result.isComplete) {
+          this._sendProgressUpdate();
+        }
+      }
     );
     return { results };
   }
