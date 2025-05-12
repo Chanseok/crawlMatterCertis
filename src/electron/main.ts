@@ -202,28 +202,27 @@ app.on('ready', async () => {
         console.log(`[IPC] Start crawling requested in ${mode} mode with effective config:`, currentConfigForCrawling);
         
         try {
-            // 항상 시작 전 상태 확인 수행
-            // '상태 체크'를 누르지 않고 '크롤링'을 누르는 경우에도
-            // 사이트 로컬 비교 패널에 올바른 정보를 표시하기 위함
-            console.log('[IPC] Performing mandatory status check before crawling...');
-            let statusSummary;
-            try {
-                statusSummary = await checkCrawlingStatus();
-                console.log('[IPC] Pre-crawling status check completed successfully');
-                // 상태 정보가 UI로 전송될 수 있도록 이벤트 발생
-                // 이 이벤트는 UI에서 사이트 로컬 비교 패널 업데이트에 사용됨
-                crawlerEvents.emit('crawlingStatusSummary', statusSummary);
-            } catch (statusError) {
-                console.error('[IPC] Error during mandatory pre-crawling status check:', statusError);
-                // 상태 체크에 실패해도 크롤링 자체는 진행시킴
-                // 하지만 이런 경우는 크롤링 범위 파악에 오류가 발생할 수 있음
-            }
+            // ▼▼▼ [수정 제안 시작] 아래의 명시적인 checkCrawlingStatus 호출 부분을 제거하거나 주석 처리합니다. ▼▼▼
+            // console.log('[IPC] Performing mandatory status check before crawling...');
+            // let statusSummary; 
+            // try {
+            //     statusSummary = await checkCrawlingStatus(); 
+            //     console.log('[IPC] Pre-crawling status check completed successfully');
+            //     crawlerEvents.emit('crawlingStatusSummary', statusSummary);
+            // } catch (statusError) {
+            //     console.error('[IPC] Error during mandatory pre-crawling status check:', statusError);
+            // }
+            // ▲▲▲ [수정 제안 끝] ▲▲▲
             
-            // 크롤링 시작 - 내부에서도 checkCrawlingStatus 호출하지만
-            // 이미 위에서 호출했으므로 내부에서는 캐시된 정보를 활용할 것임
-            const success = await startCrawling();
-            // 상태 체크 결과를 함께 반환
-            return { success, status: statusSummary };
+            // 크롤링 시작 - CrawlerEngine.startCrawling()이 페이지 정보 가져오기를 포함하여
+            // 필요한 모든 초기화 작업을 수행합니다.
+            const success = await startCrawling(); 
+            
+            // statusSummary가 제거되었으므로, 반환 객체에서 해당 필드를 제거하거나 
+            // UI에서 이 값의 부재를 처리해야 합니다.
+            // 또는 startCrawling()의 결과에서 필요한 상태 정보를 가져와 반환할 수 있습니다.
+            // 여기서는 간단히 success만 반환하거나, startCrawling()이 상태 정보를 포함한 객체를 반환하도록 수정할 수 있습니다.
+            return { success /*, status: undefined */ }; // statusSummary 제거 또는 다른 값으로 대체
         } catch (error) {
             console.error('[IPC] Error during crawling:', error);
             return { success: false, error: String(error) };
