@@ -972,7 +972,6 @@ export class ProductListCollector {
     await page.route('**/*', (route) => {
       const request = route.request();
       const resourceType = request.resourceType();
-      const url = request.url();
       
       // 필수 리소스 허용 목록 확장
       if (resourceType === 'document' || 

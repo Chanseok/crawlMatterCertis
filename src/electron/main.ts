@@ -76,6 +76,18 @@ app.on('ready', async () => {
         }
     });
 
+    // Content Security Policy(CSP) 설정
+    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+        callback({
+            responseHeaders: {
+                ...details.responseHeaders,
+                'Content-Security-Policy': [
+                    "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'"
+                ]
+            }
+        });
+    });
+
     // 메인 윈도우 닫힘 이벤트 처리
     mainWindow.on('close', (_e) => {
         console.log('Main window close event triggered');

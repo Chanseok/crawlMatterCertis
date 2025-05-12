@@ -10,7 +10,7 @@ interface ExpandableSectionProps {
   loadingContent?: React.ReactNode;
 }
 
-export const ExpandableSection: React.FC<ExpandableSectionProps> = ({
+export const ExpandableSection = React.memo(function ExpandableSection({
   title,
   isExpanded,
   onToggle,
@@ -18,7 +18,7 @@ export const ExpandableSection: React.FC<ExpandableSectionProps> = ({
   additionalClasses = '',
   isLoading,
   loadingContent
-}) => {
+}: ExpandableSectionProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -60,4 +60,4 @@ export const ExpandableSection: React.FC<ExpandableSectionProps> = ({
       </div>
     </div>
   );
-};
+});

@@ -3,7 +3,7 @@
  * 제품 상세 정보 수집을 담당하는 클래스
  */
 
-import { type Page, type BrowserContext } from 'playwright-chromium';
+import { type Page } from 'playwright-chromium';
 import { getRandomDelay, delay } from '../utils/delay.js';
 import { CrawlerState } from '../core/CrawlerState.js';
 import {
@@ -379,8 +379,6 @@ export class ProductDetailCollector {
     signal: AbortSignal,
     attempt: number = 1
   ): Promise<DetailCrawlResult | null> {
-    const config = this.config;
-    
     if (signal.aborted) {
       updateProductTaskStatus(product.url, 'stopped');
       return null;

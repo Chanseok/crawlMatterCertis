@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { configStore, updateConfigSettings } from '../stores';
+import React from 'react';
 
 /**
  * 크롤링 설정 컴포넌트
@@ -9,7 +10,7 @@ import { configStore, updateConfigSettings } from '../stores';
  * - 제품 상세 재시도 횟수 설정
  * - 자동 DB 추가 설정
  */
-export function CrawlingSettings() {
+export const CrawlingSettings = React.memo(function CrawlingSettings() {
   const config = useStore(configStore);
   
   // 로컬 상태 (입력값)
@@ -55,14 +56,14 @@ export function CrawlingSettings() {
   }, [pageLimit]);
   
   // 설정 저장
-  const handleSave = async () => {
+  const handleSave = React.useCallback(async () => {
     await updateConfigSettings({
       pageRangeLimit: pageLimit,
       productListRetryCount: productListRetry,
       productDetailRetryCount: productDetailRetry,
       autoAddToLocalDB: autoAddToDb
     });
-  };
+  }, [pageLimit, productListRetry, productDetailRetry, autoAddToDb]);
   
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-4">
@@ -190,4 +191,4 @@ export function CrawlingSettings() {
       </div>
     </div>
   );
-}
+});
