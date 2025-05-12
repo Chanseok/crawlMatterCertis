@@ -434,6 +434,12 @@ export class ProductListCollector {
       // 성공한 페이지의 경우 처리 완료 시간 기록 및 즉시 UI 업데이트
       if (isComplete) {
         this._recordPageProcessingEnd(pageNumber);
+        
+        // 성공적인 페이지 완료 시점에 예상 남은 시간 로깅
+        const timeEstimate = this._calculateEstimatedRemainingTime();
+        const formattedRemainingTime = this._formatRemainingTime(timeEstimate.remainingTimeMs);
+        debugLog(`[ProductListCollector] 페이지 ${pageNumber} 완료 - 예상 남은 시간: ${formattedRemainingTime} (${this.processedPagesSuccessfully}/${this.totalPagesForThisStage1Collection} 완료)`);
+        
         // 성공적인 페이지 완료 즉시 UI 업데이트 (즉각적인 피드백을 위해)
         this._sendProgressUpdate();
       }
@@ -582,7 +588,25 @@ export class ProductListCollector {
     const successPagesCount = this.totalPagesForThisStage1Collection - finalFailedCount;
     const successRate = this.totalPagesForThisStage1Collection > 0 ? (successPagesCount / this.totalPagesForThisStage1Collection) : 1;
 
+    // 수집 완료 통계 및 시간 관련 정보 로깅
     console.log(`[ProductListCollector] Final collection: ${successPagesCount}/${this.totalPagesForThisStage1Collection} pages fully collected. Total products: ${collectedProducts.length}`);
+    
+    // 시간 관련 통계 추가 로깅
+    const totalElapsedMs = Date.now() - this.stage1StartTime;
+    const avgTimePerSuccessfulPage = successPagesCount > 0 ? this.totalProcessingTimeMs / successPagesCount : 0;
+    const formattedElapsedTime = this._formatDuration(totalElapsedMs);
+    
+    console.log(`[ProductListCollector] 수집 시간 통계:`);
+    console.log(`  총 소요 시간: ${formattedElapsedTime}`);
+    console.log(`  페이지당 평균 처리 시간: ${Math.round(avgTimePerSuccessfulPage)}ms`);
+    console.log(`  페이지 성공률: ${(successRate * 100).toFixed(1)}%`);
+    
+    if (this.pageProcessingTimes.size > 0) {
+      const processingTimes = Array.from(this.pageProcessingTimes.values());
+      const minTime = Math.min(...processingTimes);
+      const maxTime = Math.max(...processingTimes);
+      console.log(`  최소 페이지 처리 시간: ${minTime}ms, 최대: ${maxTime}ms`);
+    }
 
     crawlerEvents.emit('crawlingTaskStatus', {
       taskId: 'list-complete', status: 'success',
@@ -593,7 +617,10 @@ export class ProductListCollector {
         successfullyCollectedPagesInStage: successPagesCount,
         collectedProducts: collectedProducts.length,
         failedOrIncompletePagesInStage: finalFailedCount,
-        successRate: parseFloat((successRate * 100).toFixed(1))
+        successRate: parseFloat((successRate * 100).toFixed(1)),
+        // 시간 관련 통계 추가
+        totalElapsedTimeMs: totalElapsedMs,
+        avgProcessingTimePerPageMs: Math.round(avgTimePerSuccessfulPage)
       })
     });
 
@@ -799,6 +826,15 @@ export class ProductListCollector {
       (pageNumber, result) => {
         // 각 페이지 처리 완료 시마다 즉시 UI 업데이트
         if (result && result.isComplete) {
+          // 성공적으로 완료된 페이지에 대한 상세 진행 정보 로깅
+          const timeEstimate = this._calculateEstimatedRemainingTime();
+          const formattedRemainingTime = this._formatRemainingTime(timeEstimate.remainingTimeMs);
+          const progress = `${this.processedPagesSuccessfully + 1}/${this.totalPagesForThisStage1Collection}`;
+          const completionRate = ((this.processedPagesSuccessfully + 1) / this.totalPagesForThisStage1Collection * 100).toFixed(1);
+          
+          debugLog(`[ProductListCollector] 페이지 ${pageNumber} 병렬 크롤링 완료 (${progress}, ${completionRate}%)`);
+          debugLog(`[ProductListCollector] 예상 남은 시간: ${formattedRemainingTime}, 예상 완료 시각: ${this._getEstimatedCompletionTime(timeEstimate.remainingTimeMs)}`);
+          
           this._sendProgressUpdate();
         }
       }
@@ -1188,6 +1224,10 @@ export class ProductListCollector {
     this.successfullyProcessedPagesCount++;
     
     debugLog(`[ProductListCollector] 페이지 ${pageNumber} 처리 시간: ${processingTimeMs}ms, 새로운 평균: ${this.averagePageProcessingTimeMs.toFixed(2)}ms (총 ${this.successfullyProcessedPagesCount}개 페이지)`);
+    
+    // 예상 남은 시간 로그 추가
+    const remainingTimeMs = this._calculateEstimatedRemainingTime().remainingTimeMs;
+    debugLog(`[ProductListCollector] 페이지 ${pageNumber} 완료 후 예상 남은 시간: ${this._formatRemainingTime(remainingTimeMs)}`);
   }
 
   private _calculateEstimatedRemainingTime(): { 
@@ -1205,5 +1245,49 @@ export class ProductListCollector {
       estimatedTotalTimeMs,
       remainingTimeMs
     };
+  }
+  
+  // 예상 남은 시간을 사람이 읽기 쉬운 형식으로 변환
+  private _formatRemainingTime(milliseconds: number): string {
+    if (milliseconds <= 0) return '완료됨';
+    
+    const seconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    
+    if (hours > 0) {
+      return `약 ${hours}시간 ${minutes % 60}분 남음`;
+    } else if (minutes > 0) {
+      return `약 ${minutes}분 ${seconds % 60}초 남음`;
+    } else {
+      return `약 ${seconds}초 남음`;
+    }
+  }
+
+  // 예상 완료 시간을 계산하고 형식화
+  private _getEstimatedCompletionTime(remainingTimeMs: number): string {
+    if (remainingTimeMs <= 0) return '지금';
+    
+    const completionTime = new Date(Date.now() + remainingTimeMs);
+    const hours = completionTime.getHours().toString().padStart(2, '0');
+    const minutes = completionTime.getMinutes().toString().padStart(2, '0');
+    const seconds = completionTime.getSeconds().toString().padStart(2, '0');
+    
+    return `${hours}:${minutes}:${seconds}`;
+  }
+
+  // 시간 길이를 사람이 읽기 쉬운 형식으로 변환 (밀리초 → HH:MM:SS 또는 M분 S초)
+  private _formatDuration(milliseconds: number): string {
+    const seconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    
+    if (hours > 0) {
+      return `${hours}시간 ${minutes % 60}분 ${seconds % 60}초`;
+    } else if (minutes > 0) {
+      return `${minutes}분 ${seconds % 60}초`;
+    } else {
+      return `${seconds}초`;
+    }
   }
 }
