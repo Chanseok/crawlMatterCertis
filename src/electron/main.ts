@@ -574,6 +574,36 @@ function setupCrawlerEvents(mainWindow: BrowserWindow): void {
         console.log('[MAIN] DB Save Skipped event received:', data);
         mainWindow.webContents.send('dbSaveSkipped', data);
     });
+    
+    // 페이지 처리 시간 이벤트 - 설정에 저장
+    crawlerEvents.on('crawlingPageProcessingTime', (data: { averagePageProcessingTimeMs: number, processedPagesCount: number }) => {
+        console.log(`[MAIN] Average page processing time received: ${data.averagePageProcessingTimeMs}ms (${data.processedPagesCount} pages processed)`);
+        
+        // 기존 설정에서 평균 처리 시간 업데이트
+        const currentConfig = configManager.getConfig();
+        configManager.updateConfig({
+            ...currentConfig,
+            averagePageProcessingTimeMs: data.averagePageProcessingTimeMs
+        });
+        
+        // 결과를 UI에도 보내기
+        mainWindow.webContents.send('crawlingPageProcessingTime', data);
+    });
+    
+    // 페이지 처리 시간 정보 저장 이벤트 (추가)
+    crawlerEvents.on('crawlingPageProcessingTime', (data: { averagePageProcessingTimeMs: number, processedPagesCount: number }) => {
+        console.log(`[MAIN] 평균 페이지 처리 시간 수신: ${data.averagePageProcessingTimeMs}ms (${data.processedPagesCount}개 페이지)`);
+        
+        // 설정에 평균 페이지 처리 시간 저장
+        if (data.averagePageProcessingTimeMs > 0) {
+            configManager.updateConfig({
+                averagePageProcessingTimeMs: data.averagePageProcessingTimeMs
+            });
+            
+            // UI로 업데이트된 설정 정보 전송
+            mainWindow.webContents.send('configUpdated', configManager.getConfig());
+        }
+    });
 }
 
 // 앱 종료 준비 함수

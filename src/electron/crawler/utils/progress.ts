@@ -167,7 +167,11 @@ export function updateProductListProgress(
     stage1PageStatuses: PageProcessingStatusItem[], // 각 페이지의 현재 상태
     currentRetryCount: number, // 현재까지의 총 재시도 횟수 (1단계)
     maxConfigRetries: number, // 설정된 최대 재시도 횟수 (1단계)
-    isCompleted: boolean = false
+    isCompleted: boolean = false,
+    timeEstimate?: { // 추가된 시간 예측 정보
+        estimatedTotalTimeMs: number, // 예상 총 소요 시간
+        remainingTimeMs: number // 예상 남은 시간
+    }
 ): void {
     const now = Date.now();
     const elapsedTime = now - startTime;
@@ -175,7 +179,12 @@ export function updateProductListProgress(
     const percentage = totalPages > 0 ? (processedPages / totalPages) * 100 : 0;
     let remainingTime: number | undefined = undefined;
 
-    if (processedPages > 0 && processedPages > totalPages * 0.1) { // 10% 이상 진행 및 1페이지 이상 완료 시
+    // 크롤러에서 제공한 시간 추정치가 있으면 사용
+    if (timeEstimate && timeEstimate.remainingTimeMs > 0) {
+        remainingTime = timeEstimate.remainingTimeMs;
+    } 
+    // 없으면 기존 방식으로 계산
+    else if (processedPages > 0 && processedPages > totalPages * 0.1) { // 10% 이상 진행 및 1페이지 이상 완료 시
         const avgTimePerPage = elapsedTime / processedPages;
         remainingTime = (totalPages - processedPages) * avgTimePerPage;
     }

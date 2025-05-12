@@ -72,7 +72,12 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
         setLocalTime(prev => {
           let newRemainingTime = prev.remainingTime;
 
-          if (progress.currentStage === 1) {
+          // 서버에서 제공하는 남은 시간 추정치가 있으면 이를 우선 사용
+          if (progress.remainingTime && progress.remainingTime > 0) {
+            newRemainingTime = progress.remainingTime;
+          } 
+          // 서버 제공 시간 추정치가 없으면 클라이언트에서 계산
+          else if (progress.currentStage === 1) {
             const totalPages = targetPageCount || 1;
             const currentPage = progress.currentPage || 0;
             const remainingPages = totalPages - currentPage;

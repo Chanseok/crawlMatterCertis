@@ -64,6 +64,11 @@ export type PageProcessingStatusItem = {
     pageNumber: number;
     status: PageProcessingStatusValue;
     attempt?: number; // 현재 시도 횟수 (해당 페이지에 대해)
+    
+    // 시간 추적 관련 필드
+    startTime?: number; // 페이지 처리 시작 시간
+    endTime?: number;   // 페이지 처리 완료 시간
+    processingTimeMs?: number; // 처리에 소요된 시간(밀리초)
 };
 
 // 크롤링 진행 상태 타입 (통합)
@@ -154,6 +159,9 @@ export interface CrawlerConfig {
     matterFilterUrl?: string;
     pageTimeoutMs?: number;
     productDetailTimeoutMs?: number;
+    
+    // 성능 측정 및 예측 관련 설정
+    averagePageProcessingTimeMs?: number; // 평균 페이지 처리 시간 (밀리초)
     initialConcurrency?: number;
     detailConcurrency?: number;
     retryConcurrency?: number;

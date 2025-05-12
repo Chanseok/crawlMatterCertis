@@ -45,7 +45,11 @@ export type EnhancedProgressCallback = (
   stage1PageStatuses: PageProcessingStatusItem[],
   currentOverallRetryCountForStage: number, // Overall retries for stage 1
   stage1StartTime: number, // Start time of the current stage 1 processing
-  isStageComplete?: boolean
+  isStageComplete?: boolean,
+  timeEstimate?: { // 추가된 시간 예측 정보
+    estimatedTotalTimeMs: number, // 예상 총 소요 시간
+    remainingTimeMs: number // 예상 남은 시간
+  }
 ) => void;
 
 // page.evaluate가 반환하는 원시 데이터 타입
@@ -74,6 +78,12 @@ export class ProductListCollector {
   private totalPagesForThisStage1Collection: number = 0; // Number of pages being attempted in current collect() call
   private stage1StartTime: number = 0;
 
+  // 페이지별 처리 시간 추적 변수
+  private pageProcessingTimes: Map<number, number> = new Map(); // 페이지번호 -> 처리시간(ms)
+  private averagePageProcessingTimeMs: number = 30000; // 현재 평균 처리 시간 (기본값 30초)
+  private successfullyProcessedPagesCount: number = 0; // 시간 계산에 포함된 페이지 수
+  private totalProcessingTimeMs: number = 0; // 총 처리 시간
+
   // Cached configuration values
   private pageTimeoutMs: number;
   private productsPerPage: number;
@@ -90,6 +100,12 @@ export class ProductListCollector {
     this.pageTimeoutMs = config.pageTimeoutMs || 60000;
     this.productsPerPage = config.productsPerPage || 12;
     this.matterFilterUrl = config.matterFilterUrl || '';
+    
+    // 설정에서 이전에 저장된 평균 페이지 처리 시간 로드
+    if (config.averagePageProcessingTimeMs && config.averagePageProcessingTimeMs > 0) {
+      this.averagePageProcessingTimeMs = config.averagePageProcessingTimeMs;
+      debugLog(`[ProductListCollector] 이전 실행에서 저장된 평균 페이지 처리 시간 로드: ${this.averagePageProcessingTimeMs}ms`);
+    }
   }
 
   public setProgressCallback(callback: EnhancedProgressCallback): void {
@@ -99,13 +115,18 @@ export class ProductListCollector {
   private _sendProgressUpdate(isStageComplete: boolean = false): void {
     if (this.enhancedProgressCallback) {
       this.processedPagesSuccessfully = this.stage1PageStatuses.filter(p => p.status === 'success').length;
+      
+      // 예상 시간 계산
+      const timeEstimate = this._calculateEstimatedRemainingTime();
+      
       this.enhancedProgressCallback(
         this.processedPagesSuccessfully,
         this.totalPagesForThisStage1Collection, // Use the count of pages we are actually trying to process
         [...this.stage1PageStatuses],
         this.currentStageRetryCount,
         this.stage1StartTime, // Pass the stage1StartTime
-        isStageComplete
+        isStageComplete,
+        timeEstimate // 예상 시간 정보 추가
       );
     }
   }
@@ -157,6 +178,11 @@ export class ProductListCollector {
     this.stage1PageStatuses = [];
     this.totalPagesForThisStage1Collection = 0;
     this.stage1StartTime = Date.now();
+    
+    // 시간 추적 변수 초기화
+    this.pageProcessingTimes.clear();
+    this.totalProcessingTimeMs = 0;
+    this.successfullyProcessedPagesCount = 0;
 
     try {
       const prepResult = await this._preparePageRange(userPageLimit);
@@ -343,6 +369,9 @@ export class ProductListCollector {
     signal: AbortSignal,
     attempt: number = 1
   ): Promise<CrawlResult | null> {
+    // 페이지 처리 시작 시간 기록
+    this._recordPageProcessingStart(pageNumber);
+    
     const url = `${this.matterFilterUrl}&paged=${pageNumber}`;
     const sitePageNumberForTargetCount = PageIndexManager.toSitePageNumber(pageNumber, siteTotalPages);
     const actualLastPageProductCount = ProductListCollector.lastPageProductCount ?? 0;
@@ -371,6 +400,8 @@ export class ProductListCollector {
     let isComplete = currentProductsOnPage.length >= targetProductCount;
 
     try {
+      this._recordPageProcessingStart(pageNumber);
+
       newlyFetchedProducts = await Promise.race([
         this.crawlPageWithTimeout(pageNumber, siteTotalPages, signal, attempt),
         new Promise<never>((_, reject) =>
@@ -394,6 +425,11 @@ export class ProductListCollector {
         isComplete, targetCount: targetProductCount, attempt
       });
       updateTaskStatus(pageNumber, isComplete ? 'success' : 'incomplete'); 
+      
+      // 성공한 페이지의 경우 처리 완료 시간 기록
+      if (isComplete) {
+        this._recordPageProcessingEnd(pageNumber);
+      }
     } catch (err) {
       this._updatePageStatusInternal(pageNumber, 'failed', attempt);
       const finalStatusForTaskSignal = signal.aborted ? 'stopped' : 'error';
@@ -417,6 +453,8 @@ export class ProductListCollector {
       this._emitPageCrawlStatus(pageNumber, errorStatusForEmit, { error: crawlError, attempt });
       updateTaskStatus(pageNumber, finalStatusForTaskSignal, crawlError.message);
       isComplete = currentProductsOnPage.length >= targetProductCount; 
+    } finally {
+      this._recordPageProcessingEnd(pageNumber);
     }
 
     return {
@@ -557,6 +595,17 @@ export class ProductListCollector {
 
   private cleanupResources(): void {
     console.log('[ProductListCollector] Cleaning up resources...');
+    
+    // 페이지 처리 시간 정보 저장을 위한 이벤트 발생
+    if (this.successfullyProcessedPagesCount > 0) {
+      console.log(`[ProductListCollector] 평균 페이지 처리 시간: ${this.averagePageProcessingTimeMs.toFixed(2)}ms (${this.successfullyProcessedPagesCount}개 페이지)`);
+      
+      // averagePageProcessingTimeMs 값을 설정에 저장하기 위한 이벤트 발생
+      crawlerEvents.emit('crawlingPageProcessingTime', {
+        averagePageProcessingTimeMs: Math.round(this.averagePageProcessingTimeMs),
+        processedPagesCount: this.successfullyProcessedPagesCount
+      });
+    }
   }
 
   public async getTotalPagesCached(force = false): Promise<number> {
@@ -1076,5 +1125,71 @@ export class ProductListCollector {
     }
     
     return navigationSucceeded;
+  }
+
+  private _recordPageProcessingStart(pageNumber: number): void {
+    const pageStatusItem = this.stage1PageStatuses.find(p => p.pageNumber === pageNumber);
+    if (pageStatusItem) {
+      pageStatusItem.startTime = Date.now();
+      // 시작할 때는 endTime과 processingTimeMs를 초기화
+      pageStatusItem.endTime = undefined;
+      pageStatusItem.processingTimeMs = undefined;
+    }
+  }
+
+  private _recordPageProcessingEnd(pageNumber: number): void {
+    const now = Date.now();
+    const pageStatusItem = this.stage1PageStatuses.find(p => p.pageNumber === pageNumber);
+    
+    if (pageStatusItem && pageStatusItem.startTime) {
+      pageStatusItem.endTime = now;
+      const processingTime = now - pageStatusItem.startTime;
+      pageStatusItem.processingTimeMs = processingTime;
+      
+      // 성공한 페이지만 평균 계산에 포함
+      if (pageStatusItem.status === 'success') {
+        this._updateAverageProcessingTime(pageNumber, processingTime);
+      }
+    }
+  }
+
+  private _updateAverageProcessingTime(pageNumber: number, processingTimeMs: number): void {
+    // 이동 평균(Moving Average) 계산 - 최근 값에 더 가중치 부여
+    const weight = 0.3; // 가중치 계수 (0-1 사이, 클수록 최근 값에 더 많은 가중치)
+    
+    this.pageProcessingTimes.set(pageNumber, processingTimeMs);
+    
+    // 첫 번째 성공 페이지면 그대로 설정
+    if (this.successfullyProcessedPagesCount === 0) {
+      this.averagePageProcessingTimeMs = processingTimeMs;
+    } else {
+      // 이동 평균 계산 (Exponential Moving Average)
+      this.averagePageProcessingTimeMs = (
+        (1 - weight) * this.averagePageProcessingTimeMs + 
+        weight * processingTimeMs
+      );
+    }
+    
+    this.totalProcessingTimeMs += processingTimeMs;
+    this.successfullyProcessedPagesCount++;
+    
+    debugLog(`[ProductListCollector] 페이지 ${pageNumber} 처리 시간: ${processingTimeMs}ms, 새로운 평균: ${this.averagePageProcessingTimeMs.toFixed(2)}ms (총 ${this.successfullyProcessedPagesCount}개 페이지)`);
+  }
+
+  private _calculateEstimatedRemainingTime(): { 
+    estimatedTotalTimeMs: number, 
+    remainingTimeMs: number 
+  } {
+    const successfulPagesCount = this.successfullyProcessedPagesCount;
+    const remainingPagesCount = this.totalPagesForThisStage1Collection - this.processedPagesSuccessfully;
+    
+    // 평균 처리 시간 기반 예측
+    const estimatedTotalTimeMs = this.totalPagesForThisStage1Collection * this.averagePageProcessingTimeMs;
+    const remainingTimeMs = remainingPagesCount * this.averagePageProcessingTimeMs;
+    
+    return {
+      estimatedTotalTimeMs,
+      remainingTimeMs
+    };
   }
 }

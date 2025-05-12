@@ -112,7 +112,11 @@ export class CrawlerEngine {
         stage1PageStatuses: PageProcessingStatusItem[], 
         currentOverallRetryCountForStage: number, 
         stage1StartTime: number, // Received from ProductListCollector
-        isStageComplete: boolean = false
+        isStageComplete: boolean = false,
+        timeEstimate?: { // 추가된 시간 예측 정보
+          estimatedTotalTimeMs: number, 
+          remainingTimeMs: number
+        }
       ) => {
         updateProductListProgress(
           processedSuccessfully, 
@@ -121,7 +125,8 @@ export class CrawlerEngine {
           stage1PageStatuses, 
           currentOverallRetryCountForStage, 
           currentConfig.productListRetryCount, // Max retries from config
-          isStageComplete
+          isStageComplete,
+          timeEstimate // 새로운 시간 예측 정보 전달
         );
       };
       
