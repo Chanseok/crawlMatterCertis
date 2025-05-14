@@ -38,7 +38,7 @@ export class PageCrawler {
    * @param config 크롤러 설정
    * @param crawlerType 크롤링 전략 유형 ('playwright' 또는 'axios')
    */
-  constructor(browserManager: BrowserManager, config: CrawlerConfig, crawlerType: CrawlerType = 'playwright') {
+  constructor(browserManager: BrowserManager, config: CrawlerConfig, crawlerType: CrawlerType = 'axios') {
     this.config = config;
     this.browserManager = browserManager;
     this.crawlerType = crawlerType;
