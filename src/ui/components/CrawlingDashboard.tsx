@@ -44,7 +44,8 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
     retryCount: 0
   });
 
-  const targetPageCount = progress.totalPages || statusSummary?.siteTotalPages || config.pageRangeLimit || 1;
+  // 사용자가 설정한 페이지 범위 제한을 우선 사용하여 목표 페이지 수 계산
+  const targetPageCount = config.pageRangeLimit || progress.totalPages || statusSummary?.siteTotalPages || 1;
 
   const toggleCompareSection = () => setAppCompareExpanded(!appCompareExpanded);
 
@@ -187,7 +188,11 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
         setAnimatedDigits(prev => ({ ...prev, processedItems: true }));
         setTimeout(() => setAnimatedDigits(prev => ({ ...prev, processedItems: false })), 300);
       }
-      if (progress.retryCount !== prevProgress.current.retryCount) {
+      // Safely check retryCount with undefined check
+      if ((progress.retryCount !== undefined && prevProgress.current.retryCount !== undefined && 
+           progress.retryCount !== prevProgress.current.retryCount) ||
+          (progress.retryCount !== undefined && prevProgress.current.retryCount === undefined) ||
+          (progress.retryCount === undefined && prevProgress.current.retryCount !== undefined)) {
         setAnimatedDigits(prev => ({ ...prev, retryCount: true }));
         setTimeout(() => setAnimatedDigits(prev => ({ ...prev, retryCount: false })), 300);
       }
@@ -213,9 +218,27 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
 
   const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const calculatedPercentage = targetPageCount > 0 ?
-    (progress.currentPage || 0) / targetPageCount * 100 :
-    progress.percentage || 0;
+  // 더 정확한 진행률 계산
+  const calculatedPercentage = (() => {
+    // 크롤링 단계에 따라 적절한 진행률 계산
+    if (progress.currentStage === 1) {
+      // 1단계: 성공한 페이지 수 / 총 페이지 수 비율
+      let successPageCount = progress.currentPage || 0;
+      
+      // stage1PageStatuses가 있으면 성공 상태인 페이지 수를 계산
+      if (progress.stage1PageStatuses && Array.isArray(progress.stage1PageStatuses)) {
+        const successStatusPages = progress.stage1PageStatuses.filter(p => p.status === 'success').length;
+        if (successStatusPages > 0) {
+          successPageCount = successStatusPages;
+        }
+      }
+      
+      return targetPageCount > 0 ? (successPageCount / targetPageCount * 100) : 0;
+    } else {
+      // 다른 단계들은 API에서 받은 진행률 그대로 사용
+      return progress.percentage || 0;
+    }
+  })();
 
   useEffect(() => {
     if (animationRef.current) {
@@ -228,7 +251,7 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
       processedItems: progress.processedItems || 0,
       newItems: progress.newItems || 0,
       updatedItems: progress.updatedItems || 0,
-      retryCount: progress.retryCount || 0
+      retryCount: progress.retryCount !== undefined ? progress.retryCount : 0
     };
 
     const startValues = { ...animatedValues };
@@ -357,10 +380,20 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
   }
 
   function getRetryInfo() {
-    if (progress.retryCount !== undefined && progress.retryCount > 0 ) {
+    if (progress.retryCount !== undefined && progress.retryCount > 0) {
+      // 설정된 재시도 횟수와 현재 재시도 횟수를 표시 - 단계별로 다른 설정값 사용
+      const maxRetries = progress.maxRetries !== undefined 
+        ? progress.maxRetries 
+        : (progress.currentStage === 1 
+            ? config.productListRetryCount 
+            : config.productDetailRetryCount) || 3;
+            
       return (
         <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-md border border-yellow-100 dark:border-yellow-800 text-sm text-yellow-800 dark:text-yellow-300">
-          재시도 대기열: {config.productListRetryCount}개 항목 (현재 재시도: {progress.retryCount}회)
+          재시도 횟수: {progress.retryCount}/{maxRetries}회
+          {progress.stage1PageStatuses && (
+            <span> (남은 페이지: {progress.stage1PageStatuses.filter(p => p.status === 'incomplete' || p.status === 'failed').length}개)</span>
+          )}
         </div>
       );
     }
@@ -410,7 +443,7 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mt-1">
             <div
               className="bg-blue-500 h-3 rounded-full transition-all duration-300 relative overflow-hidden"
-              style={{ width: `${animatedValues.percentage || 0}%` }}
+              style={{ width: `${Math.max(0.5, animatedValues.percentage || 0)}%` }}
             >
               <div className="absolute inset-0 overflow-hidden">
                 <div className="animate-pulse-light bg-white/30 h-full w-1/4 skew-x-12 transform -translate-x-full animate-progress-wave"></div>
@@ -421,10 +454,13 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
           {progress.currentStage === 1 && (
             <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
               <span>
-                {progress.currentPage || 0}번 페이지 ({Math.round((progress.currentPage || 0) / targetPageCount * 100)}%)
+                처리 완료: <span className={`${animatedDigits.currentPage ? 'animate-numberChange' : ''} font-medium text-blue-600 dark:text-blue-400`}>
+                  {animatedValues.currentPage || 0}
+                </span>/{targetPageCount}
+                {' '}페이지 ({Math.round(calculatedPercentage)}%)
               </span>
               <span>
-                범위: 1~{targetPageCount}
+                총 페이지 수: {targetPageCount}
               </span>
             </div>
           )}
@@ -437,7 +473,18 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
             </p>
             <p className={`text-lg sm:text-xl font-bold ${animatedDigits.processedItems ? 'animate-pulse-once' : ''}`}>
               {isInitialState ? `0 / ${targetPageCount}` :
-                status === 'running' && progress.currentStage === 1 ? `${Math.round(animatedValues.currentPage)} / ${targetPageCount}` :
+                status === 'running' && progress.currentStage === 1 ? 
+                  (() => {
+                    // 성공한 페이지 수 계산
+                    let successCount = Math.round(animatedValues.currentPage);
+                    if (progress.stage1PageStatuses && Array.isArray(progress.stage1PageStatuses)) {
+                      const successStatusCount = progress.stage1PageStatuses.filter(p => p.status === 'success').length;
+                      if (successStatusCount > 0) {
+                        successCount = successStatusCount;
+                      }
+                    }
+                    return `${successCount} / ${targetPageCount}`;
+                  })() :
                   `${Math.round(animatedValues.processedItems)} / ${progress.totalItems || statusSummary?.siteProductCount || 0}`
               }
             </p>
@@ -450,7 +497,9 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
             <p className={`text-lg sm:text-xl font-bold ${animatedDigits.retryCount ? 'animate-pulse-once' : ''}`}>
               {isInitialState ? 
                 `${config.productListRetryCount || 0}, ${config.productDetailRetryCount || 0}` :
-                `${Math.round(animatedValues.retryCount)}${config.retryMax !== undefined ? ` / ${config.retryMax}` : '회'}`
+                `${Math.round(animatedValues.retryCount)}${progress.maxRetries !== undefined ? ` / ${progress.maxRetries}` : 
+                  config.productListRetryCount !== undefined && progress.currentStage === 1 ? ` / ${config.productListRetryCount}` : 
+                  config.productDetailRetryCount !== undefined && progress.currentStage === 2 ? ` / ${config.productDetailRetryCount}` : '회'}`
               }
             </p>
           </div>
@@ -504,6 +553,32 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
         {getRetryInfo()}
 
         {getEstimatedEndTime()}
+
+        {/* 1단계 수집 중 중요 정보 표시 */}
+        {status === 'running' && progress.currentStage === 1 && (
+          <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-100 dark:border-blue-800 text-sm">
+            <div className="font-medium text-blue-800 dark:text-blue-300 mb-1">진행 정보:</div>
+            <ul className="text-xs text-gray-700 dark:text-gray-300">
+              <li>• 총 페이지 수: {targetPageCount}페이지</li>
+              <li>• 현재까지 성공한 페이지: {(() => {
+                // 성공한 페이지 수 계산
+                let successCount = progress.currentPage || 0;
+                // stage1PageStatuses가 있으면 성공 상태인 페이지 수를 계산
+                if (progress.stage1PageStatuses && Array.isArray(progress.stage1PageStatuses)) {
+                  const successStatusPages = progress.stage1PageStatuses.filter(p => p.status === 'success').length;
+                  if (successStatusPages > 0) {
+                    successCount = successStatusPages;
+                  }
+                }
+                return successCount;
+              })()}페이지</li>
+              <li>• 설정된 재시도 횟수: {config.productListRetryCount || 3}회</li>
+              {progress.retryCount !== undefined && progress.retryCount > 0 && (
+                <li>• 현재 재시도 횟수: {progress.retryCount}회</li>
+              )}
+            </ul>
+          </div>
+        )}
 
         {progress.message && (
           <div className="mt-4 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-100 dark:border-blue-800 text-sm text-blue-800 dark:text-blue-300">
