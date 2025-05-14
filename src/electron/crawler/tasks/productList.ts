@@ -4,7 +4,6 @@
  */
 
 import { type Page, type BrowserContext } from 'playwright-chromium';
-
 import { CrawlerState } from '../core/CrawlerState.js';
 import {
   promisePool, updateTaskStatus, initializeTaskStates,
@@ -14,25 +13,35 @@ import type { CrawlResult, CrawlError } from '../utils/types.js';
 import type { Product, PageProcessingStatusItem, PageProcessingStatusValue } from '../../../../types.js';
 import { debugLog } from '../../util.js';
 import { type CrawlerConfig } from '../core/config.js';
-import { crawlerEvents, updateRetryStatus  } from '../utils/progress.js';
+import { crawlerEvents, updateRetryStatus } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';
 import { BrowserManager } from '../browser/BrowserManager.js';
 import { delay } from '../utils/delay.js';
 
-// 새로 분리된 모듈 가져오기
+// 모듈화된 클래스 가져오기
 import { 
   PageOperationError, PageTimeoutError, PageAbortedError,
   PageNavigationError, PageContentExtractionError, PageInitializationError 
 } from '../utils/page-errors.js';
 import { PageCacheManager } from '../utils/page-cache-manager.js';
-import {   RawProductData, ProductListProgressCallback, SitePageInfo } from './product-list-types.js';
-import {  MAX_FETCH_TOTAL_PAGES_ATTEMPTS, RETRY_DELAY_MS, DEFAULT_CACHE_TTL_MS } from './product-list-constants.js';
+import { RawProductData, SitePageInfo } from './product-list-types.js';
+import { MAX_FETCH_TOTAL_PAGES_ATTEMPTS, RETRY_DELAY_MS, DEFAULT_CACHE_TTL_MS } from './product-list-constants.js';
+import { PageCrawler } from './page-crawler.js';
+import { ProductDataProcessor } from './product-data-processor.js';
+import { ProgressManager } from './progress-manager.js';
 
 // 캐시 매니저 인스턴스 생성
 const sitePageInfoCache = new PageCacheManager<SitePageInfo>();
 
 // 진행 상황 콜백 타입 정의 (하위 호환성 유지)
-export type EnhancedProgressCallback = ProductListProgressCallback;
+export type EnhancedProgressCallback = (
+  processedSuccessfully: number,
+  totalPagesInStage: number,
+  stage1PageStatuses: PageProcessingStatusItem[],
+  currentOverallRetryCountForStage: number,
+  stage1StartTime: number,
+  isStageComplete?: boolean
+) => void;
 
 export class ProductListCollector {
   private state: CrawlerState;
@@ -55,6 +64,11 @@ export class ProductListCollector {
   private pageTimeoutMs: number;
   private productsPerPage: number;
   private matterFilterUrl: string;
+  
+  // 새로운 유틸리티 클래스 인스턴스
+  private readonly pageCrawler: PageCrawler;
+  private readonly productDataProcessor: ProductDataProcessor;
+  private progressManager: ProgressManager;
 
   constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig, browserManager: BrowserManager) {
     this.state = state;
@@ -67,27 +81,30 @@ export class ProductListCollector {
     this.pageTimeoutMs = config.pageTimeoutMs || 60000;
     this.productsPerPage = config.productsPerPage || 12;
     this.matterFilterUrl = config.matterFilterUrl || '';
+    
+    // 유틸리티 클래스 초기화
+    this.pageCrawler = new PageCrawler(browserManager, config);
+    this.productDataProcessor = new ProductDataProcessor();
+    this.progressManager = new ProgressManager(state);
   }
 
   public setProgressCallback(callback: EnhancedProgressCallback): void {
     this.enhancedProgressCallback = callback;
+    this.progressManager.setProgressCallback(callback);
   }
 
   private _sendProgressUpdate(isStageComplete: boolean = false): void {
     if (this.enhancedProgressCallback) {
       this.processedPagesSuccessfully = this.stage1PageStatuses.filter(p => p.status === 'success').length;
-      this.enhancedProgressCallback(
-        this.processedPagesSuccessfully,
-        this.totalPagesForThisStage1Collection, // Use the count of pages we are actually trying to process
-        [...this.stage1PageStatuses],
-        this.currentStageRetryCount,
-        this.stage1StartTime, // Pass the stage1StartTime
-        isStageComplete
-      );
+      this.progressManager.sendProgressUpdate(isStageComplete);
     }
   }
 
   private _updatePageStatusInternal(pageNumber: number, newStatus: PageProcessingStatusValue, attempt?: number): void {
+    // ProgressManager를 통해 페이지 상태 업데이트
+    this.progressManager.updatePageStatus(pageNumber, newStatus, attempt);
+    
+    // 하위 호환성을 위해 로컬 상태도 함께 업데이트
     const pageStatusItem = this.stage1PageStatuses.find(p => p.pageNumber === pageNumber);
     if (pageStatusItem) {
       pageStatusItem.status = newStatus;
@@ -103,32 +120,16 @@ export class ProductListCollector {
     status: PageProcessingStatusValue,
     data: Record<string, any>
   ): void {
-    const messagePayload: Record<string, any> = {
-      stage: 1,
-      type: 'page',
-      pageNumber,
-      ...data
-    };
-    // 'running' 대신 'attempting'으로 변경 (PageProcessingStatusValue에 'running'이 없을 경우 대비)
-    if (status === 'attempting') { 
-      messagePayload.startTime = new Date().toISOString();
-      if (data.url) messagePayload.url = data.url;
-    } else {
-      messagePayload.endTime = new Date().toISOString();
-    }
-    Object.keys(messagePayload).forEach(key => {
-      if (messagePayload[key] === undefined) delete messagePayload[key];
-    });
-    crawlerEvents.emit('crawlingTaskStatus', {
-      taskId: `page-${pageNumber}`,
-      status,
-      message: JSON.stringify(messagePayload)
-    });
+    // ProgressManager를 통해 페이지 크롤링 상태 이벤트 발생
+    this.progressManager.emitPageCrawlStatus(pageNumber, status, data);
   }
 
   public async collect(userPageLimit: number = 0): Promise<Product[]> {
     this.productCache.clear();
-    this.state.setStage('productList:init', '1단계: 제품 목록 페이지 수 파악 중');
+    
+    // ProgressManager 초기화 및 단계 설정
+    this.progressManager.setInitStage();
+    
     this.processedPagesSuccessfully = 0;
     this.currentStageRetryCount = 0;
     this.stage1PageStatuses = [];
@@ -436,19 +437,14 @@ export class ProductListCollector {
       });
       this._sendProgressUpdate();
 
-      updateRetryStatus('list-retry', {
-        stage: 'productList',
-        currentAttempt: this.currentStageRetryCount,
-        maxAttempt: productListRetryCount,
-        remainingItems: pagesForThisRetryCycle.length,
-        totalItems: pagesToRetryInitially.length,
-        startTime: Date.now(),
-        itemIds: pagesForThisRetryCycle.map(p => p.toString())
-      });
-      crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: 'list-retry', status: 'running',
-        message: `Product list retry cycle ${this.currentStageRetryCount}/${productListRetryCount} (Overall page attempt ${overallAttemptNumberForPagesInThisCycle}): ${pagesForThisRetryCycle.length} pages`
-      });
+      // ProgressManager를 통해 재시도 상태 업데이트
+      this.progressManager.updateRetryStatus(
+        this.currentStageRetryCount,
+        productListRetryCount,
+        pagesForThisRetryCycle.length,
+        pagesToRetryInitially.length,
+        pagesForThisRetryCycle.map(p => p.toString())
+      );
       debugLog(`[RETRY] Product list cycle ${this.currentStageRetryCount}/${productListRetryCount} for pages: ${pagesForThisRetryCycle.join(', ')}`);
 
       const { results: retryBatchResults } = await this.executeParallelCrawling(
@@ -508,28 +504,8 @@ export class ProductListCollector {
     _allPageErrors: Record<string, CrawlError[]>,
     collectedProducts: Product[]
   ): void {
-    let finalFailedCount = 0;
-    finalFailedCount = this.stage1PageStatuses.filter(p => p.status === 'failed' || p.status === 'incomplete').length;
-
-    const successPagesCount = this.totalPagesForThisStage1Collection - finalFailedCount;
-    const successRate = this.totalPagesForThisStage1Collection > 0 ? (successPagesCount / this.totalPagesForThisStage1Collection) : 1;
-
-    console.log(`[ProductListCollector] Final collection: ${successPagesCount}/${this.totalPagesForThisStage1Collection} pages fully collected. Total products: ${collectedProducts.length}`);
-
-    crawlerEvents.emit('crawlingTaskStatus', {
-      taskId: 'list-complete', status: 'success',
-      message: JSON.stringify({
-        stage: 1, type: 'complete',
-        siteTotalPages: totalPages,
-        pagesAttemptedInStage: this.totalPagesForThisStage1Collection,
-        successfullyCollectedPagesInStage: successPagesCount,
-        collectedProducts: collectedProducts.length,
-        failedOrIncompletePagesInStage: finalFailedCount,
-        successRate: parseFloat((successRate * 100).toFixed(1))
-      })
-    });
-
-    this.state.setStage('productList:processing', '수집된 제품 목록 처리 중');
+    // ProgressManager를 통해 수집 결과 요약 보고
+    this.progressManager.summarizeCollectionOutcome(totalPages, collectedProducts.length);
   }
 
   private cleanupResources(): void {
@@ -558,124 +534,14 @@ export class ProductListCollector {
   }
 
   private async _fetchTotalPages(): Promise<{ totalPages: number; lastPageProductCount: number }> {
-    const MAX_FETCH_ATTEMPTS = MAX_FETCH_TOTAL_PAGES_ATTEMPTS;
-
-    for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
-      let context: BrowserContext | null = null;
-      let page: Page | null = null;
-      try {
-        debugLog(`[ProductListCollector] _fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS}`);
-        context = await this.browserManager.createContext();
-        page = await this.browserManager.createPageInContext(context);
-        if (!page) {
-          throw new PageInitializationError('Failed to create page in new context for _fetchTotalPages', 0, attempt);
-        }
-
-        if (!this.matterFilterUrl) {
-          throw new Error('Configuration error: matterFilterUrl is not defined.');
-        }
-
-        if (attempt > 1) {
-          await delay(RETRY_DELAY_MS / 2);
-        }
-
-        debugLog(`[ProductListCollector] Navigating to ${this.matterFilterUrl} to fetch total pages (Attempt ${attempt}).`);
-        await this.optimizePage(page);
-        await this.optimizedNavigation(page, this.matterFilterUrl, this.pageTimeoutMs);
-
-        const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
-        let totalPages = 0;
-        if (pageElements.length > 0) {
-          const pageNumbers = await Promise.all(
-            pageElements.map(async (el) => {
-              const text = await el.textContent();
-              return text ? parseInt(text.trim(), 10) : 0;
-            })
-          );
-          totalPages = Math.max(...pageNumbers.filter(n => !isNaN(n) && n > 0), 0);
-        }
-        debugLog(`[ProductListCollector] Determined ${totalPages} total pages from pagination elements (Attempt ${attempt}).`);
-
-        let lastPageProductCount = 0;
-        if (totalPages > 0) {
-          const lastPageUrl = `${this.matterFilterUrl}&paged=${totalPages}`;
-          debugLog(`[ProductListCollector] Navigating to last page: ${lastPageUrl} (Attempt ${attempt})`);
-          if (page && lastPageUrl !== page.url()) {
-            await this.optimizePage(page);
-            await this.optimizedNavigation(page, lastPageUrl, this.pageTimeoutMs);
-          }
-
-          if (page) {
-            try {
-              lastPageProductCount = await page.evaluate(() => {
-                return document.querySelectorAll('div.post-feed article').length;
-              });
-            } catch (evalError: any) {
-              throw new PageContentExtractionError(`Failed to count products on last page ${totalPages} (Attempt ${attempt}): ${evalError?.message || String(evalError)}`, totalPages, attempt);
-            }
-            debugLog(`[ProductListCollector] Last page ${totalPages} has ${lastPageProductCount} products (Attempt ${attempt}).`);
-          }
-        } else { // totalPages is 0 or less
-          debugLog(`[ProductListCollector] No pagination elements found or totalPages is 0. Checking current page for products (Attempt ${attempt}).`);
-          if (page) {
-            try {
-              lastPageProductCount = await page.evaluate(() => {
-                return document.querySelectorAll('div.post-feed article').length;
-              });
-            } catch (evalError: any) {
-              // If counting products on the "first" page (when no pagination) fails, it's an extraction error.
-              throw new PageContentExtractionError(`Failed to count products on initial page (no pagination) (Attempt ${attempt}): ${evalError?.message || String(evalError)}`, 1, attempt);
-            }
-
-            if (lastPageProductCount > 0 && totalPages <= 0) { // Products found, but no pagination indicated more pages
-              totalPages = 1;
-              debugLog(`[ProductListCollector] Found ${lastPageProductCount} products on the first page. Setting totalPages to 1 (Attempt ${attempt}).`);
-            } else if (totalPages <= 0 && lastPageProductCount <= 0) { // Still no pages and no products
-              debugLog(`[ProductListCollector] No products found on the first page and no pagination. totalPages remains 0 (Attempt ${attempt}).`);
-              // This is the critical point: if totalPages is still 0, it's an error for this attempt.
-              throw new PageContentExtractionError(`No pages or products found on the site (Attempt ${attempt}).`, 0, attempt);
-            }
-          } else { // page is null, should have been caught by PageInitializationError earlier
-            throw new PageInitializationError('Page object was null when trying to count products on initial page.', 0, attempt);
-          }
-        }
-
-        // After all checks, if totalPages is still not positive, it's a failure for this attempt.
-        if (totalPages <= 0) {
-          throw new PageContentExtractionError(`Site reported ${totalPages} pages. This is considered an error (Attempt ${attempt}).`, totalPages, attempt);
-        }
-
-        // If successful and totalPages > 0, return the result
-        return { totalPages, lastPageProductCount };
-
-      } catch (error: unknown) {
-        const attemptError = error instanceof PageOperationError ? error :
-          new PageOperationError(error instanceof Error ? error.message : String(error), 0, attempt);
-
-        console.warn(`[ProductListCollector] _fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS} failed: ${attemptError.message}`);
-
-        if (attempt === MAX_FETCH_ATTEMPTS) {
-          console.error(`[ProductListCollector] _fetchTotalPages - All ${MAX_FETCH_ATTEMPTS} attempts failed. Last error: ${attemptError.message}`, attemptError);
-          throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts: ${attemptError.message}`, 0, attempt);
-        }
-        await delay(RETRY_DELAY_MS);
-      } finally {
-        if (page) {
-          try {
-            await this.browserManager.closePageAndContext(page);
-          } catch (e) {
-            console.error(`[ProductListCollector] Error releasing page and context in _fetchTotalPages (Attempt ${attempt}):`, e);
-          }
-        } else if (context) { // If page creation failed but context was made
-          try {
-            await context.close();
-          } catch (e) {
-            console.error(`[ProductListCollector] Error releasing context in _fetchTotalPages (Attempt ${attempt}):`, e);
-          }
-        }
-      }
+    try {
+      // PageCrawler를 사용하여 총 페이지 수와 마지막 페이지 제품 수 조회
+      return await this.pageCrawler.fetchTotalPages();
+    } catch (error) {
+      // 기존 에러 처리 로직은 PageCrawler 내부에서 처리하므로 여기서는 에러를 그대로 전달
+      console.error(`[ProductListCollector] Failed to fetch total pages: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
     }
-    throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts (unexpectedly reached end of retry loop).`, 0, MAX_FETCH_ATTEMPTS);
   }
 
   private async executeParallelCrawling(
@@ -697,82 +563,24 @@ export class ProductListCollector {
     return { results };
   }
 
-  private static _extractProductsFromPageDOM(): RawProductData[] {
-    const articles = Array.from(document.querySelectorAll('div.post-feed article'));
-    return articles.reverse().map((article, siteIndexInPage) => {
-      const link = article.querySelector('a');
-      const manufacturerEl = article.querySelector('p.entry-company.notranslate');
-      const modelEl = article.querySelector('h3.entry-title');
-      const certificateIdEl = article.querySelector('span.entry-cert-id');
-      const certificateIdPEl = article.querySelector('p.entry-certificate-id');
-      let certificateId;
+  // DOM에서 제품 추출 메서드는 PageCrawler로 이동하여 제거
 
-      if (certificateIdPEl && certificateIdPEl.textContent) {
-        const text = certificateIdPEl.textContent.trim();
-        if (text.startsWith('Certificate ID: ')) {
-          certificateId = text.replace('Certificate ID: ', '').trim();
-        } else {
-          certificateId = text;
-        }
-      } else if (certificateIdEl && certificateIdEl.textContent) {
-        certificateId = certificateIdEl.textContent.trim();
-      }
-
-      return {
-        url: link && link.href ? link.href : '',
-        manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
-        model: modelEl ? modelEl.textContent?.trim() : undefined,
-        certificateId,
-        siteIndexInPage
-      };
-    });
-  }
-
+  // ProductDataProcessor로 대체된 메서드들
   private _mapRawProductsToProducts(
     rawProducts: RawProductData[],
     sitePageNumber: number,
     offset: number
   ): Product[] {
-    return rawProducts.map((product) => {
-      const { siteIndexInPage } = product;
-      const { pageId, indexInPage } = PageIndexManager.mapToLocalIndexing(
-        sitePageNumber,
-        siteIndexInPage,
-        offset
-      );
-      const { siteIndexInPage: _, ...rest } = product;
-      return {
-        ...rest,
-        pageId,
-        indexInPage
-      };
-    });
+    return this.productDataProcessor.mapRawProductsToProducts(rawProducts, sitePageNumber, offset);
   }
 
   private static _mergeAndDeduplicateProductLists(
     existingProducts: Product[],
     newProducts: Product[]
   ): Product[] {
-    const productMap = new Map<string, Product>();
-
-    for (const product of existingProducts) {
-      if (product.url) {
-        productMap.set(product.url, product);
-      }
-    }
-    for (const product of newProducts) {
-      if (product.url) {
-        productMap.set(product.url, product);
-      }
-    }
-    const mergedProducts = Array.from(productMap.values());
-    mergedProducts.sort((a, b) => {
-      if ((a.pageId ?? -1) === (b.pageId ?? -1)) {
-        return (a.indexInPage ?? -1) - (b.indexInPage ?? -1);
-      }
-      return (a.pageId ?? -1) - (b.pageId ?? -1);
-    });
-    return mergedProducts;
+    // ProductDataProcessor의 정적 메서드 호출
+    const processor = new ProductDataProcessor();
+    return processor.mergeAndDeduplicateProductLists(existingProducts, newProducts);
   }
 
   private finalizeCollectedProducts(pageNumbersToCrawl: number[]): Product[] {
@@ -789,7 +597,7 @@ export class ProductListCollector {
 
   private async crawlPageWithTimeout(
     pageNumber: number,
-    _siteTotalPages: number,
+    siteTotalPages: number,
     signal: AbortSignal,
     attempt: number
   ): Promise<Product[]> {
@@ -797,39 +605,28 @@ export class ProductListCollector {
       throw new PageAbortedError('Aborted before crawlPageWithTimeout call', pageNumber, attempt);
     }
 
-    const pageUrl = `${this.matterFilterUrl}&paged=${pageNumber}`;
-    const timeout = this.pageTimeoutMs;
-
-    let context: BrowserContext | null = null;
-    let page: Page | null = null;
-
     try {
-      context = await this.browserManager.createContext();
-      page = await this.browserManager.createPageInContext(context);
-      if (!page) {
-        throw new PageInitializationError('Failed to create page in new context', pageNumber, attempt);
-      }
-
-      if (attempt > 1) {
-        await delay(this.config.minRequestDelayMs ?? 500);
-      }
-      await this.optimizePage(page);
-      await this.optimizedNavigation(page, pageUrl, timeout);
-
-      const rawProducts = await page.evaluate<RawProductData[]>(
-        ProductListCollector._extractProductsFromPageDOM
-      );
-
+      // PageCrawler를 사용하여 페이지 크롤링
+      const result = await this.pageCrawler.crawlPage(pageNumber, signal, attempt);
+      
+      // 수집된 데이터 처리
       const { totalPages: siteTotal, lastPageProductCount: siteLastPageCount } = await this.fetchTotalPagesCached();
       const sitePageNumber = PageIndexManager.toSitePageNumber(pageNumber, siteTotal);
       const offset = PageIndexManager.calculateOffset(siteLastPageCount);
 
-      const products = this._mapRawProductsToProducts(rawProducts, sitePageNumber, offset);
-      return products;
-
+      // ProductDataProcessor를 사용하여 데이터 변환
+      return this.productDataProcessor.mapRawProductsToProducts(
+        result.rawProducts, 
+        sitePageNumber, 
+        offset
+      );
     } catch (error: unknown) {
+      // 기존 에러 처리는 그대로 유지
       if (error instanceof PageOperationError) throw error;
 
+      const pageUrl = `${this.matterFilterUrl}&paged=${pageNumber}`;
+      const timeout = this.pageTimeoutMs;
+      
       if (error instanceof Error) {
         if (error.name === 'TimeoutError') {
           throw new PageTimeoutError(`Page ${pageNumber} timed out after ${timeout}ms on attempt ${attempt}. URL: ${pageUrl}`, pageNumber, attempt);
@@ -837,67 +634,8 @@ export class ProductListCollector {
         throw new PageOperationError(`Error crawling page ${pageNumber} (attempt ${attempt}): ${error.message}. URL: ${pageUrl}`, pageNumber, attempt);
       }
       throw new PageOperationError(`Unknown error crawling page ${pageNumber} (attempt ${attempt}). URL: ${pageUrl}`, pageNumber, attempt);
-    } finally {
-      if (page) {
-        await this.browserManager.closePageAndContext(page);
-      } else if (context) {
-        await context.close();
-      }
     }
   }
 
-  // 페이지 최적화를 위한 새로운 메서드
-  private async optimizePage(page: Page): Promise<void> {
-    // 더 공격적인 리소스 차단 (2. 리소스 로딩 최적화)
-    await page.route('**/*', (route) => {
-      const request = route.request();
-      const resourceType = request.resourceType();
-      const url = request.url();
-      
-      // HTML과 필수 CSS만 허용
-      if (resourceType === 'document' || 
-          (resourceType === 'stylesheet' && url.includes('main'))) {
-        route.continue();
-      } else {
-        route.abort();
-      }
-    });
-  }
-
-  // 최적화된 네비게이션 함수 (4. 페이지 네비게이션 최적화)
-  private async optimizedNavigation(page: Page, url: string, timeout: number): Promise<boolean> {
-    let navigationSucceeded = false;
-    
-    try {
-      // 첫 시도: 매우 짧은 타임아웃으로 시도
-      await page.goto(url, { 
-        waitUntil: 'domcontentloaded', // 더 가벼운 로드 조건
-        timeout: Math.min(5000, timeout / 3) // 매우 짧은 타임아웃
-      });
-      navigationSucceeded = true;
-    } catch (error: any) {
-      if (error && error.name === 'TimeoutError') {
-        // 타임아웃 발생해도 HTML이 로드되었다면 성공으로 간주
-        const readyState = await page.evaluate(() => document.readyState).catch(() => 'unknown');
-        if (readyState !== 'loading' && readyState !== 'unknown') {
-          navigationSucceeded = true;
-          debugLog(`Navigation timed out but document is in '${readyState}' state. Continuing...`);
-        } else {
-          // 첫 시도 실패 시, 두 번째 시도 - 조금 더 긴 타임아웃
-          try {
-            await page.goto(url, { 
-              waitUntil: 'domcontentloaded',
-              timeout: timeout / 2
-            });
-            navigationSucceeded = true;
-          } catch (secondError: any) {
-            // 최종 실패 시 오류 로깅
-            debugLog(`Navigation failed after retry: ${secondError && secondError.message ? secondError.message : 'Unknown error'}`);
-          }
-        }
-      }
-    }
-    
-    return navigationSucceeded;
-  }
+  // 페이지 최적화 및 네비게이션 메서드는 PageCrawler로 이동하여 제거
 }
