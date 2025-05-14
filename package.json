@@ -20,6 +20,7 @@
     "convert-device-data": "ts-node-esm ./scripts/convertDeviceData.ts",
     "merge-device-data": "ts-node-esm ./scripts/mergeDeviceFiles.ts",
     "merge-matter-devices": "ts-node-esm ./scripts/mergeMatterDevFiles.ts",
+    "test:hybrid-crawler": "ts-node-esm ./scripts/test-hybrid-crawler.ts",
     "dist:mac": "npm run transpile:electron && npm run build && electron-builder --mac --arm64",
     "dist:win": "npm run transpile:electron && npm run build && electron-builder --win --x64",
     "dist:linux": "npm run transpile:electron && npm run build && electron-builder --linux --x64"

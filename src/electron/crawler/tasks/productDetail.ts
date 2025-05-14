@@ -11,6 +11,8 @@ import {
 } from '../utils/concurrency.js';
 import { MatterProductParser } from '../parsers/MatterProductParser.js';
 import { BrowserManager } from '../browser/BrowserManager.js';
+import { retryWithBackoff } from '../utils/retry.js';
+import { extractProductDetailsWithAxios } from '../utils/axiosExtractor.js';
 
 import type { DetailCrawlResult } from '../utils/types.js';
 import type { Product, MatterProduct, CrawlerConfig } from '../../../../types.d.ts';
@@ -58,6 +60,38 @@ export class ProductDetailCollector {
     const delayTime = getRandomDelay(minDelay, maxDelay);
     await delay(delayTime);
     
+    // 하이브리드 전략 사용 플래그
+    const useHybridStrategy = config.useHybridStrategy ?? true;
+    
+    // Playwright 전략 시도
+    try {
+      const result = await this.crawlWithPlaywright(product, signal);
+      return result;
+    } catch (error) {
+      const playwrightError = error instanceof Error ? error : new Error(String(error));
+      debugLog(`[ProductDetailCollector] Playwright strategy failed for ${product.url}: ${playwrightError.message}`);
+      
+      // 하이브리드 전략이 활성화되어 있고 신호가 중단되지 않은 경우에만 Axios로 시도
+      if (useHybridStrategy && !signal.aborted) {
+        debugLog(`[ProductDetailCollector] Falling back to Axios/Cheerio strategy for ${product.url}`);
+        try {
+          const result = await this.crawlWithAxios(product, signal);
+          return result;
+        } catch (axiosError) {
+          debugLog(`[ProductDetailCollector] Axios/Cheerio fallback also failed for ${product.url}`);
+          throw axiosError instanceof Error ? axiosError : new Error(String(axiosError)); // 두 전략 모두 실패한 경우 마지막 오류를 전달
+        }
+      } else {
+        throw playwrightError; // 하이브리드 전략이 비활성화된 경우 원래 오류를 전달
+      }
+    }
+  }
+  
+  /**
+   * Playwright를 사용하여 제품 상세 정보를 크롤링
+   */
+  private async crawlWithPlaywright(product: Product, signal: AbortSignal): Promise<MatterProduct> {
+    const config = this.config;
     let page: Page | null = null;
 
     try {
@@ -66,9 +100,16 @@ export class ProductDetailCollector {
       if (signal.aborted) {
         throw new Error('Aborted before page operations');
       }
-      // 불필요한 리소스 차단 예시
+      
+      // 불필요한 리소스 차단
       await page.route('**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}', route => route.abort());
-      await page.goto(product.url, { waitUntil: 'domcontentloaded', timeout: config.productDetailTimeoutMs ?? 60000 });
+      
+      // 페이지 로드 타임아웃 설정
+      const timeout = config.productDetailTimeoutMs ?? 60000;
+      await page.goto(product.url, { 
+        waitUntil: 'domcontentloaded', 
+        timeout: timeout
+      });
 
       if (signal.aborted) {
         throw new Error('Aborted after page.goto');
@@ -88,17 +129,52 @@ export class ProductDetailCollector {
       return matterProduct;
 
     } catch (error: unknown) {
-      debugLog(`${config.productDetailTimeoutMs} ms timeout for ${product.model}`);
       if (signal.aborted) {
         throw new Error(`Aborted crawling for ${product.url} during operation.`);
       }
-      console.error(`[ProductDetailCollector] Error crawling product detail for ${product.url}:`, error);
+      debugLog(`Playwright error: ${config.productDetailTimeoutMs} ms timeout for ${product.model}`);
+      console.error(`[ProductDetailCollector] Error crawling product detail with Playwright for ${product.url}:`, error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to crawl product detail for ${product.url}: ${errorMessage}`);
+      throw new Error(`Failed to crawl product detail with Playwright for ${product.url}: ${errorMessage}`);
     } finally {
       if (page) {
         await this.browserManager.closePage(page);
       }
+    }
+  }
+  
+  /**
+   * Axios와 Cheerio를 사용하여 제품 상세 정보를 크롤링 (Playwright 대체 전략)
+   */
+  private async crawlWithAxios(product: Product, signal: AbortSignal): Promise<MatterProduct> {
+    const config = this.config;
+    
+    if (signal.aborted) {
+      throw new Error('Aborted before Axios operation');
+    }
+    
+    try {
+      // 사용자 에이전트 설정
+      const userAgent = config.userAgent ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
+      // Axios 타임아웃 설정 (Playwright보다 짧게 설정하여 빠른 실패를 유도)
+      const axiosTimeout = config.axiosTimeoutMs ?? 30000;
+      
+      const extractedDetails = await extractProductDetailsWithAxios(product, userAgent, axiosTimeout);
+      
+      const matterProduct: MatterProduct = {
+        ...product,
+        id: `csa-matter-${product.pageId}-${product.indexInPage}`,
+        ...extractedDetails,
+      };
+      
+      return matterProduct;
+    } catch (error: unknown) {
+      if (signal.aborted) {
+        throw new Error(`Aborted Axios crawling for ${product.url} during operation.`);
+      }
+      console.error(`[ProductDetailCollector] Error crawling product detail with Axios for ${product.url}:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to crawl product detail with Axios for ${product.url}: ${errorMessage}`);
     }
   }
 
@@ -305,12 +381,44 @@ export class ProductDetailCollector {
     updateProductTaskStatus(product.url, 'running');
 
     try {
-      const detailProduct = await Promise.race([
-        this.crawlProductDetail(product, signal),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), config.productDetailTimeoutMs)
-        )
-      ]);
+      // 지수 백오프와 재시도 로직을 사용하여 크롤링
+      const baseRetryDelay = config.baseRetryDelayMs ?? 1000;
+      const maxRetryDelay = config.maxRetryDelayMs ?? 15000;
+      const retryMax = config.retryMax ?? 2; // 기존 설정 사용
+      
+      const detailProduct = await retryWithBackoff(
+        async () => {
+          // Promise.race를 사용하여 타임아웃 처리
+          return await Promise.race([
+            this.crawlProductDetail(product, signal),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Operation timed out')), config.productDetailTimeoutMs ?? 60000)
+            )
+          ]);
+        },
+        retryMax,
+        baseRetryDelay,
+        maxRetryDelay,
+        (retryAttempt, delay, err) => {
+          console.warn(
+            `[ProductDetailCollector] Retrying (${retryAttempt}/${retryMax}) after ${delay}ms for ${product.url}: ${err.message}`
+          );
+          crawlerEvents.emit('crawlingTaskStatus', {
+            taskId: `product-retry-${product.url}`,
+            status: 'attempting',
+            message: JSON.stringify({
+              stage: 2,
+              type: 'retry',
+              url: product.url,
+              attempt: retryAttempt,
+              maxAttempts: retryMax,
+              delay: delay,
+              error: err.message,
+              timestamp: Date.now()
+            })
+          });
+        }
+      );
 
       updateProductTaskStatus(product.url, 'success');
       
@@ -406,9 +514,7 @@ export class ProductDetailCollector {
       message: `2단계: 제품 상세정보 0/${totalItems} 처리 중 (0.0%)`
     });
   
-    console.log(`[ProductDetailCollector] Starting detail collection for ${totalItems} products`);
-  
-    await promisePool(
+    console.log(`[ProductDetailCollector] Starting detail collection for ${totalItems} products`);    await promisePool(
       products,
       async (product, signal) => {
         const result = await this.processProductDetailCrawl(
@@ -438,7 +544,7 @@ export class ProductDetailCollector {
             message: message,
             percentage: percentage
           });
-  
+          
           const detailConcurrency = config.detailConcurrency ?? 1;
           const activeTasksCount = Math.min(detailConcurrency, totalItems - processedItems + 1);
           this.state.updateParallelTasks(activeTasksCount, detailConcurrency);
@@ -465,7 +571,15 @@ export class ProductDetailCollector {
         return result;
       },
       config.detailConcurrency ?? 1,
-      this.abortController
+      this.abortController,
+      undefined, // shouldStopCrawling parameter
+      {
+        // 적응형 동시성 설정
+        adaptiveConcurrency: config.adaptiveConcurrency ?? true,
+        errorThreshold: 0.3, // 30% 실패율이 넘으면 동시성 감소
+        minConcurrency: 1,
+        successWindowSize: 10 // 최근 10개 요청의 성공/실패 기록을 기반으로 동시성 조절
+      }
     );
   
     const finalElapsedTime = Date.now() - startTime;

@@ -164,6 +164,13 @@ export interface CrawlerConfig {
     retryMax?: number;
     cacheTtlMs?: number;
     userAgent?: string;  // 크롤링에 사용할 User-Agent 헤더
+    
+    // 하이브리드 크롤링 전략 관련 설정
+    useHybridStrategy?: boolean;  // Playwright 실패 시 Axios/Cheerio로 대체 시도 여부
+    adaptiveConcurrency?: boolean; // 동적으로 동시성 조절 여부
+    maxRetryDelayMs?: number;  // 재시도 시 최대 지연 시간 (지수 백오프용)
+    baseRetryDelayMs?: number; // 재시도 시 기본 지연 시간 (지수 백오프용)
+    axiosTimeoutMs?: number;   // Axios 요청 타임아웃
 }
 
 // 동시 처리 작업 상태 타입
