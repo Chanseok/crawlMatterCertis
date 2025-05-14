@@ -4,7 +4,6 @@
  */
 
 import { type Page, type BrowserContext } from 'playwright-chromium';
-// import { getDatabaseSummaryFromDb } from '../../database.js';
 
 import { CrawlerState } from '../core/CrawlerState.js';
 import {
@@ -17,45 +16,23 @@ import { debugLog } from '../../util.js';
 import { type CrawlerConfig } from '../core/config.js';
 import { crawlerEvents, updateRetryStatus  } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';
-import { BrowserManager } from '../browser/BrowserManager.js'; // Corrected path
+import { BrowserManager } from '../browser/BrowserManager.js';
 import { delay } from '../utils/delay.js';
 
-// --- 사용자 정의 오류 클래스 --- 
-class PageOperationError extends Error {
-  constructor(message: string, public pageNumber: number, public attempt?: number) {
-    super(message);
-    this.name = this.constructor.name;
-  }
-}
-class PageTimeoutError extends PageOperationError { readonly type = 'Timeout'; }
-class PageAbortedError extends PageOperationError { readonly type = 'Abort'; }
-class PageNavigationError extends PageOperationError { readonly type = 'Navigation'; }
-class PageContentExtractionError extends PageOperationError { readonly type = 'Extraction'; }
-class PageInitializationError extends PageOperationError { readonly type = 'Initialization'; }
-// --- 사용자 정의 오류 클래스 끝 ---
+// 새로 분리된 모듈 가져오기
+import { 
+  PageOperationError, PageTimeoutError, PageAbortedError,
+  PageNavigationError, PageContentExtractionError, PageInitializationError 
+} from '../utils/page-errors.js';
+import { PageCacheManager } from '../utils/page-cache-manager.js';
+import {   RawProductData, ProductListProgressCallback, SitePageInfo } from './product-list-types.js';
+import {  MAX_FETCH_TOTAL_PAGES_ATTEMPTS, RETRY_DELAY_MS, DEFAULT_CACHE_TTL_MS } from './product-list-constants.js';
 
-// 캐시
-let cachedTotalPages: number | null = null;
-let cachedTotalPagesFetchedAt: number | null = null;
+// 캐시 매니저 인스턴스 생성
+const sitePageInfoCache = new PageCacheManager<SitePageInfo>();
 
-// 진행 상황 콜백 타입 정의
-export type EnhancedProgressCallback = (
-  processedSuccessfully: number, // Successfully completed pages
-  totalPagesInStage: number, // Total pages specifically for this stage 1 collection
-  stage1PageStatuses: PageProcessingStatusItem[],
-  currentOverallRetryCountForStage: number, // Overall retries for stage 1
-  stage1StartTime: number, // Start time of the current stage 1 processing
-  isStageComplete?: boolean
-) => void;
-
-// page.evaluate가 반환하는 원시 데이터 타입
-interface RawProductData {
-  url: string;
-  manufacturer?: string;
-  model?: string;
-  certificateId?: string;
-  siteIndexInPage: number; // DOM 순서 기반 인덱스
-}
+// 진행 상황 콜백 타입 정의 (하위 호환성 유지)
+export type EnhancedProgressCallback = ProductListProgressCallback;
 
 export class ProductListCollector {
   private state: CrawlerState;
@@ -568,34 +545,20 @@ export class ProductListCollector {
     totalPages: number;
     lastPageProductCount: number;
   }> {
-    const now = Date.now();
-    const cacheTtl = this.config.cacheTtlMs ?? 3600000;
-
-    if (!force &&
-      cachedTotalPages &&
-      ProductListCollector.lastPageProductCount !== null &&
-      cachedTotalPagesFetchedAt &&
-      (now - cachedTotalPagesFetchedAt < cacheTtl)) {
-      // debugLog('[ProductListCollector] Returning cached total pages data.');
-      return {
-        totalPages: cachedTotalPages,
-        lastPageProductCount: ProductListCollector.lastPageProductCount!
-      };
-    }
-
-    debugLog(`[ProductListCollector] Fetching total pages. Force refresh: ${force}`);
-    const result = await this._fetchTotalPages();
-    cachedTotalPages = result.totalPages;
-    ProductListCollector.lastPageProductCount = result.lastPageProductCount;
-    cachedTotalPagesFetchedAt = now;
-    debugLog(`[ProductListCollector] Fetched and cached new total pages data: ${result.totalPages} pages, ${result.lastPageProductCount} products on last page.`);
-
-    return result;
+    const cacheTtl = this.config.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
+    sitePageInfoCache.setTtl(cacheTtl);
+    
+    return await sitePageInfoCache.getOrFetch(force, async () => {
+      debugLog(`[ProductListCollector] Fetching total pages. Force refresh: ${force}`);
+      const result = await this._fetchTotalPages();
+      ProductListCollector.lastPageProductCount = result.lastPageProductCount;
+      debugLog(`[ProductListCollector] Fetched and cached new total pages data: ${result.totalPages} pages, ${result.lastPageProductCount} products on last page.`);
+      return result;
+    });
   }
 
   private async _fetchTotalPages(): Promise<{ totalPages: number; lastPageProductCount: number }> {
-    const MAX_FETCH_ATTEMPTS = 3;
-    const RETRY_DELAY_MS = 2500; // 2.5 seconds delay
+    const MAX_FETCH_ATTEMPTS = MAX_FETCH_TOTAL_PAGES_ATTEMPTS;
 
     for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
       let context: BrowserContext | null = null;
