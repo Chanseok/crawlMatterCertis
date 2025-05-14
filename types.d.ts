@@ -136,6 +136,7 @@ export interface CrawlerConfig {
     productListRetryCount: number;
     productDetailRetryCount: number;
     headlessBrowser?: boolean; // Added headlessBrowser property
+    crawlerType?: 'playwright' | 'axios'; // 크롤러 전략 유형 ('playwright' 또는 'axios')
     
     // UI 관련 추가 설정
     maxConcurrentTasks?: number;
@@ -162,6 +163,7 @@ export interface CrawlerConfig {
     retryStart?: number;
     retryMax?: number;
     cacheTtlMs?: number;
+    userAgent?: string;  // 크롤링에 사용할 User-Agent 헤더
 }
 
 // 동시 처리 작업 상태 타입

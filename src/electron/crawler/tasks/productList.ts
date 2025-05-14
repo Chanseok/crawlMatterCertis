@@ -82,8 +82,9 @@ export class ProductListCollector {
     this.productsPerPage = config.productsPerPage || 12;
     this.matterFilterUrl = config.matterFilterUrl || '';
     
-    // 유틸리티 클래스 초기화
-    this.pageCrawler = new PageCrawler(browserManager, config);
+    // 유틸리티 클래스 초기화 (크롤링 전략 지정)
+    const crawlerType = config.crawlerType || 'playwright';
+    this.pageCrawler = new PageCrawler(browserManager, config, crawlerType);
     this.productDataProcessor = new ProductDataProcessor();
     this.progressManager = new ProgressManager(state);
   }
@@ -91,6 +92,23 @@ export class ProductListCollector {
   public setProgressCallback(callback: EnhancedProgressCallback): void {
     this.enhancedProgressCallback = callback;
     this.progressManager.setProgressCallback(callback);
+  }
+  
+  /**
+   * 크롤링 전략 변경
+   * @param crawlerType 크롤링 전략 유형 ('playwright' 또는 'axios')
+   */
+  public async switchCrawlerStrategy(crawlerType: 'playwright' | 'axios'): Promise<void> {
+    await this.pageCrawler.switchCrawlerStrategy(crawlerType);
+    console.log(`[ProductListCollector] 크롤링 전략이 ${crawlerType}로 변경되었습니다.`);
+  }
+  
+  /**
+   * 현재 사용 중인 크롤링 전략 확인
+   * @returns 현재 크롤링 전략 유형
+   */
+  public getCurrentCrawlerStrategy(): 'playwright' | 'axios' {
+    return this.pageCrawler.getCurrentStrategy();
   }
 
   private _sendProgressUpdate(isStageComplete: boolean = false): void {
@@ -529,7 +547,11 @@ export class ProductListCollector {
       const result = await this._fetchTotalPages();
       ProductListCollector.lastPageProductCount = result.lastPageProductCount;
       debugLog(`[ProductListCollector] Fetched and cached new total pages data: ${result.totalPages} pages, ${result.lastPageProductCount} products on last page.`);
-      return result;
+      return {
+        totalPages: result.totalPages,
+        lastPageProductCount: result.lastPageProductCount,
+        fetchedAt: Date.now()  // 현재 시간을 fetchedAt 속성으로 추가
+      };
     });
   }
 

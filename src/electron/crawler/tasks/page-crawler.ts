@@ -1,19 +1,16 @@
 /**
  * page-crawler.ts
  * 제품 목록 페이지 크롤링을 담당하는 클래스
+ * 전략 패턴을 사용하여 다양한 크롤링 방식 지원
  */
 
-import { type Page, type BrowserContext } from 'playwright-chromium';
 import { type CrawlerConfig } from '../core/config.js';
 import { debugLog } from '../../util.js';
 import { BrowserManager } from '../browser/BrowserManager.js';
-import { 
-  PageInitializationError, PageContentExtractionError, PageOperationError, 
-  PageTimeoutError, PageNavigationError 
-} from '../utils/page-errors.js';
-import { delay } from '../utils/delay.js';
-import { RawProductData } from './product-list-types.js';
-import { RETRY_DELAY_MS } from './product-list-constants.js';
+import { PageOperationError } from '../utils/page-errors.js';
+import { RawProductData, SitePageInfo } from './product-list-types.js';
+import { ICrawlerStrategy } from '../strategies/crawler-strategy.js';
+import { CrawlerStrategyFactory, CrawlerType } from '../strategies/crawler-strategy-factory.js';
 
 /**
  * 페이지 크롤링 결과
@@ -27,24 +24,72 @@ export interface PageCrawlResult {
 
 /**
  * 페이지 크롤러 클래스
- * 개별 페이지 크롤링 로직을 담당
+ * 전략 패턴을 사용하여 다양한 크롤링 방식 지원
  */
 export class PageCrawler {
-  private readonly browserManager: BrowserManager;
-  private readonly matterFilterUrl: string;
-  private readonly pageTimeoutMs: number;
-  private readonly minRequestDelayMs: number;
+  private crawlerStrategy: ICrawlerStrategy;
+  private readonly config: CrawlerConfig;
+  private readonly browserManager?: BrowserManager;
+  private crawlerType: CrawlerType;
 
   /**
    * 페이지 크롤러 생성
-   * @param browserManager 브라우저 매니저 인스턴스
+   * @param browserManager 브라우저 매니저 인스턴스 (Playwright 전략에만 필요)
    * @param config 크롤러 설정
+   * @param crawlerType 크롤링 전략 유형 ('playwright' 또는 'axios')
    */
-  constructor(browserManager: BrowserManager, config: CrawlerConfig) {
+  constructor(browserManager: BrowserManager, config: CrawlerConfig, crawlerType: CrawlerType = 'playwright') {
+    this.config = config;
     this.browserManager = browserManager;
-    this.matterFilterUrl = config.matterFilterUrl || '';
-    this.pageTimeoutMs = config.pageTimeoutMs || 60000;
-    this.minRequestDelayMs = config.minRequestDelayMs || 500;
+    this.crawlerType = crawlerType;
+    
+    // 설정된 크롤러 전략 초기화
+    this.crawlerStrategy = CrawlerStrategyFactory.createStrategy(
+      this.crawlerType, 
+      this.config, 
+      this.browserManager
+    );
+  }
+
+  /**
+   * 크롤링 전략 변경
+   * @param crawlerType 크롤링 전략 유형 ('playwright' 또는 'axios')
+   */
+  public async switchCrawlerStrategy(crawlerType: CrawlerType): Promise<void> {
+    if (this.crawlerType === crawlerType) {
+      debugLog(`[PageCrawler] 이미 ${crawlerType} 전략을 사용 중입니다.`);
+      return;
+    }
+    
+    // 기존 전략 리소스 정리
+    await this.crawlerStrategy.cleanup();
+    
+    // 새 전략으로 전환
+    this.crawlerType = crawlerType;
+    this.crawlerStrategy = CrawlerStrategyFactory.createStrategy(
+      this.crawlerType, 
+      this.config, 
+      this.browserManager
+    );
+    
+    // 새 전략 초기화
+    await this.crawlerStrategy.initialize();
+    debugLog(`[PageCrawler] 크롤링 전략을 ${crawlerType}로 변경했습니다.`);
+  }
+  
+  /**
+   * 현재 사용 중인 크롤링 전략 확인
+   * @returns 현재 크롤링 전략 유형
+   */
+  public getCurrentStrategy(): CrawlerType {
+    return this.crawlerType;
+  }
+
+  /**
+   * 크롤러 초기화 (선택적)
+   */
+  public async initialize(): Promise<void> {
+    await this.crawlerStrategy.initialize();
   }
 
   /**
@@ -55,280 +100,50 @@ export class PageCrawler {
    * @returns 크롤링 결과
    */
   public async crawlPage(pageNumber: number, signal: AbortSignal, attempt: number = 1): Promise<PageCrawlResult> {
-    if (signal.aborted) {
-      throw new PageNavigationError('Aborted before page crawling started', pageNumber, attempt);
-    }
-
-    const pageUrl = `${this.matterFilterUrl}&paged=${pageNumber}`;
-    const timeout = this.pageTimeoutMs;
-
-    let context: BrowserContext | null = null;
-    let page: Page | null = null;
-
     try {
-      context = await this.browserManager.createContext();
-      page = await this.browserManager.createPageInContext(context);
+      return await this.crawlerStrategy.crawlPage(pageNumber, signal, attempt);
+    } catch (error) {
+      if (error instanceof PageOperationError) throw error;
       
-      if (!page) {
-        throw new PageInitializationError('Failed to create page in new context', pageNumber, attempt);
-      }
-
-      if (attempt > 1) {
-        await delay(this.minRequestDelayMs);
+      if (error instanceof Error) {
+        throw new PageOperationError(
+          `페이지 크롤링 중 오류 발생: ${error.message}`,
+          pageNumber,
+          attempt
+        );
       }
       
-      await this.optimizePage(page);
-      await this.optimizedNavigation(page, pageUrl, timeout);
-
-      const rawProducts = await page.evaluate<RawProductData[]>(this.extractProductsFromPageDOM);
-
-      return {
-        rawProducts,
-        url: pageUrl,
+      throw new PageOperationError(
+        `알 수 없는 오류 발생`,
         pageNumber,
         attempt
-      };
-
-    } catch (error: unknown) {
-      if (error instanceof PageOperationError) throw error;
-
-      if (error instanceof Error) {
-        if (error.name === 'TimeoutError') {
-          throw new PageTimeoutError(`Page ${pageNumber} timed out after ${timeout}ms on attempt ${attempt}. URL: ${pageUrl}`, pageNumber, attempt);
-        }
-        throw new PageOperationError(`Error crawling page ${pageNumber} (attempt ${attempt}): ${error.message}. URL: ${pageUrl}`, pageNumber, attempt);
-      }
-      
-      throw new PageOperationError(`Unknown error crawling page ${pageNumber} (attempt ${attempt}). URL: ${pageUrl}`, pageNumber, attempt);
-    } finally {
-      if (page) {
-        await this.browserManager.closePageAndContext(page);
-      } else if (context) {
-        await context.close();
-      }
+      );
     }
-  }
-
-  /**
-   * 페이지 최적화 (리소스 차단 등)
-   */
-  private async optimizePage(page: Page): Promise<void> {
-    // 더 공격적인 리소스 차단
-    await page.route('**/*', (route) => {
-      const request = route.request();
-      const resourceType = request.resourceType();
-      const url = request.url();
-      
-      // HTML과 필수 CSS만 허용
-      if (resourceType === 'document' || 
-          (resourceType === 'stylesheet' && url.includes('main'))) {
-        route.continue();
-      } else {
-        route.abort();
-      }
-    });
-  }
-
-  /**
-   * 최적화된 네비게이션 함수
-   */
-  private async optimizedNavigation(page: Page, url: string, timeout: number): Promise<boolean> {
-    let navigationSucceeded = false;
-    
-    try {
-      // 첫 시도: 매우 짧은 타임아웃으로 시도
-      await page.goto(url, { 
-        waitUntil: 'domcontentloaded', // 더 가벼운 로드 조건
-        timeout: Math.min(5000, timeout / 3) // 매우 짧은 타임아웃
-      });
-      navigationSucceeded = true;
-    } catch (error: any) {
-      if (error && error.name === 'TimeoutError') {
-        // 타임아웃 발생해도 HTML이 로드되었다면 성공으로 간주
-        const readyState = await page.evaluate(() => document.readyState).catch(() => 'unknown');
-        if (readyState !== 'loading' && readyState !== 'unknown') {
-          navigationSucceeded = true;
-          debugLog(`Navigation timed out but document is in '${readyState}' state. Continuing...`);
-        } else {
-          // 첫 시도 실패 시, 두 번째 시도 - 조금 더 긴 타임아웃
-          try {
-            await page.goto(url, { 
-              waitUntil: 'domcontentloaded',
-              timeout: timeout / 2
-            });
-            navigationSucceeded = true;
-          } catch (secondError: any) {
-            // 최종 실패 시 오류 로깅
-            debugLog(`Navigation failed after retry: ${secondError && secondError.message ? secondError.message : 'Unknown error'}`);
-          }
-        }
-      }
-    }
-    
-    return navigationSucceeded;
-  }
-
-  /**
-   * 페이지에서 제품 정보 추출 (DOM 분석)
-   */
-  private extractProductsFromPageDOM(): RawProductData[] {
-    const articles = Array.from(document.querySelectorAll('div.post-feed article'));
-    return articles.reverse().map((article, siteIndexInPage) => {
-      const link = article.querySelector('a');
-      const manufacturerEl = article.querySelector('p.entry-company.notranslate');
-      const modelEl = article.querySelector('h3.entry-title');
-      const certificateIdEl = article.querySelector('span.entry-cert-id');
-      const certificateIdPEl = article.querySelector('p.entry-certificate-id');
-      let certificateId;
-
-      if (certificateIdPEl && certificateIdPEl.textContent) {
-        const text = certificateIdPEl.textContent.trim();
-        if (text.startsWith('Certificate ID: ')) {
-          certificateId = text.replace('Certificate ID: ', '').trim();
-        } else {
-          certificateId = text;
-        }
-      } else if (certificateIdEl && certificateIdEl.textContent) {
-        certificateId = certificateIdEl.textContent.trim();
-      }
-
-      return {
-        url: link && link.href ? link.href : '',
-        manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
-        model: modelEl ? modelEl.textContent?.trim() : undefined,
-        certificateId,
-        siteIndexInPage
-      };
-    });
   }
 
   /**
    * 사이트의 총 페이지 수와 마지막 페이지의 제품 수 조회
+   * @returns 페이지 정보 (총 페이지 수, 마지막 페이지 제품 수)
    */
   public async fetchTotalPages(): Promise<{totalPages: number; lastPageProductCount: number}> {
-    const MAX_FETCH_ATTEMPTS = 3;
-
-    for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
-      let context: BrowserContext | null = null;
-      let page: Page | null = null;
-      
-      try {
-        debugLog(`[PageCrawler] fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS}`);
-        context = await this.browserManager.createContext();
-        page = await this.browserManager.createPageInContext(context);
-        
-        if (!page) {
-          throw new PageInitializationError('Failed to create page in new context for fetchTotalPages', 0, attempt);
-        }
-
-        if (!this.matterFilterUrl) {
-          throw new Error('Configuration error: matterFilterUrl is not defined.');
-        }
-
-        if (attempt > 1) {
-          await delay(RETRY_DELAY_MS / 2);
-        }
-
-        debugLog(`[PageCrawler] Navigating to ${this.matterFilterUrl} to fetch total pages (Attempt ${attempt}).`);
-        await this.optimizePage(page);
-        await this.optimizedNavigation(page, this.matterFilterUrl, this.pageTimeoutMs);
-
-        const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
-        let totalPages = 0;
-        
-        if (pageElements.length > 0) {
-          const pageNumbers = await Promise.all(
-            pageElements.map(async (el) => {
-              const text = await el.textContent();
-              return text ? parseInt(text.trim(), 10) : 0;
-            })
-          );
-          totalPages = Math.max(...pageNumbers.filter(n => !isNaN(n) && n > 0), 0);
-        }
-        
-        debugLog(`[PageCrawler] Determined ${totalPages} total pages from pagination elements (Attempt ${attempt}).`);
-
-        let lastPageProductCount = 0;
-        if (totalPages > 0) {
-          const lastPageUrl = `${this.matterFilterUrl}&paged=${totalPages}`;
-          debugLog(`[PageCrawler] Navigating to last page: ${lastPageUrl} (Attempt ${attempt})`);
-          
-          if (page && lastPageUrl !== page.url()) {
-            await this.optimizePage(page);
-            await this.optimizedNavigation(page, lastPageUrl, this.pageTimeoutMs);
-          }
-
-          if (page) {
-            try {
-              lastPageProductCount = await page.evaluate(() => {
-                return document.querySelectorAll('div.post-feed article').length;
-              });
-            } catch (evalError: any) {
-              throw new PageContentExtractionError(`Failed to count products on last page ${totalPages} (Attempt ${attempt}): ${evalError?.message || String(evalError)}`, totalPages, attempt);
-            }
-            debugLog(`[PageCrawler] Last page ${totalPages} has ${lastPageProductCount} products (Attempt ${attempt}).`);
-          }
-        } else {
-          debugLog(`[PageCrawler] No pagination elements found or totalPages is 0. Checking current page for products (Attempt ${attempt}).`);
-          
-          if (page) {
-            try {
-              lastPageProductCount = await page.evaluate(() => {
-                return document.querySelectorAll('div.post-feed article').length;
-              });
-            } catch (evalError: any) {
-              throw new PageContentExtractionError(`Failed to count products on initial page (no pagination) (Attempt ${attempt}): ${evalError?.message || String(evalError)}`, 1, attempt);
-            }
-
-            if (lastPageProductCount > 0 && totalPages <= 0) {
-              totalPages = 1;
-              debugLog(`[PageCrawler] Found ${lastPageProductCount} products on the first page. Setting totalPages to 1 (Attempt ${attempt}).`);
-            } else if (totalPages <= 0 && lastPageProductCount <= 0) {
-              debugLog(`[PageCrawler] No products found on the first page and no pagination. totalPages remains 0 (Attempt ${attempt}).`);
-              throw new PageContentExtractionError(`No pages or products found on the site (Attempt ${attempt}).`, 0, attempt);
-            }
-          } else {
-            throw new PageInitializationError('Page object was null when trying to count products on initial page.', 0, attempt);
-          }
-        }
-
-        // After all checks, if totalPages is still not positive, it's a failure for this attempt.
-        if (totalPages <= 0) {
-          throw new PageContentExtractionError(`Site reported ${totalPages} pages. This is considered an error (Attempt ${attempt}).`, totalPages, attempt);
-        }
-
-        // If successful and totalPages > 0, return the result
-        return { totalPages, lastPageProductCount };
-
-      } catch (error: unknown) {
-        const attemptError = error instanceof PageOperationError ? error :
-          new PageOperationError(error instanceof Error ? error.message : String(error), 0, attempt);
-
-        console.warn(`[PageCrawler] fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS} failed: ${attemptError.message}`);
-
-        if (attempt === MAX_FETCH_ATTEMPTS) {
-          console.error(`[PageCrawler] fetchTotalPages - All ${MAX_FETCH_ATTEMPTS} attempts failed. Last error: ${attemptError.message}`, attemptError);
-          throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts: ${attemptError.message}`, 0, attempt);
-        }
-        
-        await delay(RETRY_DELAY_MS);
-      } finally {
-        if (page) {
-          try {
-            await this.browserManager.closePageAndContext(page);
-          } catch (e) {
-            console.error(`[PageCrawler] Error releasing page and context in fetchTotalPages (Attempt ${attempt}):`, e);
-          }
-        } else if (context) {
-          try {
-            await context.close();
-          } catch (e) {
-            console.error(`[PageCrawler] Error releasing context in fetchTotalPages (Attempt ${attempt}):`, e);
-          }
-        }
+    try {
+      const sitePageInfo: SitePageInfo = await this.crawlerStrategy.fetchTotalPages();
+      return {
+        totalPages: sitePageInfo.totalPages,
+        lastPageProductCount: sitePageInfo.lastPageProductCount
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`총 페이지 수를 가져오는데 실패했습니다: ${error.message}`);
       }
+      throw new Error('총 페이지 수를 가져오는데 알 수 없는 오류가 발생했습니다.');
     }
-    
-    throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts (unexpectedly reached end of retry loop).`, 0, MAX_FETCH_ATTEMPTS);
+  }
+
+  /**
+   * 리소스 정리
+   */
+  public async cleanup(): Promise<void> {
+    await this.crawlerStrategy.cleanup();
   }
 }

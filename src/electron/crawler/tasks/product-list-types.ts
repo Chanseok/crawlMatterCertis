@@ -52,4 +52,5 @@ export interface InitialCrawlResult {
 export interface SitePageInfo {
   totalPages: number;
   lastPageProductCount: number;
+  fetchedAt: number; // 정보 갱신 시간 (timestamp)
 }
