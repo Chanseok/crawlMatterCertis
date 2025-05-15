@@ -7,8 +7,8 @@ import { BrowserManager } from '../crawler/browser/BrowserManager.js';
 import { CrawlerState } from '../crawler/core/CrawlerState.js';
 import { PageCrawler } from '../crawler/tasks/page-crawler.js';
 import { CrawlerConfig } from '../../../types.js';
-import { debugLog } from '../util.js';
-import { CrawlerStrategyFactory, CrawlerType } from '../crawler/strategies/crawler-strategy-factory.js';
+// import { debugLog } from '../util.js';
+// import { CrawlerStrategyFactory, CrawlerType } from '../crawler/strategies/crawler-strategy-factory.js';
 import { ProductListCollector } from '../crawler/tasks/productList.js';
 
 /**

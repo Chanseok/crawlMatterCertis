@@ -3,7 +3,7 @@
  * 제품 목록 수집을 담당하는 클래스
  */
 
-import { type Page, type BrowserContext } from 'playwright-chromium';
+
 import { CrawlerState } from '../core/CrawlerState.js';
 import {
   promisePool, updateTaskStatus, initializeTaskStates,
@@ -16,7 +16,7 @@ import { type CrawlerConfig } from '../core/config.js';
 import { crawlerEvents, updateRetryStatus } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';
 import { BrowserManager } from '../browser/BrowserManager.js';
-import { delay } from '../utils/delay.js';
+// import { delay } from '../utils/delay.js';
 
 // 모듈화된 클래스 가져오기
 import { 
@@ -24,8 +24,8 @@ import {
   PageNavigationError, PageContentExtractionError, PageInitializationError 
 } from '../utils/page-errors.js';
 import { PageCacheManager } from '../utils/page-cache-manager.js';
-import { RawProductData, SitePageInfo } from './product-list-types.js';
-import { MAX_FETCH_TOTAL_PAGES_ATTEMPTS, RETRY_DELAY_MS, DEFAULT_CACHE_TTL_MS } from './product-list-constants.js';
+import { SitePageInfo } from './product-list-types.js';
+import { DEFAULT_CACHE_TTL_MS } from './product-list-constants.js';
 import { PageCrawler } from './page-crawler.js';
 import { ProductDataProcessor } from './product-data-processor.js';
 import { ProgressManager } from './progress-manager.js';
@@ -44,12 +44,15 @@ export type EnhancedProgressCallback = (
 ) => void;
 
 export class ProductListCollector {
-  private state: CrawlerState;
+  
   private abortController: AbortController;
   private enhancedProgressCallback: EnhancedProgressCallback | null = null;
-  private processedPagesSuccessfully: number = 0;
+  
   private readonly config: CrawlerConfig;
-  private readonly browserManager: BrowserManager;
+  
+  // private readonly state: CrawlerState;
+
+  // private readonly browserManager: BrowserManager;
 
   private static lastPageProductCount: number | null = null;
   private productCache: Map<number, Product[]>;
@@ -57,8 +60,9 @@ export class ProductListCollector {
   // New members for detailed stage 1 progress
   private stage1PageStatuses: PageProcessingStatusItem[] = [];
   private currentStageRetryCount: number = 0; // Tracks the number of retry *cycles* for the stage
-  private totalPagesForThisStage1Collection: number = 0; // Number of pages being attempted in current collect() call
-  private stage1StartTime: number = 0;
+  
+  
+  
 
   // Cached configuration values
   private pageTimeoutMs: number;
@@ -71,10 +75,10 @@ export class ProductListCollector {
   private progressManager: ProgressManager;
 
   constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig, browserManager: BrowserManager) {
-    this.state = state;
+    // this.state = state;
     this.abortController = abortController;
     this.config = config;
-    this.browserManager = browserManager;
+    // this.browserManager = browserManager;
     this.productCache = new Map();
     
     // 자주 사용하는 설정값 미리 추출
@@ -113,7 +117,6 @@ export class ProductListCollector {
 
   private _sendProgressUpdate(isStageComplete: boolean = false): void {
     if (this.enhancedProgressCallback) {
-      this.processedPagesSuccessfully = this.stage1PageStatuses.filter(p => p.status === 'success').length;
       this.progressManager.sendProgressUpdate(isStageComplete);
     }
   }
@@ -148,11 +151,8 @@ export class ProductListCollector {
     // ProgressManager 초기화 및 단계 설정
     this.progressManager.setInitStage();
     
-    this.processedPagesSuccessfully = 0;
     this.currentStageRetryCount = 0;
     this.stage1PageStatuses = [];
-    this.totalPagesForThisStage1Collection = 0;
-    this.stage1StartTime = Date.now();
 
     try {
       const prepResult = await this._preparePageRange(userPageLimit);
@@ -163,7 +163,6 @@ export class ProductListCollector {
       // siteTotalPages is the total number of pages on the site, used for PageIndexManager
       const { totalPages: siteTotalPages, pageNumbersToCrawl, lastPageProductCount } = prepResult;
       ProductListCollector.lastPageProductCount = lastPageProductCount;
-      this.totalPagesForThisStage1Collection = pageNumbersToCrawl.length;
 
       this.stage1PageStatuses = pageNumbersToCrawl.map(pn => ({
         pageNumber: pn,
@@ -368,7 +367,7 @@ export class ProductListCollector {
 
     try {
       newlyFetchedProducts = await Promise.race([
-        this.crawlPageWithTimeout(pageNumber, siteTotalPages, signal, attempt),
+        this.crawlPageWithTimeout(pageNumber, signal, attempt),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new PageTimeoutError('Timeout', pageNumber, attempt)), this.pageTimeoutMs)
         )
@@ -587,14 +586,7 @@ export class ProductListCollector {
 
   // DOM에서 제품 추출 메서드는 PageCrawler로 이동하여 제거
 
-  // ProductDataProcessor로 대체된 메서드들
-  private _mapRawProductsToProducts(
-    rawProducts: RawProductData[],
-    sitePageNumber: number,
-    offset: number
-  ): Product[] {
-    return this.productDataProcessor.mapRawProductsToProducts(rawProducts, sitePageNumber, offset);
-  }
+
 
   private static _mergeAndDeduplicateProductLists(
     existingProducts: Product[],
@@ -619,7 +611,7 @@ export class ProductListCollector {
 
   private async crawlPageWithTimeout(
     pageNumber: number,
-    siteTotalPages: number,
+    // siteTotalPages: number,
     signal: AbortSignal,
     attempt: number
   ): Promise<Product[]> {

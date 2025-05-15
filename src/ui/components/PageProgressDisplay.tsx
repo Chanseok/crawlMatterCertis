@@ -9,30 +9,55 @@ export const PageProgressDisplay: React.FC = () => {
   const statusSummary = useStore(crawlingStatusSummaryStore);
   const config = useStore(configStore); // Added to access pageRangeLimit
   
+  // 로깅 추가 - 상태 확인용
+  React.useEffect(() => {
+    console.log('PageProgressDisplay 렌더링:', { 
+      tasksCount: tasks.length,
+      successTasks: tasks.filter(task => task.status === 'success').length,
+      stage1PageStatusesCount: progress.stage1PageStatuses?.length ?? 0,
+      successStage1Pages: progress.stage1PageStatuses?.filter(p => p.status === 'success').length ?? 0,
+      currentPage: progress.currentPage
+    });
+  }, [tasks, progress.stage1PageStatuses, progress.currentPage]);
+  
   // 성공한 페이지 수 계산 (status가 'success'인 페이지 수)
-  const successPages = tasks.filter(task => task.status === 'success').length;
+  const successTaskPages = tasks.filter(task => task.status === 'success').length;
   
-  // 페이지 수 계산 로직
-  let displaySuccessPages = successPages;
+  // 페이지 수 계산 로직 - 항상 최대값을 사용하는 방식으로 개선
+  let displaySuccessPages = 0;
+  let successSourceUsed = '';
   
-  // 성공한 페이지를 더 정확하게 계산 
-  if (progress.currentStage === 1) {
-    // progress.stage1PageStatuses가 있으면 성공 상태인 페이지 수를 계산
-    if (progress.stage1PageStatuses && Array.isArray(progress.stage1PageStatuses)) {
-      const successStatusPages = progress.stage1PageStatuses.filter(p => p.status === 'success').length;
-      if (successStatusPages > 0) {
-        displaySuccessPages = successStatusPages;
-      }
-    }
-    // 없는 경우 task 또는 currentPage 값 활용
-    else if (progress.currentPage !== undefined && progress.currentPage > 0) {
-      displaySuccessPages = progress.currentPage;
-    }
-    // 성공한 태스크가 있으면 그 수를 사용
-    else if (tasks && tasks.length > 0 && tasks.filter(task => task.status === 'success').length > 0) {
-      displaySuccessPages = tasks.filter(task => task.status === 'success').length;
+  // 모든 소스에서 가장 높은 성공 페이지 수를 사용
+  // 1. stage1PageStatuses에서 성공 상태인 페이지 수 확인 (가장 신뢰할 수 있는 소스)
+  if (progress.stage1PageStatuses && Array.isArray(progress.stage1PageStatuses) && 
+      progress.stage1PageStatuses.length > 0) {
+    const successStatusPages = progress.stage1PageStatuses.filter(p => p.status === 'success').length;
+    if (successStatusPages > displaySuccessPages) {
+      displaySuccessPages = successStatusPages;
+      successSourceUsed = 'stage1PageStatuses';
     }
   }
+  
+  // 2. 성공한 태스크 수 확인 (실시간 업데이트에 가장 민감한 소스)
+  if (successTaskPages > displaySuccessPages) {
+    displaySuccessPages = successTaskPages;
+    successSourceUsed = 'tasks';
+  }
+  
+  // 3. currentPage 값 확인 (이전 버전과의 호환성)
+  if (progress.currentPage !== undefined && progress.currentPage > 0 && progress.currentPage > displaySuccessPages) {
+    displaySuccessPages = progress.currentPage;
+    successSourceUsed = 'currentPage';
+  }
+  
+  // 로그 남기기 (디버깅용)
+  console.log('Success page count sources:', {
+    fromStage1PageStatuses: progress.stage1PageStatuses?.filter(p => p.status === 'success').length || 0,
+    fromTasks: successTaskPages,
+    fromCurrentPage: progress.currentPage || 0,
+    finalValue: displaySuccessPages,
+    sourceUsed: successSourceUsed
+  });
   
   let displayTotalPages: number | string = '-';
   

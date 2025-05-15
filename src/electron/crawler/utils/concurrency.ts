@@ -106,9 +106,26 @@ export async function promisePool<T, U>(
 
 /**
  * 크롤링 시 페이지 상태 업데이트 및 이벤트 발생
+ * 
+ * 작업 상태가 'success'이면 이후에 다른 상태로 변경되지 않도록 처리
+ * (일단 성공한 페이지는 성공 상태를 유지해야 UI에서 성공 페이지 수가 감소하지 않음)
  */
 export function updateTaskStatus(pageNumber: number, status: ConcurrentTaskStatus, error?: string): void {
+    const existingTask = concurrentTaskStates[pageNumber];
+    
+    // 이미 성공 상태인 작업은 다시 다른 상태로 변경되지 않도록 처리
+    if (existingTask && existingTask.status === 'success' && status !== 'success') {
+        console.log(`[updateTaskStatus] 페이지 ${pageNumber}는 이미 성공 상태입니다. 상태 변경 무시: ${status}`);
+        return; // 상태 변경 무시
+    }
+    
     concurrentTaskStates[pageNumber] = { pageNumber, status, error };
+    
+    // 디버깅 로그 추가
+    const successCount = Object.values(concurrentTaskStates).filter(t => t.status === 'success').length;
+    console.log(`[updateTaskStatus] 페이지 ${pageNumber} 상태 업데이트: ${status}, 전체 성공 페이지: ${successCount}`);
+    
+    // 전체 작업 상태 이벤트 발생
     crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));
 }
 

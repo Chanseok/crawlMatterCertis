@@ -8,20 +8,12 @@ import { crawlerEvents, updateRetryStatus } from '../utils/progress.js';
 import { CrawlerState } from '../core/CrawlerState.js';
 import { ProductListProgressCallback } from './product-list-types.js';
 
-/**
- * 페이지 상태 업데이트 데이터 구조
- */
-interface PageStatusUpdate {
-  pageNumber: number;
-  status: PageProcessingStatusValue;
-  data?: Record<string, any>;
-}
 
 /**
  * 진행 상황 관리자
  */
 export class ProgressManager {
-  private statusUpdates: PageStatusUpdate[] = [];
+  // private statusUpdates: PageStatusUpdate[] = [];
   private state: CrawlerState;
   private progressCallback: ProductListProgressCallback | null = null;
   private pageStatuses: PageProcessingStatusItem[] = [];

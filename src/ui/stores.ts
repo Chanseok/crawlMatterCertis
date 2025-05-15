@@ -68,6 +68,50 @@ export const lastCrawlingStatusSummaryStore = map<CrawlingStatusSummary>({} as C
 // 동시 처리 작업 상태 관리 (예: 각 페이지별 크롤링 상태)
 export const concurrentTasksStore = atom<ConcurrentCrawlingTask[]>([]);
 
+// 성공한 태스크 수 추적 함수 (CrawlingDashboard에서 직접 호출)
+let lastSuccessCount = 0;
+export function updateSuccessTaskCount(currentSuccessCount: number): void {
+  if (currentSuccessCount !== lastSuccessCount) {
+    console.log(`[concurrentTasksStore] 성공 태스크 수 변경: ${lastSuccessCount} → ${currentSuccessCount}`);
+    
+    // 만약 성공한 페이지가 있고, 현재 크롤링 단계가 1단계라면 progress.currentPage 업데이트
+    const currentProgress = crawlingProgressStore.get();
+    if (currentProgress.currentStage === 1 && currentSuccessCount > (currentProgress.currentPage || 0)) {
+      console.log(`[concurrentTasksStore] 성공 페이지 수 업데이트: ${currentProgress.currentPage} → ${currentSuccessCount}`);
+      // 크롤링 진행 상태 업데이트 (성공 페이지 수 반영)
+      updateCrawlingProgress({
+        currentPage: currentSuccessCount
+      });
+    }
+    
+    lastSuccessCount = currentSuccessCount;
+  }
+}
+
+// concurrentTasksStore 변경 감지 및 성공 상태 추적
+concurrentTasksStore.listen(tasks => {
+  try {
+    const currentSuccessCount = tasks.filter(task => task.status === 'success').length;
+    if (currentSuccessCount !== lastSuccessCount) {
+      console.log(`[concurrentTasksStore] 성공 태스크 수 변경: ${lastSuccessCount} → ${currentSuccessCount}`);
+      
+      // 만약 성공한 페이지가 있고, 현재 크롤링 단계가 1단계라면 progress.currentPage 업데이트
+      const currentProgress = crawlingProgressStore.get();
+      if (currentProgress.currentStage === 1 && currentSuccessCount > (currentProgress.currentPage || 0)) {
+        console.log(`[concurrentTasksStore] 성공 페이지 수 업데이트: ${currentProgress.currentPage} → ${currentSuccessCount}`);
+        // 크롤링 진행 상태 업데이트 (성공 페이지 수 반영)
+        updateCrawlingProgress({
+          currentPage: currentSuccessCount
+        });
+      }
+      
+      lastSuccessCount = currentSuccessCount;
+    }
+  } catch (error) {
+    console.error('[concurrentTasksStore] 리스너 오류:', error);
+  }
+});
+
 // 작업별 상태 정보 저장 (task ID를 키로 사용)
 export interface TaskStatusDetail {
   id: string | number;
@@ -212,7 +256,33 @@ export function initializeApiSubscriptions() {
   const unsubConcurrentTasks = api.subscribeToEvent('crawlingTaskStatus', (taskStatus) => {
     // 기존 동시 작업 목록 업데이트
     if (Array.isArray(taskStatus)) {
-      concurrentTasksStore.set(taskStatus);
+      // 이전 상태와 병합하여 성공 상태를 유지
+      const prevTasks = concurrentTasksStore.get();
+      
+      // 새로운 작업 상태와 기존의 성공 작업을 유지하도록 병합
+      // 특히 'success' 상태인 작업을 보존
+      const mergedTasks = taskStatus.map((newTaskData: any) => {
+        const prevTask = prevTasks.find(pt => pt.pageNumber === newTaskData.pageNumber);
+        
+        let newStatus: 'pending' | 'running' | 'success' | 'error' | 'stopped';
+        if (prevTask && prevTask.status === 'success' && newTaskData.status !== 'success') {
+          newStatus = 'success';
+        } else {
+          // Ensure the status from newTaskData is validated to the correct type
+          newStatus = validateTaskStatus(newTaskData.status as string);
+        }
+        
+        // Return a new object with all properties from newTaskData, but with the correctly typed status
+        return {
+          ...newTaskData,
+          status: newStatus,
+        };
+      });
+      
+      concurrentTasksStore.set(mergedTasks as ConcurrentCrawlingTask[]);
+      
+      // UI 디버깅용 로깅
+      console.log(`[UI] Tasks updated: Total=${mergedTasks.length}, Success=${mergedTasks.filter(t => t.status === 'success').length}`);
     } else if (taskStatus) {
       // 개별 작업 상태 업데이트 (새로운 방식)
       const { taskId, status, message } = taskStatus as { taskId: number | string; status: string; message?: string };
