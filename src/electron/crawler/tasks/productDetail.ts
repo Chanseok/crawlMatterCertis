@@ -69,7 +69,7 @@ export class ProductDetailCollector {
       return result;
     } catch (error) {
       const playwrightError = error instanceof Error ? error : new Error(String(error));
-      debugLog(`[ProductDetailCollector] Playwright strategy failed for ${product.url}: ${playwrightError.message}`);
+      // debugLog(`[ProductDetailCollector] Playwright strategy failed for ${product.url}: ${playwrightError.message}`);
       
       // 하이브리드 전략이 활성화되어 있고 신호가 중단되지 않은 경우에만 Axios로 시도
       if (useHybridStrategy && !signal.aborted) {
@@ -133,7 +133,7 @@ export class ProductDetailCollector {
         throw new Error(`Aborted crawling for ${product.url} during operation.`);
       }
       debugLog(`Playwright error: ${config.productDetailTimeoutMs} ms timeout for ${product.model}`);
-      console.error(`[ProductDetailCollector] Error crawling product detail with Playwright for ${product.url}:`, error);
+      // console.error(`[ProductDetailCollector] Error crawling product detail with Playwright for ${product.url}:`, error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to crawl product detail with Playwright for ${product.url}: ${errorMessage}`);
     } finally {
@@ -172,7 +172,7 @@ export class ProductDetailCollector {
       if (signal.aborted) {
         throw new Error(`Aborted Axios crawling for ${product.url} during operation.`);
       }
-      console.error(`[ProductDetailCollector] Error crawling product detail with Axios for ${product.url}:`, error);
+      // console.error(`[ProductDetailCollector] Error crawling product detail with Axios for ${product.url}:`, error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to crawl product detail with Axios for ${product.url}: ${errorMessage}`);
     }

@@ -123,7 +123,7 @@ export function updateTaskStatus(pageNumber: number, status: ConcurrentTaskStatu
     
     // 디버깅 로그 추가
     const successCount = Object.values(concurrentTaskStates).filter(t => t.status === 'success').length;
-    console.log(`[updateTaskStatus] 페이지 ${pageNumber} 상태 업데이트: ${status}, 전체 성공 페이지: ${successCount}`);
+    // console.log(`[updateTaskStatus] 페이지 ${pageNumber} 상태 업데이트: ${status}, 전체 성공 페이지: ${successCount}`);
     
     // 전체 작업 상태 이벤트 발생
     crawlerEvents.emit('crawlingTaskStatus', Object.values(concurrentTaskStates));

@@ -74,7 +74,7 @@ export async function extractProductDetailsWithAxios(
     
     return extractedFields;
   } catch (error) {
-    console.error(`[AxiosExtractor] Failed to extract data for ${product.url}:`, error);
+    // console.error(`[AxiosExtractor] Failed to extract data for ${product.url}:`, error);
     throw error;
   }
 }

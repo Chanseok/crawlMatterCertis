@@ -599,7 +599,7 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
 
           <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
             <div className="text-xs text-gray-500 dark:text-gray-400">
-              {progress.currentStage === 1 ? "1단계 소요 시간" : progress.currentStage === 2 ? "2단계 소요 시간" : "소요 시간"}
+              {progress.currentStage === 1 ? "1단계 소요 시간" : progress.currentStage === 2 ? "2단계 (누적)소요 시간" : "소요 시간"}
             </div>
             <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center justify-center">
               {formatDuration(localTime.elapsedTime)}
