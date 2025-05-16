@@ -93,7 +93,7 @@ export function CrawlingSettings() {
             value={pageLimit}
             onChange={(e) => {
               const value = parseInt(e.target.value);
-              if (!isNaN(value) && value >= 1 && value <= 100) {
+              if (!isNaN(value) && value >= 1 && value <= 500) {
                 setPageLimit(value);
               }
             }}
