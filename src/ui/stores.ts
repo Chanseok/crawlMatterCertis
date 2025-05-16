@@ -1,5 +1,5 @@
 import { atom, map } from 'nanostores';
-import { AppMode, CrawlingStatus, LogEntry, CrawlingProgress, DatabaseSummary, ProductDetail } from './types';
+import { AppMode, CrawlingStatus, LogEntry, CrawlingProgress, DatabaseSummary, ProductDetail, StatusStore } from './types';
 import { getPlatformApi, updateApiForAppMode } from './platform/api';
 import type { ConcurrentCrawlingTask, CrawlerConfig } from '../../types';
 import { getConfig, updateConfig } from './services/configService';
@@ -48,6 +48,23 @@ export const databaseSummaryStore = map<DatabaseSummary>({
   productCount: 0, // productCount 속성 추가
   lastUpdated: null,
   newlyAddedCount: 0
+});
+
+// 사이트 상태 정보 관리
+export const statusStore = map<StatusStore>({
+  isChecking: false,
+  siteConnected: false,
+  lastCheckedAt: null,
+  isCrawling: false,
+  crawlingStartedAt: null,
+  crawlingFinishedAt: null,
+  currentPage: 0,
+  totalPages: 0,
+  lastPageProductCount: 0,
+  targetPageCount: 0, // 새로 추가: 사용자가 설정한 페이지 범위
+  foundProducts: 0,
+  detailProgress: 0,
+  detailTotal: 0
 });
 
 // 크롤링 상태 요약 정보 관리
@@ -421,6 +438,14 @@ export async function loadConfig(): Promise<void> {
   try {
     const config = await getConfig();
     configStore.set(config);
+    
+    // 설정이 로드될 때 statusStore의 targetPageCount도 업데이트
+    // 이전에 저장된 targetPageCount 값이 없거나 0인 경우에만 업데이트
+    const currentStatus = statusStore.get();
+    if (!currentStatus.targetPageCount) {
+      statusStore.setKey('targetPageCount', config.pageRangeLimit || 0);
+    }
+    
     addLog('설정을 로드했습니다.', 'info');
   } catch (error) {
     addLog(`설정 로드 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
@@ -432,6 +457,11 @@ export async function updateConfigSettings(newConfig: Partial<CrawlerConfig>): P
   try {
     const updatedConfig = await updateConfig(newConfig);
     configStore.set(updatedConfig);
+    
+    // pageRangeLimit이 변경되면 statusStore의 targetPageCount도 업데이트
+    if (newConfig.pageRangeLimit !== undefined) {
+      statusStore.setKey('targetPageCount', newConfig.pageRangeLimit);
+    }
     addLog('설정이 업데이트되었습니다.', 'success');
   } catch (error) {
     addLog(`설정 업데이트 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
@@ -691,11 +721,37 @@ export async function checkCrawlingStatus(): Promise<void> {
     const prev = crawlingStatusSummaryStore.get();
     if (prev) lastCrawlingStatusSummaryStore.set(prev);
     
+    // 상태 체크 시작
+    statusStore.setKey('isChecking', true);
+    
+    // 현재 설정된 페이지 범위를 가져옴
+    const config = configStore.get();
+    const pageRangeLimit = config.pageRangeLimit;
+    
     const { success, status, error } = await api.invokeMethod<'checkCrawlingStatus', { success: boolean; status?: CrawlingStatusSummary; error?: string }>('checkCrawlingStatus');
     
     if (success && status) {
       console.log('[UI] 상태 체크 성공, 결과:', status);
       crawlingStatusSummaryStore.set(status);
+      
+      // 계산된 크롤링 범위에 기반하여 targetPageCount 값을 설정
+      // 상태 체크를 통해 계산된 실제 필요한 페이지 수를 우선 사용 (endPage - startPage + 1)
+      const calculatedPageCount = status.crawlingRange ? 
+        (status.crawlingRange.endPage - status.crawlingRange.startPage + 1) : 0;
+      
+      console.log('[UI] 계산된 페이지 범위:', status.crawlingRange, '페이지 수:', calculatedPageCount);
+      
+      // 사용자가 설정한 페이지 범위를 statusStore에 저장
+      statusStore.set({
+        ...statusStore.get(),
+        isChecking: false,
+        siteConnected: true,
+        lastCheckedAt: Date.now(),
+        totalPages: status.siteTotalPages,
+        lastPageProductCount: status.siteTotalPages > 0 ? 12 : 0, // 디폴트는 12개로 가정
+        targetPageCount: calculatedPageCount > 0 ? calculatedPageCount : pageRangeLimit // 계산된 페이지 수를 우선 사용
+      });
+      
       // 변경점 비교 및 로그/알림
       if (prev) {
         const changed: string[] = [];
@@ -710,9 +766,13 @@ export async function checkCrawlingStatus(): Promise<void> {
       }
       addLog(`DB 제품수: ${status.dbProductCount}, 사이트 제품수: ${status.siteProductCount}, 차이: ${status.diff}, 크롤링 필요: ${status.needCrawling ? '예' : '아니오'}`, 'info');
     } else {
+      statusStore.setKey('isChecking', false);
+      statusStore.setKey('siteConnected', false);
       addLog(`상태 체크 실패: ${error}`, 'error');
     }
   } catch (error) {
+    statusStore.setKey('isChecking', false);
+    statusStore.setKey('siteConnected', false);
     addLog(`상태 체크 중 오류: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
 }

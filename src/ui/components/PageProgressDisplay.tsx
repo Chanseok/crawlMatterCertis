@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '@nanostores/react';
-import { configStore, concurrentTasksStore, crawlingProgressStore, crawlingStatusStore, crawlingStatusSummaryStore } from '../stores';
+import { configStore, concurrentTasksStore, crawlingProgressStore, crawlingStatusStore, crawlingStatusSummaryStore, statusStore } from '../stores';
 
 export const PageProgressDisplay: React.FC = () => {
   const tasks = useStore(concurrentTasksStore);
@@ -8,6 +8,7 @@ export const PageProgressDisplay: React.FC = () => {
   const crawlingStatus = useStore(crawlingStatusStore);
   const statusSummary = useStore(crawlingStatusSummaryStore);
   const config = useStore(configStore); // Added to access pageRangeLimit
+  const status = useStore(statusStore); // Add status store to access targetPageCount
   
   // 로깅 추가 - 상태 확인용
   React.useEffect(() => {
@@ -16,9 +17,10 @@ export const PageProgressDisplay: React.FC = () => {
       successTasks: tasks.filter(task => task.status === 'success').length,
       stage1PageStatusesCount: progress.stage1PageStatuses?.length ?? 0,
       successStage1Pages: progress.stage1PageStatuses?.filter(p => p.status === 'success').length ?? 0,
-      currentPage: progress.currentPage
+      currentPage: progress.currentPage,
+      targetPageCount: status.targetPageCount
     });
-  }, [tasks, progress.stage1PageStatuses, progress.currentPage]);
+  }, [tasks, progress.stage1PageStatuses, progress.currentPage, status.targetPageCount]);
   
   // 성공한 페이지 수 계산 (status가 'success'인 페이지 수)
   const successTaskPages = tasks.filter(task => task.status === 'success').length;
@@ -59,7 +61,20 @@ export const PageProgressDisplay: React.FC = () => {
     sourceUsed: successSourceUsed
   });
   
-  let displayTotalPages: number | string = '-';
+  // 크롤링 범위 계산 (statusSummary에 있는 경우)
+  const crawlingRange = statusSummary?.crawlingRange;
+  const calculatedPageCount = crawlingRange ? (crawlingRange.endPage - crawlingRange.startPage + 1) : 0;
+  
+  // 콘솔 로그 추가 - 계산된 값 확인용
+  console.log('PageProgressDisplay - 계산된 페이지 값:', {
+    crawlingRange,
+    calculatedPageCount,
+    statusTargetPageCount: status.targetPageCount,
+    configPageRangeLimit: config.pageRangeLimit
+  });
+  
+  // 기본값으로 계산된 페이지 범위, statusStore의 targetPageCount, 또는 config의 pageRangeLimit 사용
+  let displayTotalPages: number | string = calculatedPageCount || status.targetPageCount || config.pageRangeLimit || '-';
   
   // 크롤링 상태에 따른 표시 설정
   // 1단계 제품 정보 수집 단계에서는 사용자가 설정한 수집 대상 페이지 범위를 우선적으로 표시
@@ -67,8 +82,16 @@ export const PageProgressDisplay: React.FC = () => {
     (crawlingStatus === 'running' && progress.currentStage === 1) || 
     crawlingStatus === 'completed_stage_1'
   ) {
-    // 사용자가 설정한 페이지 범위 제한을 우선적으로 사용
-    if (config.pageRangeLimit && config.pageRangeLimit > 0) {
+    // 계산된 페이지 수가 있으면 우선 사용
+    if (calculatedPageCount && calculatedPageCount > 0) {
+      displayTotalPages = calculatedPageCount;
+    }
+    // 상태 저장소에서 targetPageCount를 다음으로 사용
+    else if (status.targetPageCount && status.targetPageCount > 0) {
+      displayTotalPages = status.targetPageCount;
+    }
+    // 사용자가 설정한 페이지 범위 제한을 다음으로 사용
+    else if (config.pageRangeLimit && config.pageRangeLimit > 0) {
       displayTotalPages = config.pageRangeLimit;
     }
     // progress.totalPages 값을 사용 (API에서 보고된 실제 총 페이지 수)
@@ -86,8 +109,12 @@ export const PageProgressDisplay: React.FC = () => {
   } 
   // 기타 크롤링 상태 (예: 2단계 진행 중, 전체 완료 등)에서는 기존 로직을 따릅니다.
   else if (crawlingStatus === 'running' || crawlingStatus === 'completed') {
+    // 상태 저장소에서 targetPageCount 사용 (상태 체크 버튼 클릭 시 설정됨)
+    if (status.targetPageCount && status.targetPageCount > 0) {
+      displayTotalPages = status.targetPageCount;
+    }
     // 상태 요약 정보가 있는 경우 (상태 체크 후)
-    if (statusSummary && statusSummary.siteTotalPages > 0) {
+    else if (statusSummary && statusSummary.siteTotalPages > 0) {
       // 진행 상황의 총 페이지 수
       displayTotalPages = statusSummary.siteTotalPages;
     } 

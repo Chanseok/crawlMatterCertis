@@ -18,6 +18,23 @@ export interface LogEntry {
   type: 'info' | 'warning' | 'error' | 'success';
 }
 
+// 사이트 상태 정보 타입
+export interface StatusStore {
+  isChecking: boolean;
+  siteConnected: boolean;
+  lastCheckedAt: number | null;
+  isCrawling: boolean;
+  crawlingStartedAt: number | null;
+  crawlingFinishedAt: number | null;
+  currentPage: number;
+  totalPages: number;
+  lastPageProductCount: number;
+  targetPageCount: number; // 사용자가 설정한 페이지 범위 (새로 추가)
+  foundProducts: number;
+  detailProgress: number;
+  detailTotal: number;
+}
+
 // ProductDetail은 UI 전용이므로 유지
 export interface ProductDetail {
   url: string;
