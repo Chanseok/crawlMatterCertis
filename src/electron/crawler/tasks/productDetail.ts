@@ -12,7 +12,8 @@ import {
 import { MatterProductParser } from '../parsers/MatterProductParser.js';
 import { BrowserManager } from '../browser/BrowserManager.js';
 import { retryWithBackoff } from '../utils/retry.js';
-import { extractProductDetailsWithAxios } from '../utils/axiosExtractor.js';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 
 import type { DetailCrawlResult } from '../utils/types.js';
 import type { Product, MatterProduct, CrawlerConfig } from '../../../../types.d.ts';
@@ -39,6 +40,33 @@ export class ProductDetailCollector {
     this.abortController = abortController;
     this.config = config;
     this.browserManager = browserManager;
+  }
+
+  /**
+   * 크롤링에 필요한 향상된 HTTP 헤더를 생성합니다.
+   * @returns 크롤링에 사용할 HTTP 헤더
+   */
+  private getEnhancedHeaders(): Record<string, string> {
+    const userAgent = this.config.userAgent ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
+    
+    return {
+      'User-Agent': userAgent,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://csa-iot.org/',
+      'Connection': 'keep-alive',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+      'Sec-Ch-Ua': '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': '"Windows"',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'same-origin',
+      'Sec-Fetch-User': '?1',
+      'Upgrade-Insecure-Requests': '1'
+    };
   }
 
   /**
@@ -166,12 +194,14 @@ export class ProductDetailCollector {
     }
     
     try {
-      // 사용자 에이전트 설정
-      const userAgent = config.userAgent ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
       // Axios 타임아웃 설정 (Playwright보다 짧게 설정하여 빠른 실패를 유도)
       const axiosTimeout = config.axiosTimeoutMs ?? 30000;
       
-      const extractedDetails = await extractProductDetailsWithAxios(product, userAgent, axiosTimeout);
+      // 향상된 HTTP 헤더 사용
+      const headers = this.getEnhancedHeaders();
+      
+      // extractProductDetailsWithAxios 함수 수정하여 향상된 헤더 전달
+      const extractedDetails = await this.extractProductDetailsWithAxios(product, headers, axiosTimeout);
       
       const matterProduct: MatterProduct = {
         ...product,
@@ -187,6 +217,138 @@ export class ProductDetailCollector {
       // console.error(`[ProductDetailCollector] Error crawling product detail with Axios for ${product.url}:`, error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to crawl product detail with Axios for ${product.url}: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Axios와 Cheerio를 사용하여 제품 상세 페이지의 정보를 추출합니다.
+   * 
+   * @param product 기본 제품 정보
+   * @param headers HTTP 헤더
+   * @param timeoutMs 요청 타임아웃 (밀리초)
+   * @returns 추출된 제품 세부 정보
+   */
+  private async extractProductDetailsWithAxios(
+    product: Product,
+    headers: Record<string, string>,
+    timeoutMs: number = 30000
+  ): Promise<Partial<any>> {
+    try {
+      const response = await axios.get(product.url, {
+        headers: headers,
+        timeout: timeoutMs,
+        maxRedirects: 5
+      });
+
+      const html = response.data;
+      const $ = cheerio.load(html);
+
+      // 제품 세부 정보를 저장할 객체
+      const extractedFields: Record<string, any> = {
+        manufacturer: product.manufacturer,
+        model: product.model,
+        certificateId: product.certificateId,
+        deviceType: 'Matter Device',
+        applicationCategories: [],
+      };
+
+      // 제품 제목 추출
+      extractedFields.model = extractedFields.model || 
+        $('h1.entry-title').text().trim() || 
+        $('h1').text().trim() || 
+        'Unknown Product';
+
+      // 제품 정보 테이블에서 세부 정보 추출
+      const infoTable = $('.product-certificates-table');
+      
+      infoTable.find('tr').each((index: number, row: any) => {
+        const cells = $(row).find('td');
+        if (cells.length >= 2) {
+          const key = $(cells[0]).text().trim().toLowerCase();
+          const value = $(cells[1]).text().trim();
+          
+          if (key && value) {
+            // 키를 필드 이름으로 변환
+            this.mapKeyToField(key, value, extractedFields);
+          }
+        }
+      });
+
+      // 추가 세부 정보 추출
+      this.extractDeviceType($, extractedFields);
+      this.extractCategories($, extractedFields);
+      
+      return extractedFields;
+    } catch (error) {
+      // console.error(`[AxiosExtractor] Failed to extract data for ${product.url}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 키 이름을 필드 이름으로 매핑
+   */
+  private mapKeyToField(key: string, value: string, fields: Record<string, any>): void {
+    // MatterProductParser와 동일한 매핑 로직 적용
+    const keyMap: Record<string, string> = {
+      'manufacturer': 'manufacturer',
+      'model': 'model',
+      'certificate id': 'certificateId',
+      'certification date': 'certificationDate',
+      'software version': 'softwareVersion',
+      'hardware version': 'hardwareVersion',
+      'vid': 'vid',
+      'pid': 'pid',
+      'family sku': 'familySku',
+      'family variant sku': 'familyVariantSku',
+      'firmware version': 'firmwareVersion',
+      'family id': 'familyId',
+      'tis/trp tested': 'tisTrpTested',
+      'specification version': 'specificationVersion',
+      'transport interface': 'transportInterface',
+      'primary device type id': 'primaryDeviceTypeId'
+    };
+
+    const mappedField = keyMap[key] || key.replace(/\s+/g, '');
+    
+    if (mappedField) {
+      fields[mappedField] = value;
+    }
+  }
+
+  /**
+   * 기기 유형 추출
+   */
+  private extractDeviceType($: cheerio.CheerioAPI, fields: Record<string, any>): void {
+    // 페이지 내용에서 기기 유형 추출 로직
+    const deviceTypeText = $('.device-type').text().trim() || 
+                         $('.product-type').text().trim() ||
+                         $('div:contains("Device Type:")').text().trim();
+    
+    if (deviceTypeText) {
+      const match = deviceTypeText.match(/Device Type:\s*(.+)/i);
+      if (match && match[1]) {
+        fields.deviceType = match[1].trim();
+      }
+    }
+  }
+
+  /**
+   * 애플리케이션 카테고리 추출
+   */
+  private extractCategories($: cheerio.CheerioAPI, fields: Record<string, any>): void {
+    const categories: string[] = [];
+    
+    // 카테고리 목록을 찾아서 추출
+    $('.categories li, .application-categories li').each((index: number, elem: any) => {
+      const category = $(elem).text().trim();
+      if (category) {
+        categories.push(category);
+      }
+    });
+    
+    if (categories.length > 0) {
+      fields.applicationCategories = categories;
     }
   }
 
