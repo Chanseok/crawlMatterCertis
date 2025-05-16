@@ -36,12 +36,12 @@ export class PageCrawler {
    * 페이지 크롤러 생성
    * @param browserManager 브라우저 매니저 인스턴스 (Playwright 전략에만 필요)
    * @param config 크롤러 설정
-   * @param crawlerType 크롤링 전략 유형 ('playwright' 또는 'axios')
    */
-  constructor(browserManager: BrowserManager, config: CrawlerConfig, crawlerType: CrawlerType = 'axios') {
+  constructor(browserManager: BrowserManager, config: CrawlerConfig) {
     this.config = config;
     this.browserManager = browserManager;
-    this.crawlerType = crawlerType;
+    // config에서 crawlerType 가져오기 (기본값은 'axios')
+    this.crawlerType = this.config.crawlerType || 'axios';
     
     // 설정된 크롤러 전략 초기화
     this.crawlerStrategy = CrawlerStrategyFactory.createStrategy(

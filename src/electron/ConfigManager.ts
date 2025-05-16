@@ -19,6 +19,7 @@ const DEFAULT_CONFIG: CrawlerConfig = {
   productDetailRetryCount: 9, // Default within validated range 3-20
   productsPerPage: 12, // Default within validated range 1-100 (example)
   autoAddToLocalDB: true,
+  crawlerType: 'axios', // Default crawler type is axios/cheerio
 
   // Fields previously in core/config.ts's defaultConfig
   baseUrl: 'https://csa-iot.org/csa-iot_products/',
@@ -95,6 +96,23 @@ export class ConfigManager {
    */
   getConfig(): CrawlerConfig {
     return { ...this.config };
+  }
+  
+  /**
+   * 크롤러 타입 가져오기
+   * @returns crawler 타입 ('playwright' 또는 'axios')
+   */
+  getCrawlerType(): 'playwright' | 'axios' {
+    return this.config.crawlerType || 'axios'; // 기본값은 axios
+  }
+  
+  /**
+   * 크롤러 타입 설정하기
+   * @param type 크롤러 타입 ('playwright' 또는 'axios')
+   */
+  setCrawlerType(type: 'playwright' | 'axios'): void {
+    this.config.crawlerType = type;
+    this.saveConfig(); // 설정 저장
   }
 
   /**

@@ -8,6 +8,7 @@ import { type CrawlerConfig } from '../core/config.js';
 import { ICrawlerStrategy } from './crawler-strategy.js';
 import { PlaywrightCrawlerStrategy } from './playwright-crawler.js';
 import { AxiosCrawlerStrategy } from './axios-crawler.js';
+import { debugLog } from '../../util.js';
 
 /**
  * 크롤러 전략 유형
@@ -25,7 +26,7 @@ export class CrawlerStrategyFactory {
    * @param browserManager Playwright 전략에 필요한 브라우저 매니저 (optional)
    */
   static createStrategy(
-    type: CrawlerType,
+    type: CrawlerType = 'axios',
     config: CrawlerConfig,
     browserManager?: BrowserManager
   ): ICrawlerStrategy {
@@ -40,7 +41,8 @@ export class CrawlerStrategyFactory {
         return new AxiosCrawlerStrategy(config);
         
       default:
-        throw new Error(`Unsupported crawler strategy type: ${type}`);
+        debugLog(`[CrawlerStrategyFactory] 지원되지 않는 크롤러 전략 유형: ${type}, axios 전략을 기본 사용합니다.`);
+        return new AxiosCrawlerStrategy(config);
     }
   }
 }

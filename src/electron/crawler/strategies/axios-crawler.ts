@@ -33,7 +33,32 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
     this.matterFilterUrl = config.matterFilterUrl || '';
     this.pageTimeoutMs = config.pageTimeoutMs || 60000;
     this.minRequestDelayMs = config.minRequestDelayMs || 500;
-    this.userAgent = config.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Safari/537.36';
+    this.userAgent = config.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
+  }
+
+  /**
+   * 크롤링에 필요한 HTTP 헤더를 생성합니다.
+   * @returns 크롤링에 사용할 HTTP 헤더
+   */
+  private getEnhancedHeaders(): Record<string, string> {
+    return {
+      'User-Agent': this.userAgent,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://csa-iot.org/',
+      'Connection': 'keep-alive',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+      'Sec-Ch-Ua': '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': '"Windows"',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'same-origin',
+      'Sec-Fetch-User': '?1',
+      'Upgrade-Insecure-Requests': '1'
+    };
   }
 
   /**
@@ -70,12 +95,7 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
       
       const response = await axios.get(pageUrl, {
         timeout: this.pageTimeoutMs,
-        headers: {
-          'User-Agent': this.userAgent,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Cache-Control': 'no-cache'
-        },
+        headers: this.getEnhancedHeaders(),
         signal
       });
 
@@ -133,11 +153,7 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
         
         const response = await axios.get(this.matterFilterUrl, {
           timeout: this.pageTimeoutMs,
-          headers: {
-            'User-Agent': this.userAgent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5'
-          }
+          headers: this.getEnhancedHeaders()
         });
 
         if (response.status !== 200) {
@@ -172,11 +188,7 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
           
           const lastPageResponse = await axios.get(lastPageUrl, {
             timeout: this.pageTimeoutMs,
-            headers: {
-              'User-Agent': this.userAgent,
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-              'Accept-Language': 'en-US,en;q=0.5'
-            }
+            headers: this.getEnhancedHeaders()
           });
 
           if (lastPageResponse.status !== 200) {

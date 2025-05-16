@@ -48,7 +48,7 @@ async function testCrawlerStrategies() {
   try {
     // 1. PageCrawler 클래스 테스트
     console.log('\n1. PageCrawler 클래스 테스트 (Playwright 전략)');
-    const pageCrawler = new PageCrawler(browserManager, config, 'playwright');
+    const pageCrawler = new PageCrawler(browserManager, config);
     let result = await pageCrawler.fetchTotalPages();
     console.log(`Playwright 전략으로 조회한 총 페이지 수: ${result.totalPages}, 마지막 페이지 제품 수: ${result.lastPageProductCount}`);
     

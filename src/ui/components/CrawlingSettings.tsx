@@ -8,6 +8,7 @@ import { configStore, updateConfigSettings } from '../stores';
  * - 제품 목록 재시도 횟수 설정
  * - 제품 상세 재시도 횟수 설정
  * - 자동 DB 추가 설정
+ * - 크롤러 타입 설정
  */
 export function CrawlingSettings() {
   const config = useStore(configStore);
@@ -17,6 +18,7 @@ export function CrawlingSettings() {
   const [productListRetry, setProductListRetry] = useState(config.productListRetryCount);
   const [productDetailRetry, setProductDetailRetry] = useState(config.productDetailRetryCount);
   const [autoAddToDb, setAutoAddToDb] = useState(config.autoAddToLocalDB);
+  const [crawlerType, setCrawlerType] = useState(config.crawlerType || 'axios');
   
   // 파생 상태
   const [estimatedProducts, setEstimatedProducts] = useState(0);
@@ -28,6 +30,7 @@ export function CrawlingSettings() {
     setProductListRetry(config.productListRetryCount);
     setProductDetailRetry(config.productDetailRetryCount);
     setAutoAddToDb(config.autoAddToLocalDB);
+    setCrawlerType(config.crawlerType || 'axios');
   }, [config]);
   
   // 페이지 수에 따른 예상 제품 수 및 시간 계산
@@ -60,7 +63,8 @@ export function CrawlingSettings() {
       pageRangeLimit: pageLimit,
       productListRetryCount: productListRetry,
       productDetailRetryCount: productDetailRetry,
-      autoAddToLocalDB: autoAddToDb
+      autoAddToLocalDB: autoAddToDb,
+      crawlerType: crawlerType
     });
   };
   
@@ -177,6 +181,44 @@ export function CrawlingSettings() {
             />
           </div>
         </div>
+      </div>
+      
+      {/* 크롤러 타입 설정 */}
+      <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          크롤링 엔진 타입
+        </label>
+        <div className="flex space-x-4">
+          <div className="flex items-center">
+            <input
+              id="crawler-axios"
+              type="radio"
+              name="crawler-type"
+              className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={crawlerType === 'axios'}
+              onChange={() => setCrawlerType('axios')}
+            />
+            <label htmlFor="crawler-axios" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+              Axios/Cheerio <span className="text-xs text-gray-500">(가볍고 빠름, 기본값)</span>
+            </label>
+          </div>
+          <div className="flex items-center">
+            <input
+              id="crawler-playwright"
+              type="radio"
+              name="crawler-type"
+              className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={crawlerType === 'playwright'}
+              onChange={() => setCrawlerType('playwright')}
+            />
+            <label htmlFor="crawler-playwright" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+              Playwright <span className="text-xs text-gray-500">(브라우저 기반)</span>
+            </label>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+          Axios/Cheerio는 가벼운 HTTP 요청을 사용하며, Playwright는 실제 브라우저를 사용합니다. 사이트가 복잡한 경우 Playwright가 더 안정적일 수 있습니다.
+        </p>
       </div>
       
       {/* 저장 버튼 */}

@@ -86,9 +86,8 @@ export class ProductListCollector {
     this.productsPerPage = config.productsPerPage || 12;
     this.matterFilterUrl = config.matterFilterUrl || '';
     
-    // 유틸리티 클래스 초기화 (크롤링 전략 지정)
-    const crawlerType = config.crawlerType || 'playwright';
-    this.pageCrawler = new PageCrawler(browserManager, config, crawlerType);
+    // 유틸리티 클래스 초기화 (config에서 crawlerType 사용)
+    this.pageCrawler = new PageCrawler(browserManager, config);
     this.productDataProcessor = new ProductDataProcessor();
     this.progressManager = new ProgressManager(state);
   }

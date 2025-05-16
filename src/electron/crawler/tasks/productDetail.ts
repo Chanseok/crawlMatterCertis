@@ -60,29 +60,41 @@ export class ProductDetailCollector {
     const delayTime = getRandomDelay(minDelay, maxDelay);
     await delay(delayTime);
     
-    // 하이브리드 전략 사용 플래그
-    const useHybridStrategy = config.useHybridStrategy ?? true;
+    // config에서 정의된 크롤러 타입 가져오기 (기본값은 axios)
+    const crawlerType = config.crawlerType || 'axios';
     
-    // Playwright 전략 시도
-    try {
-      const result = await this.crawlWithPlaywright(product, signal);
-      return result;
-    } catch (error) {
-      const playwrightError = error instanceof Error ? error : new Error(String(error));
-      // debugLog(`[ProductDetailCollector] Playwright strategy failed for ${product.url}: ${playwrightError.message}`);
-      
-      // 하이브리드 전략이 활성화되어 있고 신호가 중단되지 않은 경우에만 Axios로 시도
-      if (useHybridStrategy && !signal.aborted) {
-        debugLog(`[ProductDetailCollector] Falling back to Axios/Cheerio strategy for ${product.url}`);
-        try {
-          const result = await this.crawlWithAxios(product, signal);
-          return result;
-        } catch (axiosError) {
-          debugLog(`[ProductDetailCollector] Axios/Cheerio fallback also failed for ${product.url}`);
-          throw axiosError instanceof Error ? axiosError : new Error(String(axiosError)); // 두 전략 모두 실패한 경우 마지막 오류를 전달
+    // 하이브리드 전략 사용 플래그
+    const useHybridStrategy = config.useHybridStrategy ?? false;
+    
+    // config에 정의된 크롤러 타입에 따라 적절한 전략 사용
+    if (crawlerType === 'playwright') {
+      try {
+        const result = await this.crawlWithPlaywright(product, signal);
+        return result;
+      } catch (error) {
+        const playwrightError = error instanceof Error ? error : new Error(String(error));
+        
+        // 하이브리드 전략이 활성화되어 있고 신호가 중단되지 않은 경우에만 Axios로 시도
+        if (useHybridStrategy && !signal.aborted) {
+          debugLog(`[ProductDetailCollector] Falling back to Axios/Cheerio strategy for ${product.url}`);
+          try {
+            const result = await this.crawlWithAxios(product, signal);
+            return result;
+          } catch (axiosError) {
+            debugLog(`[ProductDetailCollector] Axios/Cheerio fallback also failed for ${product.url}`);
+            throw axiosError instanceof Error ? axiosError : new Error(String(axiosError)); // 두 전략 모두 실패한 경우 마지막 오류를 전달
+          }
+        } else {
+          throw playwrightError; // 하이브리드 전략이 비활성화된 경우 원래 오류를 전달
         }
-      } else {
-        throw playwrightError; // 하이브리드 전략이 비활성화된 경우 원래 오류를 전달
+      }
+    } else {
+      // axios/cheerio 전략 사용
+      try {
+        const result = await this.crawlWithAxios(product, signal);
+        return result;
+      } catch (error) {
+        throw error instanceof Error ? error : new Error(String(error));
       }
     }
   }
