@@ -1,40 +1,39 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import './App.css';
-import { ConcurrentTasksVisualizer } from './Charts';
 import { CrawlingSettings } from './components/CrawlingSettings';
-import { CrawlingDashboard } from './components/CrawlingDashboard';
 import { LocalDBTab } from './components/LocalDBTab';
 import { CrawlingCompleteView } from './components/CrawlingCompleteView';
-import PageProgressDisplay from './components/PageProgressDisplay';
-import { ExpandableSection } from './components/ExpandableSection';
 import {
-  appModeStore,
   crawlingStatusStore,
-  logsStore,
-  productsStore,
   searchQueryStore,
-  startCrawling,
-  stopCrawling,
-  toggleAppMode,
-  addLog,
   initializeApiSubscriptions,
-  exportToExcel,
+  addLog,
   searchProducts,
-  checkCrawlingStatus,
-  crawlingStatusSummaryStore,
+  appModeStore,
+  productsStore,
   crawlingProgressStore,
-  loadConfig
+  loadConfig,
+  stopCrawling,
+  crawlingStatusSummaryStore,
+  exportToExcel,
+  checkCrawlingStatus,
+  toggleAppMode,
+  startCrawling
 } from './stores';
-import { LogEntry } from './types';
-import { format } from 'date-fns';
 import { getPlatformApi } from './platform/api';
+
+// 새로 분리된 컴포넌트들 import
+import { LogPanel } from './components/logs/LogPanel';
+import { ExpandableSection } from './components/ExpandableSection';
+import { CrawlingDashboard } from './components/CrawlingDashboard';
+import PageProgressDisplay from './components/PageProgressDisplay';
+import { ConcurrentTasksVisualizer } from './Charts';
 
 function App() {
   // nanostores를 통한 상태 관리
   const mode = useStore(appModeStore);
   const crawlingStatus = useStore(crawlingStatusStore);
-  const logs = useStore(logsStore);
   const products = useStore(productsStore);
   const searchQuery = useStore(searchQueryStore);
   const progress = useStore(crawlingProgressStore);
@@ -188,20 +187,6 @@ function App() {
   };
 
   // 로그 메시지 렌더링 함수
-  const renderLogMessage = (log: LogEntry, index: number) => {
-    const colorClass = {
-      info: 'text-blue-800 dark:text-blue-400',
-      warning: 'text-amber-800 dark:text-amber-400',
-      error: 'text-red-800 dark:text-red-400',
-      success: 'text-green-800 dark:text-green-400'
-    }[log.type];
-
-    return (
-      <div key={index} className={`mb-1 text-left ${colorClass}`}>
-        [{format(log.timestamp, 'HH:mm:ss')}] {log.message}
-      </div>
-    );
-  };
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
@@ -354,20 +339,10 @@ function App() {
           </div>
           
           {/* 로그 패널 - 모든 탭에 공통으로 표시 */}
-          <ExpandableSection
-            title="로그"
-            isExpanded={logsExpanded}
-            onToggle={() => toggleSection('logs')}
-            additionalClasses="mt-6"
-          >
-            <div className="bg-gray-100 dark:bg-gray-700 rounded-md p-4 h-80 overflow-y-auto font-mono text-sm">
-              {logs.length === 0 ? (
-                <p className="text-gray-500 dark:text-gray-400 text-left">로그 메시지가 없습니다.</p>
-              ) : (
-                [...logs].reverse().map((log, index) => renderLogMessage(log, index))
-              )}
-            </div>
-          </ExpandableSection>
+          <LogPanel 
+            isExpanded={logsExpanded} 
+            onToggle={() => toggleSection('logs')} 
+          />
         </div>
 
         {/* 오른쪽 메인 콘텐츠 (데이터 표시) */}
