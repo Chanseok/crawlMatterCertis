@@ -394,7 +394,7 @@ export class MatterProductParser {
           const text = li.textContent || '';
           if (!vid && (text.toLowerCase().includes('vendor id') || text.toLowerCase().includes('vid'))) {
             // 벤더 ID 패턴 매칭 (예: 0xXXXX 또는 단순 숫자)
-            const vidMatch = text.match(/(0x[0-9A-Fa-f]+)|(\d{4,6})/);
+            const vidMatch = text.match(/(0x[0-9A-Fa-f]+)|([0-9A-Fa-f]{1,6})/i);
             if (vidMatch) {
               vid = vidMatch[0];
             } else {
@@ -406,7 +406,7 @@ export class MatterProductParser {
           }
           if (!pid && (text.toLowerCase().includes('product id') || text.toLowerCase().includes('pid'))) {
             // 제품 ID 패턴 매칭 (예: 0xXXXX 또는 단순 숫자)
-            const pidMatch = text.match(/(0x[0-9A-Fa-f]+)|(\d{4,6})/);
+            const pidMatch = text.match(/(0x[0-9A-Fa-f]+)|([0-9A-Fa-f]{1,6})/i);
             if (pidMatch) {
               pid = pidMatch[0];
             } else {
@@ -418,8 +418,68 @@ export class MatterProductParser {
           }
         }
       }
-      output.vid = vid;
-      output.pid = pid;
+      
+      // 브라우저에서는 직접 normalizeHexId 함수를 사용할 수 없으므로
+      // 인라인으로 정규화 로직 구현
+      function normalizeHexIdInBrowser(value: string): string {
+        if (!value || ['', 'n/a', '-', 'none', 'unknown'].includes(value.toLowerCase().trim())) {
+          return value;
+        }
+        
+        const trimmedValue = value.trim();
+        
+        // 이미 정규화된 형식인지 확인 (0xXXXX 형식)
+        const normalizedRegex = /^0x[0-9A-F]{4}$/;
+        if (normalizedRegex.test(trimmedValue)) {
+          return trimmedValue;
+        }
+        
+        let hexValue: string;
+        
+        // 0x 접두사가 있는 16진수 (대소문자 구분 없음)
+        if (/^0x[0-9A-Fa-f]+$/i.test(trimmedValue)) {
+          // 0x 뒤의 16진수 부분만 추출
+          hexValue = trimmedValue.substring(2).toUpperCase();
+        } 
+        // 16진수처럼 보이는 문자열 (숫자와 A-F로만 구성, 0x 접두사 없음)
+        else if (/^[0-9A-Fa-f]+$/i.test(trimmedValue)) {
+          hexValue = trimmedValue.toUpperCase();
+        } 
+        // 순수 10진수로 보이는 값
+        else if (/^\d+$/.test(trimmedValue)) {
+          try {
+            // 10진수를 16진수로 변환 (앞에 0x 제외)
+            hexValue = parseInt(trimmedValue, 10).toString(16).toUpperCase();
+          } catch (e) {
+            // 변환 실패 시 원본 값 반환
+            return value;
+          }
+        } 
+        // 그 외의 경우 변환 불가
+        else {
+          return value;
+        }
+        
+        // 4자리로 패딩 (0 채우기)
+        hexValue = hexValue.padStart(4, '0');
+        
+        // 최대 4자리만 유지 (초과하는 경우 잘라냄)
+        if (hexValue.length > 4) {
+          hexValue = hexValue.substring(hexValue.length - 4);
+        }
+        
+        // 최종 형식으로 반환 (0x + 4자리 대문자 16진수)
+        return `0x${hexValue}`;
+      }
+      
+      // VID/PID 정규화 적용
+      if (vid) {
+        output.vid = normalizeHexIdInBrowser(vid);
+      }
+      
+      if (pid) {
+        output.pid = normalizeHexIdInBrowser(pid);
+      }
     }
 
     function extractAdditionalInfo(output: typeof extractedFields, details: ProductDetails): void {

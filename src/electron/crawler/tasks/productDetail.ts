@@ -321,6 +321,39 @@ export class ProductDetailCollector {
   }
 
   /**
+   * VID/PID 값을 표준 16진수 형식으로 정규화
+   */
+  private normalizeHexId(value: string | undefined): string | undefined {
+    if (!value || ['', 'n/a', '-', 'none', 'unknown'].includes(value.toLowerCase().trim())) {
+      return value;
+    }
+    const trimmedValue = value.trim();
+    const normalizedRegex = /^0x[0-9A-F]{4}$/;
+    if (normalizedRegex.test(trimmedValue)) {
+      return trimmedValue;
+    }
+    let hexValue: string;
+    if (/^0x[0-9A-Fa-f]+$/i.test(trimmedValue)) {
+      hexValue = trimmedValue.substring(2).toUpperCase();
+    } else if (/^[0-9A-Fa-f]+$/i.test(trimmedValue)) {
+      hexValue = trimmedValue.toUpperCase();
+    } else if (/^\d+$/.test(trimmedValue)) {
+      try {
+        hexValue = parseInt(trimmedValue, 10).toString(16).toUpperCase();
+      } catch (e) {
+        return value;
+      }
+    } else {
+      return value;
+    }
+    hexValue = hexValue.padStart(4, '0');
+    if (hexValue.length > 4) {
+      hexValue = hexValue.substring(hexValue.length - 4);
+    }
+    return `0x${hexValue}`;
+  }
+
+  /**
    * 키 이름을 필드 이름으로 매핑
    * 정규식 패턴 매칭을 사용하여 유연한 키 매핑 구현
    */
@@ -332,7 +365,12 @@ export class ProductDetailCollector {
       if (pattern.test(normalizedKey)) {
         // 빈 값이거나 'N/A', '-' 등의 의미없는 값은 무시
         if (value && !['n/a', '-', 'none', 'unknown'].includes(value.toLowerCase().trim())) {
-          fields[fieldName] = value;
+          // VID/PID에 대해 표준화된 16진수 형식 적용
+          if (fieldName === 'vid' || fieldName === 'pid') {
+            fields[fieldName] = this.normalizeHexId(value);
+          } else {
+            fields[fieldName] = value;
+          }
         }
         return true;
       }
@@ -778,9 +816,9 @@ export class ProductDetailCollector {
           // 향상된 16진수 ID 패턴 매칭 - 다양한 형식 지원
           const hexPatterns = [
             /(0x[0-9A-Fa-f]{1,6})/i,             // 0x로 시작하는 16진수
-            /([a-fA-F0-9]{4,6})(?:\s|$)/,        // 4-6자리 16진수
-            /(\b\d{4,6}\b)/,                      // 4-6자리 숫자
-            /id:\s*([a-fA-F0-9]{4,6})/i          // id: 뒤에 오는 16진수
+            /([a-fA-F0-9]{1,6})(?:\s|$)/,        // 1-6자리 16진수
+            /(\b\d{1,6}\b)/,                      // 1-6자리 숫자
+            /id:\s*([a-fA-F0-9]{1,6})/i          // id: 뒤에 오는 16진수
           ];
           
           let vidValue = '';
@@ -800,7 +838,7 @@ export class ProductDetailCollector {
             if (parts.length > 1) {
               // 값이 숫자나 16진수 형태인지 확인
               const potential = parts.slice(1).join(':').trim();
-              const numericMatch = potential.match(/(\b\d{4,6}\b)|([a-fA-F0-9]{4,6})/);
+              const numericMatch = potential.match(/(\b\d{1,6}\b)|([a-fA-F0-9]{1,6})/);
               if (numericMatch) {
                 vidValue = numericMatch[0];
               } else {
@@ -810,17 +848,7 @@ export class ProductDetailCollector {
           }
           
           if (vidValue) {
-            // 표준 형식으로 정규화 (필요한 경우)
-            if (vidValue.toLowerCase().startsWith('0x')) {
-              // 이미 0x 형식이면 그대로 사용
-              fields.vid = vidValue;
-            } else if (/^[0-9]+$/.test(vidValue)) {
-              // 숫자만 있으면 10진수로 간주하여 16진수로 변환 가능
-              // 그러나 원본 형식 유지가 중요할 수 있으므로 유지
-              fields.vid = vidValue;
-            } else {
-              fields.vid = vidValue;
-            }
+            fields.vid = this.normalizeHexId(vidValue);
             return false; // 루프 중단
           }
         }
@@ -829,13 +857,15 @@ export class ProductDetailCollector {
       // 추가 검색: 페이지 전체 텍스트에서 VID 패턴 찾기
       if (!fields.vid) {
         const bodyText = $('body').text();
-        const vidRegex = /vendor\s*id\s*[=:]\s*(0x[0-9A-Fa-f]{1,6}|[0-9]{4,6})/i;
+        const vidRegex = /vendor\s*id\s*[=:]\s*(0x[0-9A-Fa-f]{1,6}|[0-9A-Fa-f]{1,6})/i;
         const vidMatch = bodyText.match(vidRegex);
         
         if (vidMatch && vidMatch[1]) {
-          fields.vid = vidMatch[1];
+          fields.vid = this.normalizeHexId(vidMatch[1]);
         }
       }
+    } else {
+      fields.vid = this.normalizeHexId(fields.vid);
     }
     
     // PID 정보 보강
@@ -852,9 +882,9 @@ export class ProductDetailCollector {
           // 향상된 16진수 ID 패턴 매칭 - 다양한 형식 지원
           const hexPatterns = [
             /(0x[0-9A-Fa-f]{1,6})/i,             // 0x로 시작하는 16진수
-            /([a-fA-F0-9]{4,6})(?:\s|$)/,        // 4-6자리 16진수
-            /(\b\d{4,6}\b)/,                      // 4-6자리 숫자
-            /id:\s*([a-fA-F0-9]{4,6})/i          // id: 뒤에 오는 16진수
+            /([a-fA-F0-9]{1,6})(?:\s|$)/,        // 1-6자리 16진수
+            /(\b\d{1,6}\b)/,                      // 1-6자리 숫자
+            /id:\s*([a-fA-F0-9]{1,6})/i          // id: 뒤에 오는 16진수
           ];
           
           let pidValue = '';
@@ -874,7 +904,7 @@ export class ProductDetailCollector {
             if (parts.length > 1) {
               // 값이 숫자나 16진수 형태인지 확인
               const potential = parts.slice(1).join(':').trim();
-              const numericMatch = potential.match(/(\b\d{4,6}\b)|([a-fA-F0-9]{4,6})/);
+              const numericMatch = potential.match(/(\b\d{1,6}\b)|([a-fA-F0-9]{1,6})/);
               if (numericMatch) {
                 pidValue = numericMatch[0];
               } else {
@@ -884,17 +914,7 @@ export class ProductDetailCollector {
           }
           
           if (pidValue) {
-            // 표준 형식으로 정규화 (필요한 경우)
-            if (pidValue.toLowerCase().startsWith('0x')) {
-              // 이미 0x 형식이면 그대로 사용
-              fields.pid = pidValue;
-            } else if (/^[0-9]+$/.test(pidValue)) {
-              // 숫자만 있으면 10진수로 간주하여 16진수로 변환 가능
-              // 그러나 원본 형식 유지가 중요할 수 있으므로 유지
-              fields.pid = pidValue;
-            } else {
-              fields.pid = pidValue;
-            }
+            fields.pid = this.normalizeHexId(pidValue);
             return false; // 루프 중단
           }
         }
@@ -903,14 +923,347 @@ export class ProductDetailCollector {
       // 추가 검색: 페이지 전체 텍스트에서 PID 패턴 찾기
       if (!fields.pid) {
         const bodyText = $('body').text();
-        const pidRegex = /product\s*id\s*[=:]\s*(0x[0-9A-Fa-f]{1,6}|[0-9]{4,6})/i;
+        const pidRegex = /product\s*id\s*[=:]\s*(0x[0-9A-Fa-f]{1,6}|[0-9A-Fa-f]{1,6})/i;
         const pidMatch = bodyText.match(pidRegex);
         
         if (pidMatch && pidMatch[1]) {
-          fields.pid = pidMatch[1];
+          fields.pid = this.normalizeHexId(pidMatch[1]);
         }
       }
+    } else {
+      fields.pid = this.normalizeHexId(fields.pid);
     }
+  }
+
+  private extractFromTextBlocks($: cheerio.CheerioAPI, fields: Record<string, any>): void {
+    // 제품 설명이나 콘텐츠 블록에서 정보 추출
+    $('.product-description, .entry-content p, .description, .product-content, .device-info, .product-info')
+      .each((_, elem) => {
+        const text = $(elem).text().trim();
+        
+        // 소프트웨어/펌웨어 버전 정보 찾기
+        if (!fields.softwareVersion || !fields.firmwareVersion) {
+          const versionPatterns = [
+            // 명시적인 "버전" 단어가 있는 패턴
+            /(?:firmware|software|fw|sw)\s+version[:\s]+v?(\d+(?:\.\d+)+)/i,
+            // 버전 번호만 표시된 패턴
+            /(?:firmware|software|fw|sw)[:\s]+v?(\d+(?:\.\d+)+)/i,
+            // v로 시작하는 버전 번호
+            /v(\d+(?:\.\d+)+)/i
+          ];
+          
+          for (const pattern of versionPatterns) {
+            const vMatch = text.match(pattern);
+            if (vMatch && vMatch[1]) {
+              const version = vMatch[1];
+              if (!fields.softwareVersion) {
+                fields.softwareVersion = version;
+              }
+              if (!fields.firmwareVersion) {
+                fields.firmwareVersion = version;
+              }
+              break;
+            }
+          }
+        }
+        
+        // VID/PID 정보 찾기
+        if (!fields.vid) {
+          const vidPatterns = [
+            /vendor\s+id[:\s]+(0x[0-9A-Fa-f]+|[0-9A-Fa-f]{1,6})/i,
+            /vid[:\s]+(0x[0-9A-Fa-f]+|[0-9A-Fa-f]{1,6})/i,
+            /vid\s*=\s*(0x[0-9A-Fa-f]+|[0-9A-Fa-f]{1,6})/i
+          ];
+          for (const pattern of vidPatterns) {
+            const vMatch = text.match(pattern);
+            if (vMatch && vMatch[1]) {
+              fields.vid = this.normalizeHexId(vMatch[1]);
+              break;
+            }
+          }
+        }
+        if (!fields.pid) {
+          const pidPatterns = [
+            /product\s+id[:\s]+(0x[0-9A-Fa-f]+|[0-9A-Fa-f]{1,6})/i,
+            /pid[:\s]+(0x[0-9A-Fa-f]+|[0-9A-Fa-f]{1,6})/i,
+            /pid\s*=\s*(0x[0-9A-Fa-f]+|[0-9A-Fa-f]{1,6})/i
+          ];
+          for (const pattern of pidPatterns) {
+            const pMatch = text.match(pattern);
+            if (pMatch && pMatch[1]) {
+              fields.pid = this.normalizeHexId(pMatch[1]);
+              break;
+            }
+          }
+        }
+        
+        // 제조업체 정보 추출 (fallback)
+        if (!fields.manufacturer || fields.manufacturer === 'Unknown') {
+          const manuPatterns = [
+            /manufacturer[:\s]+([^,.;]+)/i,
+            /company[:\s]+([^,.;]+)/i,
+            /made\s+by[:\s]+([^,.;]+)/i
+          ];
+          
+          for (const pattern of manuPatterns) {
+            const mMatch = text.match(pattern);
+            if (mMatch && mMatch[1] && mMatch[1].trim().length > 1) {
+              fields.manufacturer = mMatch[1].trim();
+              break;
+            }
+          }
+        }
+        
+        // 기기 유형 정보 추출 (fallback)
+        if (!fields.deviceType || fields.deviceType === 'Matter Device') {
+          const deviceTypePatterns = [
+            /device\s+type[:\s]+([^,.;]+)/i,
+            /product\s+type[:\s]+([^,.;]+)/i,
+            /type[:\s]+([^,.;]+(?:light|switch|plug|sensor|lock|outlet|hub|gateway))/i
+          ];
+          
+          for (const pattern of deviceTypePatterns) {
+            const dtMatch = text.match(pattern);
+            if (dtMatch && dtMatch[1] && dtMatch[1].trim().length > 1) {
+              fields.deviceType = dtMatch[1].trim();
+              break;
+            }
+          }
+        }
+      });
+    
+    // 스펙 목록 또는 기술 세부 정보에서 정보 추출
+    $('.specs, .technical-details, .product-specifications, .tech-specs').each((_, elem) => {
+      const text = $(elem).text().trim();
+      
+      // 각 줄을 개별적으로 처리 (줄 바꿈으로 분리)
+      const lines = text.split(/[\r\n]+/);
+      for (const line of lines) {
+        const colonIndex = line.indexOf(':');
+        if (colonIndex > 0) {
+          const key = line.substring(0, colonIndex).trim().toLowerCase();
+          const value = line.substring(colonIndex + 1).trim();
+          
+          if (key && value) {
+            this.mapKeyToField(key, value, fields);
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * 표 형식 데이터에서 정보 추출
+   * 표 형식 데이터에서 구조화된 정보를 더 효과적으로 추출
+   */
+  private extractFromTable($: cheerio.CheerioAPI, fields: Record<string, any>): void {
+    // 일반적인 테이블 구조에서 정보 추출
+    $('.product-certificates-table, table, .specs-table, .data-table, .product-details-table')
+      .each((_, table) => {
+        // 1. 표준 tr/td 구조 처리
+        $(table).find('tr').each((_, row) => {
+          const cells = $(row).find('td, th');
+          
+          // 기본 2열 테이블 처리 (키:값 구조)
+          if (cells.length >= 2) {
+            const key = $(cells[0]).text().trim().toLowerCase();
+            const value = $(cells[1]).text().trim();
+            
+            if (key && value) {
+              this.mapKeyToField(key, value, fields);
+            }
+          }
+          // 테이블 헤더와 셀이 1:1 매핑되지 않는 경우 처리
+          else if (cells.length === 1) {
+            const cellText = $(cells[0]).text().trim();
+            
+            // 셀에 "키: 값" 형식이 있는지 확인
+            const colonIndex = cellText.indexOf(':');
+            if (colonIndex > 0) {
+              const key = cellText.substring(0, colonIndex).trim().toLowerCase();
+              const value = cellText.substring(colonIndex + 1).trim();
+              
+              if (key && value) {
+                this.mapKeyToField(key, value, fields);
+              }
+            }
+          }
+        });
+        
+        // 2. 테이블 헤더 (thead)와 바디 (tbody) 구조 처리
+        const headerRow = $(table).find('thead tr').first();
+        const bodyRows = $(table).find('tbody tr');
+        
+        if (headerRow.length > 0 && bodyRows.length > 0) {
+          // 헤더 셀 (th 또는 td) 가져오기
+          const headerCells = headerRow.find('th, td');
+          const headerTexts: string[] = [];
+          
+          // 헤더 텍스트 수집
+          headerCells.each((i, cell) => {
+            headerTexts[i] = $(cell).text().trim().toLowerCase();
+          });
+          
+          // 각 바디 행에 대해 처리
+          bodyRows.each((_, row) => {
+            const bodyCells = $(row).find('td');
+            
+            // 헤더 텍스트와 바디 셀 값을 매핑
+            bodyCells.each((i, cell) => {
+              if (i < headerTexts.length) {
+                const key = headerTexts[i];
+                const value = $(cell).text().trim();
+                
+                if (key && value) {
+                  this.mapKeyToField(key, value, fields);
+                }
+              }
+            });
+          });
+        }
+      });
+    
+    // 테이블과 유사한 div 구조 처리 (일부 사이트에서 사용)
+    $('.details-grid, .product-grid, .specs-grid').each((_, grid) => {
+      $(grid).find('.grid-row, .row').each((_, row) => {
+        const keyElem = $(row).find('.key, .label, .property');
+        const valueElem = $(row).find('.value, .data, .property-value');
+        
+        if (keyElem.length > 0 && valueElem.length > 0) {
+          const key = keyElem.text().trim().toLowerCase();
+          const value = valueElem.text().trim();
+          
+          if (key && value) {
+            this.mapKeyToField(key, value, fields);
+          }
+        }
+      });
+    });
+    
+    // dl/dt/dd 구조 처리 (정의 목록)
+    $('dl, .definition-list').each((_, list) => {
+      const terms = $(list).find('dt');
+      const descriptions = $(list).find('dd');
+      
+      terms.each((i, term) => {
+        if (i < descriptions.length) {
+          const key = $(term).text().trim().toLowerCase();
+          const value = $(descriptions.eq(i)).text().trim();
+          
+          if (key && value) {
+            this.mapKeyToField(key, value, fields);
+          }
+        }
+      });
+    });
+  }
+
+  /**
+   * 목록 항목에서 정보 추출
+   * 목록 항목에서 콜론으로 구분된 정보를 더 효과적으로 추출
+   */
+  private extractFromListItems($: cheerio.CheerioAPI, fields: Record<string, any>): void {
+    // 목록 항목에서 세부 정보 추출 - 다양한 HTML 구조 지원
+    const listSelectors = [
+      '.entry-product-details div ul li', 
+      '.product-details li', 
+      '.product-specs li', 
+      '.details-list li', 
+      '.specs-list li',
+      '.tech-specs li',
+      '.feature-list li',
+      '.info-list li'
+    ];
+    
+    $(listSelectors.join(', ')).each((_, item) => {
+      // 1. span.label + span.value 스타일 구조 처리
+      const label = $(item).find('span.label, .label, strong, b, .property-name');
+      const value = $(item).find('span.value, .value, .data, .property-value');
+      
+      if (label.length > 0 && value.length > 0) {
+        const labelText = label.text().trim().toLowerCase();
+        const valueText = value.text().trim();
+        
+        if (labelText && valueText) {
+          this.mapKeyToField(labelText, valueText, fields);
+        }
+      } 
+      // 2. 콜론으로 구분된 텍스트 처리
+      else {
+        const fullText = $(item).text().trim();
+        const colonIndex = fullText.indexOf(':');
+        
+        if (colonIndex > 0) {
+          const key = fullText.substring(0, colonIndex).trim().toLowerCase();
+          const value = fullText.substring(colonIndex + 1).trim();
+          
+          if (key && value) {
+            this.mapKeyToField(key, value, fields);
+          }
+        }
+        // 3. 키=값 형식 처리
+        else if (fullText.includes('=')) {
+          const parts = fullText.split('=', 2);
+          if (parts.length === 2) {
+            const key = parts[0].trim().toLowerCase();
+            const value = parts[1].trim();
+            
+            if (key && value) {
+              this.mapKeyToField(key, value, fields);
+            }
+          }
+        }
+        // 4. 다양한 구분자로 쪼개진 텍스트 처리
+        else {
+          // "키 - 값" 패턴 또는 "키 | 값" 패턴 검사
+          const separatorMatch = fullText.match(/(.+?)(?:[-|–—]\s+|\|)(.+)/);
+          if (separatorMatch) {
+            const key = separatorMatch[1].trim().toLowerCase();
+            const value = separatorMatch[2].trim();
+            
+            if (key && value) {
+              // 키가 의미 있는 단어를 포함하는지 확인 (매핑 키워드 확인)
+              const keyWords = ['vendor', 'product', 'manufacturer', 'version', 'id', 'type', 'model', 'certificate'];
+              if (keyWords.some(word => key.includes(word))) {
+                this.mapKeyToField(key, value, fields);
+              }
+            }
+          }
+        }
+      }
+    });
+    
+    // 정의 목록 (dl/dt/dd) 처리 - 별도로 처리
+    $('dl, .definition-list').each((_, defList) => {
+      $(defList).find('dt').each((i, dt) => {
+        const key = $(dt).text().trim().toLowerCase();
+        
+        // 해당 dt의 다음 dd 요소 찾기
+        let dd = $(dt).next('dd');
+        if (dd.length > 0) {
+          const value = dd.text().trim();
+          
+          if (key && value) {
+            this.mapKeyToField(key, value, fields);
+          }
+        }
+      });
+    });
+    
+    // div 기반 속성/값 쌍 구조 처리
+    $('.product-property, .property-item, .spec-item').each((_, propItem) => {
+      const propName = $(propItem).find('.property-name, .prop-name, .spec-name');
+      const propValue = $(propItem).find('.property-value, .prop-value, .spec-value');
+      
+      if (propName.length > 0 && propValue.length > 0) {
+        const key = propName.text().trim().toLowerCase();
+        const value = propValue.text().trim();
+        
+        if (key && value) {
+          this.mapKeyToField(key, value, fields);
+        }
+      }
+    });
   }
 
   /**
@@ -1489,343 +1842,5 @@ export class ProductDetailCollector {
         message: `제품 상세 정보 재시도 완료: 모든 항목 성공`
       });
     }
-  }
-
-  /**
-   * 텍스트 블록에서 정보 추출
-   * 일반 텍스트에서 정보를 더 효과적으로 추출하는 보강된 메서드
-   */
-  private extractFromTextBlocks($: cheerio.CheerioAPI, fields: Record<string, any>): void {
-    // 제품 설명이나 콘텐츠 블록에서 정보 추출
-    $('.product-description, .entry-content p, .description, .product-content, .device-info, .product-info')
-      .each((_, elem) => {
-        const text = $(elem).text().trim();
-        
-        // 소프트웨어/펌웨어 버전 정보 찾기
-        if (!fields.softwareVersion || !fields.firmwareVersion) {
-          const versionPatterns = [
-            // 명시적인 "버전" 단어가 있는 패턴
-            /(?:firmware|software|fw|sw)\s+version[:\s]+v?(\d+(?:\.\d+)+)/i,
-            // 버전 번호만 표시된 패턴
-            /(?:firmware|software|fw|sw)[:\s]+v?(\d+(?:\.\d+)+)/i,
-            // v로 시작하는 버전 번호
-            /v(\d+(?:\.\d+)+)/i
-          ];
-          
-          for (const pattern of versionPatterns) {
-            const vMatch = text.match(pattern);
-            if (vMatch && vMatch[1]) {
-              const version = vMatch[1];
-              if (!fields.softwareVersion) {
-                fields.softwareVersion = version;
-              }
-              if (!fields.firmwareVersion) {
-                fields.firmwareVersion = version;
-              }
-              break;
-            }
-          }
-        }
-        
-        // VID/PID 정보 찾기
-        if (!fields.vid) {
-          const vidPatterns = [
-            /vendor\s+id[:\s]+(0x[0-9A-Fa-f]+|\d{4,6})/i,
-            /vid[:\s]+(0x[0-9A-Fa-f]+|\d{4,6})/i,
-            /vid\s*=\s*(0x[0-9A-Fa-f]+|\d{4,6})/i
-          ];
-          
-          for (const pattern of vidPatterns) {
-            const vMatch = text.match(pattern);
-            if (vMatch && vMatch[1]) {
-              fields.vid = vMatch[1];
-              break;
-            }
-          }
-        }
-        
-        if (!fields.pid) {
-          const pidPatterns = [
-            /product\s+id[:\s]+(0x[0-9A-Fa-f]+|\d{4,6})/i,
-            /pid[:\s]+(0x[0-9A-Fa-f]+|\d{4,6})/i,
-            /pid\s*=\s*(0x[0-9A-Fa-f]+|\d{4,6})/i
-          ];
-          
-          for (const pattern of pidPatterns) {
-            const pMatch = text.match(pattern);
-            if (pMatch && pMatch[1]) {
-              fields.pid = pMatch[1];
-              break;
-            }
-          }
-        }
-        
-        // 제조업체 정보 추출 (fallback)
-        if (!fields.manufacturer || fields.manufacturer === 'Unknown') {
-          const manuPatterns = [
-            /manufacturer[:\s]+([^,.;]+)/i,
-            /company[:\s]+([^,.;]+)/i,
-            /made\s+by[:\s]+([^,.;]+)/i
-          ];
-          
-          for (const pattern of manuPatterns) {
-            const mMatch = text.match(pattern);
-            if (mMatch && mMatch[1] && mMatch[1].trim().length > 1) {
-              fields.manufacturer = mMatch[1].trim();
-              break;
-            }
-          }
-        }
-        
-        // 기기 유형 정보 추출 (fallback)
-        if (!fields.deviceType || fields.deviceType === 'Matter Device') {
-          const deviceTypePatterns = [
-            /device\s+type[:\s]+([^,.;]+)/i,
-            /product\s+type[:\s]+([^,.;]+)/i,
-            /type[:\s]+([^,.;]+(?:light|switch|plug|sensor|lock|outlet|hub|gateway))/i
-          ];
-          
-          for (const pattern of deviceTypePatterns) {
-            const dtMatch = text.match(pattern);
-            if (dtMatch && dtMatch[1] && dtMatch[1].trim().length > 1) {
-              fields.deviceType = dtMatch[1].trim();
-              break;
-            }
-          }
-        }
-      });
-    
-    // 스펙 목록 또는 기술 세부 정보에서 정보 추출
-    $('.specs, .technical-details, .product-specifications, .tech-specs').each((_, elem) => {
-      const text = $(elem).text().trim();
-      
-      // 각 줄을 개별적으로 처리 (줄 바꿈으로 분리)
-      const lines = text.split(/[\r\n]+/);
-      for (const line of lines) {
-        const colonIndex = line.indexOf(':');
-        if (colonIndex > 0) {
-          const key = line.substring(0, colonIndex).trim().toLowerCase();
-          const value = line.substring(colonIndex + 1).trim();
-          
-          if (key && value) {
-            this.mapKeyToField(key, value, fields);
-          }
-        }
-      }
-    });
-  }
-
-  /**
-   * 표 형식 데이터에서 정보 추출
-   * 표 형식 데이터에서 구조화된 정보를 더 효과적으로 추출
-   */
-  private extractFromTable($: cheerio.CheerioAPI, fields: Record<string, any>): void {
-    // 일반적인 테이블 구조에서 정보 추출
-    $('.product-certificates-table, table, .specs-table, .data-table, .product-details-table')
-      .each((_, table) => {
-        // 1. 표준 tr/td 구조 처리
-        $(table).find('tr').each((_, row) => {
-          const cells = $(row).find('td, th');
-          
-          // 기본 2열 테이블 처리 (키:값 구조)
-          if (cells.length >= 2) {
-            const key = $(cells[0]).text().trim().toLowerCase();
-            const value = $(cells[1]).text().trim();
-            
-            if (key && value) {
-              this.mapKeyToField(key, value, fields);
-            }
-          }
-          // 테이블 헤더와 셀이 1:1 매핑되지 않는 경우 처리
-          else if (cells.length === 1) {
-            const cellText = $(cells[0]).text().trim();
-            
-            // 셀에 "키: 값" 형식이 있는지 확인
-            const colonIndex = cellText.indexOf(':');
-            if (colonIndex > 0) {
-              const key = cellText.substring(0, colonIndex).trim().toLowerCase();
-              const value = cellText.substring(colonIndex + 1).trim();
-              
-              if (key && value) {
-                this.mapKeyToField(key, value, fields);
-              }
-            }
-          }
-        });
-        
-        // 2. 테이블 헤더 (thead)와 바디 (tbody) 구조 처리
-        const headerRow = $(table).find('thead tr').first();
-        const bodyRows = $(table).find('tbody tr');
-        
-        if (headerRow.length > 0 && bodyRows.length > 0) {
-          // 헤더 셀 (th 또는 td) 가져오기
-          const headerCells = headerRow.find('th, td');
-          const headerTexts: string[] = [];
-          
-          // 헤더 텍스트 수집
-          headerCells.each((i, cell) => {
-            headerTexts[i] = $(cell).text().trim().toLowerCase();
-          });
-          
-          // 각 바디 행에 대해 처리
-          bodyRows.each((_, row) => {
-            const bodyCells = $(row).find('td');
-            
-            // 헤더 텍스트와 바디 셀 값을 매핑
-            bodyCells.each((i, cell) => {
-              if (i < headerTexts.length) {
-                const key = headerTexts[i];
-                const value = $(cell).text().trim();
-                
-                if (key && value) {
-                  this.mapKeyToField(key, value, fields);
-                }
-              }
-            });
-          });
-        }
-      });
-    
-    // 테이블과 유사한 div 구조 처리 (일부 사이트에서 사용)
-    $('.details-grid, .product-grid, .specs-grid').each((_, grid) => {
-      $(grid).find('.grid-row, .row').each((_, row) => {
-        const keyElem = $(row).find('.key, .label, .property');
-        const valueElem = $(row).find('.value, .data, .property-value');
-        
-        if (keyElem.length > 0 && valueElem.length > 0) {
-          const key = keyElem.text().trim().toLowerCase();
-          const value = valueElem.text().trim();
-          
-          if (key && value) {
-            this.mapKeyToField(key, value, fields);
-          }
-        }
-      });
-    });
-    
-    // dl/dt/dd 구조 처리 (정의 목록)
-    $('dl, .definition-list').each((_, list) => {
-      const terms = $(list).find('dt');
-      const descriptions = $(list).find('dd');
-      
-      terms.each((i, term) => {
-        if (i < descriptions.length) {
-          const key = $(term).text().trim().toLowerCase();
-          const value = $(descriptions.eq(i)).text().trim();
-          
-          if (key && value) {
-            this.mapKeyToField(key, value, fields);
-          }
-        }
-      });
-    });
-  }
-
-  /**
-   * 목록 항목에서 정보 추출
-   * 목록 항목에서 콜론으로 구분된 정보를 더 효과적으로 추출
-   */
-  private extractFromListItems($: cheerio.CheerioAPI, fields: Record<string, any>): void {
-    // 목록 항목에서 세부 정보 추출 - 다양한 HTML 구조 지원
-    const listSelectors = [
-      '.entry-product-details div ul li', 
-      '.product-details li', 
-      '.product-specs li', 
-      '.details-list li', 
-      '.specs-list li',
-      '.tech-specs li',
-      '.feature-list li',
-      '.info-list li'
-    ];
-    
-    $(listSelectors.join(', ')).each((_, item) => {
-      // 1. span.label + span.value 스타일 구조 처리
-      const label = $(item).find('span.label, .label, strong, b, .property-name');
-      const value = $(item).find('span.value, .value, .data, .property-value');
-      
-      if (label.length > 0 && value.length > 0) {
-        const labelText = label.text().trim().toLowerCase();
-        const valueText = value.text().trim();
-        
-        if (labelText && valueText) {
-          this.mapKeyToField(labelText, valueText, fields);
-        }
-      } 
-      // 2. 콜론으로 구분된 텍스트 처리
-      else {
-        const fullText = $(item).text().trim();
-        const colonIndex = fullText.indexOf(':');
-        
-        if (colonIndex > 0) {
-          const key = fullText.substring(0, colonIndex).trim().toLowerCase();
-          const value = fullText.substring(colonIndex + 1).trim();
-          
-          if (key && value) {
-            this.mapKeyToField(key, value, fields);
-          }
-        }
-        // 3. 키=값 형식 처리
-        else if (fullText.includes('=')) {
-          const parts = fullText.split('=', 2);
-          if (parts.length === 2) {
-            const key = parts[0].trim().toLowerCase();
-            const value = parts[1].trim();
-            
-            if (key && value) {
-              this.mapKeyToField(key, value, fields);
-            }
-          }
-        }
-        // 4. 다양한 구분자로 쪼개진 텍스트 처리
-        else {
-          // "키 - 값" 패턴 또는 "키 | 값" 패턴 검사
-          const separatorMatch = fullText.match(/(.+?)(?:[-|–—]\s+|\|)(.+)/);
-          if (separatorMatch) {
-            const key = separatorMatch[1].trim().toLowerCase();
-            const value = separatorMatch[2].trim();
-            
-            if (key && value) {
-              // 키가 의미 있는 단어를 포함하는지 확인 (매핑 키워드 확인)
-              const keyWords = ['vendor', 'product', 'manufacturer', 'version', 'id', 'type', 'model', 'certificate'];
-              if (keyWords.some(word => key.includes(word))) {
-                this.mapKeyToField(key, value, fields);
-              }
-            }
-          }
-        }
-      }
-    });
-    
-    // 정의 목록 (dl/dt/dd) 처리 - 별도로 처리
-    $('dl, .definition-list').each((_, defList) => {
-      $(defList).find('dt').each((i, dt) => {
-        const key = $(dt).text().trim().toLowerCase();
-        
-        // 해당 dt의 다음 dd 요소 찾기
-        let dd = $(dt).next('dd');
-        if (dd.length > 0) {
-          const value = dd.text().trim();
-          
-          if (key && value) {
-            this.mapKeyToField(key, value, fields);
-          }
-        }
-      });
-    });
-    
-    // div 기반 속성/값 쌍 구조 처리
-    $('.product-property, .property-item, .spec-item').each((_, propItem) => {
-      const propName = $(propItem).find('.property-name, .prop-name, .spec-name');
-      const propValue = $(propItem).find('.property-value, .prop-value, .spec-value');
-      
-      if (propName.length > 0 && propValue.length > 0) {
-        const key = propName.text().trim().toLowerCase();
-        const value = propValue.text().trim();
-        
-        if (key && value) {
-          this.mapKeyToField(key, value, fields);
-        }
-      }
-    });
   }
 }
