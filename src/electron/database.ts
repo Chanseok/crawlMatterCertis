@@ -67,8 +67,7 @@ export async function initializeDatabase(): Promise<void> {
             // 'vendors' 테이블 생성
             db.run(`
                 CREATE TABLE IF NOT EXISTS vendors (
-                    vendorId TEXT PRIMARY KEY,
-                    vendorNumber INTEGER,
+                    vendorId INTEGER PRIMARY KEY,
                     vendorName TEXT,
                     companyLegalName TEXT
                 )
@@ -719,14 +718,13 @@ interface DbSummaryData {
 
 // Vendor type definition
 export interface Vendor {
-    vendorId: string;
-    vendorNumber: number;
+    vendorId: number;
     vendorName: string;
     companyLegalName: string;
 }
 
 /**
- * Fetch and update vendors from the DCL web UI
+ * Fetch and update vendors from the DCL JSON API with pagination support
  * @returns Object with counts of processed vendors
  */
 export async function fetchAndUpdateVendors(): Promise<{ 
@@ -735,131 +733,214 @@ export async function fetchAndUpdateVendors(): Promise<{
     total: number; 
     error?: string 
 }> {
-    return new Promise(async (resolve, reject) => {
+    return new Promise(async (resolve) => {
         try {
-            console.log('[DB] Starting vendors fetch and update from https://webui.dcl.csa-iot.org/vendors');
+            console.log('[DB] Starting vendors fetch and update from JSON API');
             
-            // Use axios and cheerio for HTTP requests and HTML parsing
-            const axios = require('axios');
-            const cheerio = require('cheerio');
+            // Use axios for HTTP requests
+            // Import axios directly from node_modules
+            const { default: axios } = await import('axios');
             
-            const response = await axios.get('https://webui.dcl.csa-iot.org/vendors');
-            const html = response.data;
-            const $ = cheerio.load(html);
-            
-            const vendors: Vendor[] = [];
-            
-            // Process the table
-            // Find the table rows, excluding the header row
-            $('table tbody tr').each((_index: number, element: any) => {
-                const columns = $(element).find('td');
-                
-                // Each vendor should have 4 columns
-                if (columns.length >= 4) {
-                    const vendorId = $(columns[0]).text().trim();
-                    const vendorNumberText = $(columns[1]).text().trim();
-                    const vendorName = $(columns[2]).text().trim();
-                    const companyLegalName = $(columns[3]).text().trim();
-                    
-                    // Try to parse the vendor number as an integer
-                    const vendorNumber = parseInt(vendorNumberText, 10);
-                    
-                    if (vendorId && !isNaN(vendorNumber)) {
-                        vendors.push({
-                            vendorId,
-                            vendorNumber,
-                            vendorName,
-                            companyLegalName
-                        });
-                    }
-                }
-            });
-            
-            if (vendors.length === 0) {
-                throw new Error('No vendors found on the page');
-            }
-            
-            console.log(`[DB] Found ${vendors.length} vendors`);
-            
-            // Insert or update the vendors in the database
+            // Initialize counters and collection
             let added = 0;
             let updated = 0;
+            let totalFetched = 0;
+            const vendors: Vendor[] = [];
             
+            // Pagination variables
+            let nextKey: string | null = null;
+            let hasMoreData = true;
+            let pageCount = 0;
+            const MAX_PAGES = 10; // 페이지 제한 증가
+            let previousKey: string | null = null;
+            let vendorCount = new Set<number>(); // Track unique vendors to detect duplicates
+            let seenNextKeys = new Set<string>(); // Track previous next_key values
+            
+            // Fetch all pages of vendor data
+            while (hasMoreData && pageCount < MAX_PAGES) {
+                pageCount++;
+                
+                // Construct the API URL with pagination
+                // 수정: API 엔드포인트 구성 변경 (pagination.key 파라미터 사용)
+                let apiUrl: string;
+                if (nextKey) {
+                    apiUrl = `https://on.dcl.csa-iot.org/dcl/vendorinfo/vendors?pagination.key=${encodeURIComponent(nextKey)}`;
+                } else {
+                    apiUrl = 'https://on.dcl.csa-iot.org/dcl/vendorinfo/vendors';
+                }
+                
+                console.log(`[DB] Fetching vendors from: ${apiUrl} (page ${pageCount}/${MAX_PAGES})`);
+                
+                let response: any;
+                try {
+                    // Make the API request with timeout to prevent hanging
+                    response = await axios.get(apiUrl, { timeout: 10000 });
+                    
+                    // Check if we have valid data
+                    if (!response.data || !Array.isArray(response.data.vendorInfo)) {
+                        console.error('[DB] Unexpected API response format:', response.data);
+                        // 응답 구조 로깅
+                        console.log('[DB] API response keys:', Object.keys(response.data || {}));
+                        console.log('[DB] Pagination info:', JSON.stringify(response.data?.pagination || {}));
+                        break; // Exit pagination loop on error
+                    }
+                } catch (apiError) {
+                    console.error(`[DB] API request failed for page ${pageCount}:`, apiError);
+                    break; // Exit pagination loop on error
+                }
+                
+                // Process the vendors from this page
+                const pageVendors = response.data.vendorInfo.map((vendor: any) => ({
+                    vendorId: parseInt(vendor.vendorID, 10),
+                    vendorName: vendor.vendorName || '',
+                    companyLegalName: vendor.companyLegalName || ''
+                }));
+                
+                // Check for duplicate vendors (could indicate pagination issue)
+                const previousVendorCount = vendorCount.size;
+                
+                // Add vendor IDs to our tracking set
+                pageVendors.forEach((v: Vendor) => vendorCount.add(v.vendorId));
+                
+                // If we didn't add any new unique vendors, we might be in a loop
+                if (vendorCount.size === previousVendorCount && pageCount > 1) {
+                    console.log(`[DB] No new unique vendors detected, possible pagination loop`);
+                    hasMoreData = false;
+                    break;
+                }
+                
+                // Add to our collection
+                vendors.push(...pageVendors);
+                totalFetched += pageVendors.length;
+                
+                console.log(`[DB] Fetched ${pageVendors.length} vendors from current page (total unique: ${vendorCount.size})`);
+                
+                // Check for next page - safely access pagination property with optional chaining
+                const nextKeyFromResponse = response.data.pagination?.key || response.data.pagination?.next_key || null;
+                
+                // 이미 사용한 next_key 값을 재사용하는지 확인 (무한 루프 방지)
+                if (nextKeyFromResponse && seenNextKeys.has(nextKeyFromResponse)) {
+                    console.log(`[DB] Already seen next_key detected (${nextKeyFromResponse}), stopping pagination`);
+                    hasMoreData = false;
+                } else if (nextKeyFromResponse) {
+                    // 새로운 다음 키는 저장하고 계속 진행
+                    nextKey = nextKeyFromResponse;
+                    if (nextKey) {
+                        seenNextKeys.add(nextKey);
+                    }
+                    hasMoreData = true;
+                    console.log(`[DB] More data available, next_key: ${nextKey}`);
+                } else {
+                    // 더 이상 다음 페이지가 없음
+                    nextKey = null;
+                    hasMoreData = false;
+                    console.log(`[DB] No more vendor data available`);
+                }
+                
+                if (hasMoreData) {
+                    // 중복 로그 방지
+                } else {
+                    console.log(`[DB] No more vendor data available or max pages reached (${pageCount}/${MAX_PAGES})`);
+                }
+            }
+            
+            if (vendors.length === 0) {
+                console.warn('[DB] No vendors found in the API response');
+                resolve({
+                    added: 0,
+                    updated: 0,
+                    total: 0,
+                    error: 'No vendors found in the API response'
+                });
+                return;
+            }
+            
+            console.log(`[DB] Found ${vendors.length} vendors in total (${vendorCount.size} unique)`);
+            
+            // Insert or update the vendors in the database
             // Use a transaction for better performance and reliability
-            await new Promise<void>((resolveTransaction, rejectTransaction) => {
-                db.serialize(() => {
-                    db.run('BEGIN TRANSACTION');
-                    
-                    const stmt = db.prepare(`
-                        INSERT INTO vendors (vendorId, vendorNumber, vendorName, companyLegalName)
-                        VALUES (?, ?, ?, ?)
-                        ON CONFLICT(vendorId) DO UPDATE SET
-                            vendorNumber = excluded.vendorNumber,
-                            vendorName = excluded.vendorName,
-                            companyLegalName = excluded.companyLegalName
-                    `);
-                    
-                    let processedCount = 0;
-                    
-                    // Process each vendor in the array
-                    for (const vendor of vendors) {
-                        // First, check if the vendor already exists
-                        db.get('SELECT vendorId FROM vendors WHERE vendorId = ?', [vendor.vendorId], (err: Error | null, row: any) => {
-                            if (err) {
-                                console.error(`[DB] Error checking if vendor exists: ${err.message}`);
-                                processedCount++;
-                                return;
-                            }
-                            
-                            stmt.run(
-                                vendor.vendorId,
-                                vendor.vendorNumber,
-                                vendor.vendorName,
-                                vendor.companyLegalName,
-                                function(this: { changes: number }, err: Error | null) {
-                                    if (err) {
-                                        console.error(`[DB] Error inserting/updating vendor: ${err.message}`);
-                                    } else {
-                                        // If changes were made, it could be an insert or update
-                                        if (this.changes > 0) {
-                                            if (row) {
-                                                updated++;
-                                            } else {
-                                                added++;
+            try {
+                await new Promise<void>((resolveTransaction, rejectTransaction) => {
+                    db.serialize(() => {
+                        db.run('BEGIN TRANSACTION');
+                        
+                        const stmt = db.prepare(`
+                            INSERT INTO vendors (vendorId, vendorName, companyLegalName)
+                            VALUES (?, ?, ?)
+                            ON CONFLICT(vendorId) DO UPDATE SET
+                                vendorName = excluded.vendorName,
+                                companyLegalName = excluded.companyLegalName
+                        `);
+                        
+                        let processedCount = 0;
+                        
+                        // Process each vendor in the array
+                        for (const vendor of vendors) {
+                            // First, check if the vendor already exists
+                            db.get('SELECT vendorId FROM vendors WHERE vendorId = ?', [vendor.vendorId], (err: Error | null, row: any) => {
+                                if (err) {
+                                    console.error(`[DB] Error checking if vendor exists: ${err.message}`);
+                                    processedCount++;
+                                    return;
+                                }
+                                
+                                stmt.run(
+                                    vendor.vendorId,
+                                    vendor.vendorName,
+                                    vendor.companyLegalName,
+                                    function(this: { changes: number }, err: Error | null) {
+                                        if (err) {
+                                            console.error(`[DB] Error inserting/updating vendor: ${err.message}`);
+                                        } else {
+                                            // If changes were made, it could be an insert or update
+                                            if (this.changes > 0) {
+                                                if (row) {
+                                                    updated++;
+                                                } else {
+                                                    added++;
+                                                }
                                             }
                                         }
-                                    }
-                                    
-                                    processedCount++;
-                                    
-                                    // Check if all vendors have been processed
-                                    if (processedCount === vendors.length) {
-                                        stmt.finalize();
                                         
-                                        db.run('COMMIT', function(err: Error | null) {
-                                            if (err) {
-                                                console.error('[DB] Error committing transaction:', err);
-                                                db.run('ROLLBACK');
-                                                rejectTransaction(err);
-                                                return;
-                                            }
+                                        processedCount++;
+                                        
+                                        // Check if all vendors have been processed
+                                        if (processedCount === vendors.length) {
+                                            stmt.finalize();
                                             
-                                            resolveTransaction();
-                                        });
+                                            db.run('COMMIT', function(err: Error | null) {
+                                                if (err) {
+                                                    console.error('[DB] Error committing transaction:', err);
+                                                    db.run('ROLLBACK');
+                                                    rejectTransaction(err);
+                                                    return;
+                                                }
+                                                
+                                                resolveTransaction();
+                                            });
+                                        }
                                     }
-                                }
-                            );
-                        });
-                    }
+                                );
+                            });
+                        }
+                    });
                 });
-            });
-            
-            console.log(`[DB] Vendors update completed: ${added} added, ${updated} updated, total ${vendors.length}`);
-            resolve({
-                added,
-                updated,
-                total: vendors.length
-            });
+                
+                console.log(`[DB] Vendors update completed: ${added} added, ${updated} updated, total ${vendors.length}`);
+                resolve({
+                    added,
+                    updated,
+                    total: vendors.length
+                });
+            } catch (dbError) {
+                console.error('[DB] Database error during vendor update:', dbError);
+                resolve({
+                    added: 0,
+                    updated: 0, 
+                    total: vendors.length,
+                    error: dbError instanceof Error ? dbError.message : String(dbError)
+                });
+            }
         } catch (error) {
             console.error('[DB] Error fetching and updating vendors:', error);
             resolve({
@@ -878,7 +959,7 @@ export async function fetchAndUpdateVendors(): Promise<{
  */
 export async function getVendors(): Promise<Vendor[]> {
     return new Promise((resolve, reject) => {
-        db.all('SELECT * FROM vendors ORDER BY vendorNumber', (err, rows) => {
+        db.all('SELECT * FROM vendors ORDER BY vendorId', (err, rows) => {
             if (err) {
                 console.error('[DB] Error getting vendors:', err);
                 reject(err);
