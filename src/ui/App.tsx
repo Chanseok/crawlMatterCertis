@@ -41,7 +41,14 @@ function App() {
   const { activeTab, handleTabChange } = useTabs('status');
   
   // 크롤링 완료 관련 데이터 훅
-  const { crawlingResults, autoSavedToDb, showCompleteView, error } = useCrawlingComplete();
+  const { 
+    crawlingResults, 
+    autoSavedToDb, 
+    showCompleteView, 
+    error, 
+    isLoading, 
+    setLoading 
+  } = useCrawlingComplete();
   
   // 에러 처리
   useEffect(() => {
@@ -49,6 +56,15 @@ function App() {
       addLog(`크롤링 결과 처리 오류: ${error}`, 'error');
     }
   }, [error]);
+  
+  // 크롤링 상태 변경 시 로딩 상태 업데이트
+  useEffect(() => {
+    if (crawlingStatus === 'crawling') {
+      setLoading(true);
+    } else if (['ready', 'error', 'completed'].includes(crawlingStatus)) {
+      setLoading(false);
+    }
+  }, [crawlingStatus, setLoading]);
   
   // 섹션별 확장/축소 상태
   const [statusExpanded, setStatusExpanded] = useState<boolean>(true);
