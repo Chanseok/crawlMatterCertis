@@ -31,6 +31,7 @@
     "better-sqlite3": "^11.9.1",
     "cheerio": "^1.0.0",
     "date-fns": "^4.1.0",
+    "electron-log": "^5.4.0",
     "exceljs": "^4.4.0",
     "nanoid": "^5.1.5",
     "nanostores": "^1.0.1",

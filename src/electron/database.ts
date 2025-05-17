@@ -4,10 +4,11 @@ import fs from 'fs';
 import { app } from 'electron';
 import type { DatabaseSummary, ProductDetail } from '../ui/types.js'; // Import Product type from your types file
 import type { MatterProduct, Product } from '../../types.js'; // Import MatterProduct type from your types file
-import { debugLog } from './util.js';
+import log, { debugLog as electronDebugLog } from './logger.js';
 
 const dbPath = path.join(app.getPath('userData'), 'dev-database.sqlite');
 const db = new sqlite3.Database(dbPath);
+const debugLog = electronDebugLog;
 
 
 // --- Initialization --- 
@@ -15,7 +16,7 @@ const db = new sqlite3.Database(dbPath);
 export async function initializeDatabase(): Promise<void> {
     return new Promise((resolve, reject) => {
         // SQLite 데이터베이스 파일 경로 로깅
-        console.log(`Initializing database at: ${dbPath}`);
+        log.info(`Initializing database at: ${dbPath}`);
 
         db.serialize(() => {
             // 'products' 테이블 생성
@@ -30,7 +31,7 @@ export async function initializeDatabase(): Promise<void> {
                 )
                 `, (err) => {
                 if (err) return reject(err);
-                console.log("'products' table checked/created.");
+                log.info("'products' table checked/created.");
             });
 
             // 'product_details' 테이블 생성
@@ -61,7 +62,7 @@ export async function initializeDatabase(): Promise<void> {
                 )
                 `, (err) => {
                 if (err) return reject(err);
-                console.log("'product_details' table checked/created.");
+                log.info("'product_details' table checked/created.");
             });
 
             // 'vendors' 테이블 생성
@@ -73,27 +74,27 @@ export async function initializeDatabase(): Promise<void> {
                 )
                 `, (err) => {
                 if (err) return reject(err);
-                console.log("'vendors' table checked/created.");
+                log.info("'vendors' table checked/created.");
             });
 
             // Check if tables are empty 
             db.get("SELECT COUNT(*) as count FROM products", async (err, row: { count: number }) => {
                 if (err) return reject(err);
                 if (row.count === 0) {
-                    console.log(" EMPTY 'products' table...");
+                    log.info(" EMPTY 'products' table...");
 
                 }
                 db.get("SELECT COUNT(*) as count FROM product_details", async (err, rowDetails: { count: number }) => {
                     if (err) return reject(err);
                     if (rowDetails.count === 0) {
-                        console.log("EMPTY 'product_details' table...");
+                        log.info("EMPTY 'product_details' table...");
                     }
 
                     // Check if vendors table is empty
                     db.get("SELECT COUNT(*) as count FROM vendors", async (err, vendorsRow: { count: number }) => {
                         if (err) return reject(err);
                         if (vendorsRow.count === 0) {
-                            console.log("EMPTY 'vendors' table...");
+                            log.info("EMPTY 'vendors' table...");
                         }
                         resolve(); // Resolve after checks are done
                     });
@@ -120,7 +121,7 @@ export async function getProductsFromDb(page: number = 1, limit: number = 20): P
                 return reject(err);
             }
             const total = row.total;
-            console.log(`데이터베이스 전체 레코드 수: ${total}`);
+            log.info(`데이터베이스 전체 레코드 수: ${total}`);
             db.all(query, [limit, offset], (err, rows: any[]) => {
                 if (err) {
                     return reject(err);
@@ -130,7 +131,7 @@ export async function getProductsFromDb(page: number = 1, limit: number = 20): P
                     ...row,
                     applicationCategories: JSON.parse(row.applicationCategories || '[]')
                 }));
-                console.log(`현재 페이지(${page})에서 가져온 레코드 수: ${products.length}, 제한 수: ${limit}, 오프셋: ${offset}`);
+                log.info(`현재 페이지(${page})에서 가져온 레코드 수: ${products.length}, 제한 수: ${limit}, 오프셋: ${offset}`);
                 resolve({ products, total });
             });
         });
@@ -212,7 +213,7 @@ async function readSummary(): Promise<DbSummaryData> {
             return { lastUpdated: null, newlyAddedCount: 0 };
         }
     } catch (error) {
-        console.error("Error reading summary file:", error);
+        log.error("Error reading summary file:", error);
         return { lastUpdated: null, newlyAddedCount: 0 }; // Default on error
     }
 }
@@ -221,7 +222,7 @@ async function writeSummary(summary: DbSummaryData): Promise<void> {
     try {
         await fs.promises.writeFile(summaryFilePath, JSON.stringify(summary, null, 2));
     } catch (error) {
-        console.error("Error writing summary file:", error);
+        log.error("Error writing summary file:", error);
     }
 }
 
@@ -259,31 +260,31 @@ export async function markLastUpdatedInDb(count: number): Promise<void> {
  */
 export async function deleteProductsByPageRange(startPageId: number, endPageId: number): Promise<number> {
     return new Promise((resolve, reject) => {
-        console.log(` ${startPageId}, 종료 페이지: ${endPageId}`);
+        log.info(` ${startPageId}, 종료 페이지: ${endPageId}`);
 
         // 삭제 전 레코드 개수 확인 (디버깅용)
         db.get(`SELECT COUNT(*) as count FROM products WHERE pageId >= ? AND pageId <= ?`, 
                [endPageId, startPageId], 
                (err, row: { count: number }) => {
             if (err) {
-                console.error('[DB] 삭제 전 레코드 개수 확인 실패:', err);
+                log.error('[DB] 삭제 전 레코드 개수 확인 실패:', err);
             } else {
-                console.log(`[DB] 삭제 대상 레코드 개수: ${row.count}`);
+                log.info(`[DB] 삭제 대상 레코드 개수: ${row.count}`);
                 
                 // 마지막 한 페이지 남은 경우 특별 로깅
                 if (startPageId === endPageId) {
-                    console.log(`[DB] 마지막 한 페이지(${startPageId}) 삭제 시도 - 예상 레코드 수: ${row.count}`);
+                    log.info(`[DB] 마지막 한 페이지(${startPageId}) 삭제 시도 - 예상 레코드 수: ${row.count}`);
                     
                     // 삭제할 페이지 ID에 실제 데이터가 있는지 확인
                     db.all(`SELECT * FROM products WHERE pageId = ?`, [startPageId], (err, rows) => {
                         if (err) {
-                            console.error(`[DB] 페이지 ID ${startPageId}의 제품 조회 실패:`, err);
+                            log.error(`[DB] 페이지 ID ${startPageId}의 제품 조회 실패:`, err);
                         } else {
-                            console.log(`[DB] 페이지 ID ${startPageId}의 제품 개수: ${rows.length}`);
+                            log.info(`[DB] 페이지 ID ${startPageId}의 제품 개수: ${rows.length}`);
                             if (rows.length === 0) {
-                                console.warn(`[DB] 경고: 페이지 ID ${startPageId}에 제품이 없습니다.`);
+                                log.warn(`[DB] 경고: 페이지 ID ${startPageId}에 제품이 없습니다.`);
                             } else {
-                                console.log(`[DB] 페이지 ID ${startPageId}의 첫 번째 제품:`, JSON.stringify(rows[0]));
+                                log.info(`[DB] 페이지 ID ${startPageId}의 첫 번째 제품:`, JSON.stringify(rows[0]));
                             }
                         }
                     });
@@ -295,11 +296,11 @@ export async function deleteProductsByPageRange(startPageId: number, endPageId: 
         db.serialize(() => {
             db.run('BEGIN TRANSACTION', (err) => {
                 if (err) {
-                    console.error('[DB] 트랜잭션 시작 오류:', err);
+                    log.error('[DB] 트랜잭션 시작 오류:', err);
                     return reject(err);
                 }
 
-                console.log(`[DB] 삭제 쿼리 실행: DELETE FROM products WHERE pageId >= ${endPageId} AND pageId <= ${startPageId}`);
+                log.info(`[DB] 삭제 쿼리 실행: DELETE FROM products WHERE pageId >= ${endPageId} AND pageId <= ${startPageId}`);
                 
                 // products 테이블에서 삭제
                 db.run(
@@ -307,13 +308,13 @@ export async function deleteProductsByPageRange(startPageId: number, endPageId: 
                     [endPageId, startPageId], 
                     function(err) {
                         if (err) {
-                            console.error('[DB] products 테이블 삭제 실패:', err);
+                            log.error('[DB] products 테이블 삭제 실패:', err);
                             db.run('ROLLBACK', () => reject(err));
                             return;
                         }
                         
                         const productsDeleted = this.changes;
-                        console.log(`[DB] products 테이블에서 ${productsDeleted}개 레코드 삭제됨`);
+                        log.info(`[DB] products 테이블에서 ${productsDeleted}개 레코드 삭제됨`);
                         
                         // product_details 테이블에서도 삭제
                         db.run(
@@ -321,30 +322,30 @@ export async function deleteProductsByPageRange(startPageId: number, endPageId: 
                             [endPageId, startPageId], 
                             function(err) {
                                 if (err) {
-                                    console.error('[DB] product_details 테이블 삭제 실패:', err);
+                                    log.error('[DB] product_details 테이블 삭제 실패:', err);
                                     db.run('ROLLBACK', () => reject(err));
                                     return;
                                 }
 
                                 const detailsDeleted = this.changes;
-                                console.log(`[DB] product_details 테이블에서 ${detailsDeleted}개 레코드 삭제됨`);
+                                log.info(`[DB] product_details 테이블에서 ${detailsDeleted}개 레코드 삭제됨`);
                                 
                                 // 트랜잭션 커밋
                                 db.run('COMMIT', (err) => {
                                     if (err) {
-                                        console.error('[DB] 트랜잭션 커밋 실패:', err);
+                                        log.error('[DB] 트랜잭션 커밋 실패:', err);
                                         db.run('ROLLBACK', () => reject(err));
                                         return;
                                     }
                                     
-                                    console.log(`[DB] 삭제 트랜잭션 성공적으로 커밋됨, 총 ${productsDeleted}개 레코드 삭제`);
+                                    log.info(`[DB] 삭제 트랜잭션 성공적으로 커밋됨, 총 ${productsDeleted}개 레코드 삭제`);
                                     
                                     // 삭제 후 레코드 개수 확인 (디버깅용)
                                     db.get(`SELECT COUNT(*) as count FROM products`, [], (err, row: { count: number }) => {
                                         if (err) {
-                                            console.error('[DB] 삭제 후 전체 레코드 개수 확인 실패:', err);
+                                            log.error('[DB] 삭제 후 전체 레코드 개수 확인 실패:', err);
                                         } else {
-                                            console.log(`[DB] 삭제 후 남은 전체 레코드 개수: ${row.count}`);
+                                            log.info(`[DB] 삭제 후 남은 전체 레코드 개수: ${row.count}`);
                                         }
                                     });
                                     
@@ -372,7 +373,7 @@ export async function getMaxPageIdFromDb(): Promise<number> {
             }
             // maxPageId가 null인 경우(테이블이 비어있는 경우) 0 반환
             const maxPageId = row.maxPageId !== null ? row.maxPageId : 0;
-            console.log(`현재 최대 pageId: ${maxPageId}`);
+            log.info(`현재 최대 pageId: ${maxPageId}`);
             resolve(maxPageId);
         });
     });
@@ -418,19 +419,19 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
     const finalize = () => {
       db.run('COMMIT', (err) => {
         if (err) {
-          console.error('[DB] 트랜잭션 커밋 실패:', err);
+          log.error('[DB] 트랜잭션 커밋 실패:', err);
           db.run('ROLLBACK', () => {
             reject(err);
           });
           return;
         }
         
-        console.log(`[DB] 제품 저장 완료: ${added}개 추가, ${updated}개 업데이트, ${unchanged}개 변동 없음, ${failed}개 실패`);
+        log.info(`[DB] 제품 저장 완료: ${added}개 추가, ${updated}개 업데이트, ${unchanged}개 변동 없음, ${failed}개 실패`);
         
         // 신규 추가된 제품이 있으면 요약 정보 업데이트
         if (added > 0) {
           markLastUpdatedInDb(added).catch(err => {
-            console.error('[DB] 마지막 업데이트 정보 저장 중 오류:', err);
+            log.error('[DB] 마지막 업데이트 정보 저장 중 오류:', err);
           });
         }
         
@@ -447,7 +448,7 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
     // 트랜잭션 시작
     db.run('BEGIN TRANSACTION', (err) => {
       if (err) {
-        console.error('[DB] 트랜잭션 시작 실패:', err);
+        log.error('[DB] 트랜잭션 시작 실패:', err);
         return reject(err);
       }
       
@@ -483,7 +484,7 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
           product.indexInPage
         ], function(err) {
           if (err) {
-            console.error(`[DB] products 테이블 업데이트 실패 (URL: ${product.url}):`, err);
+            log.error(`[DB] products 테이블 업데이트 실패 (URL: ${product.url}):`, err);
           }
         });
       });
@@ -497,7 +498,7 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
           // 기존 제품 정보 확인
           db.get('SELECT * FROM product_details WHERE url = ?', [product.url], (err, existingProduct: any) => {
             if (err) {
-              console.error(`[DB] 제품 조회 중 오류 (URL: ${product.url}):`, err);
+              log.error(`[DB] 제품 조회 중 오류 (URL: ${product.url}):`, err);
               failed++;
               checkCompletion();
               return;
@@ -517,7 +518,7 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
               
               if (recordExists) {
                 // 디버그: 기존 레코드 발견
-                console.log(`[DB] 기존 제품 발견: ${product.url}`);
+                log.info(`[DB] 기존 제품 발견: ${product.url}`);
                 
                 // 변경사항 확인
                 const changes: string[] = [];
@@ -550,17 +551,17 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
                 
                 if (changes.length > 0) {
                   // 변경된 내용이 있으면 업데이트
-                  console.log(`[DB] 제품 업데이트: ${product.url} (${changes.length}개 필드 변경)`);
+                  log.info(`[DB] 제품 업데이트: ${product.url} (${changes.length}개 필드 변경)`);
                   duplicateInfo.push({ url: product.url, changes });
                   updated++;
                 } else {
                   // 변경 없음
-                  console.log(`[DB] 제품 변경 없음: ${product.url}`);
+                  log.info(`[DB] 제품 변경 없음: ${product.url}`);
                   unchanged++;
                 }
               } else {
                 // 새 제품 추가
-                console.log(`[DB] 새 제품 추가: ${product.url}`);
+                log.info(`[DB] 새 제품 추가: ${product.url}`);
                 added++;
               }
               
@@ -621,14 +622,14 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
                 applicationCategoriesStr
               ], function(err) {
                 if (err) {
-                  console.error(`[DB] 제품 상세 정보 저장 실패 (URL: ${product.url}):`, err);
+                  log.error(`[DB] 제품 상세 정보 저장 실패 (URL: ${product.url}):`, err);
                   failed++;
                 }
                 stmt.finalize();
                 checkCompletion();
               });
             } catch (error) {
-              console.error(`[DB] 제품 처리 중 오류 (URL: ${product.url}):`, error);
+              log.error(`[DB] 제품 처리 중 오류 (URL: ${product.url}):`, error);
               failed++;
               checkCompletion();
             }
@@ -677,7 +678,7 @@ export async function saveBasicProductsToDb(products: Product[]): Promise<number
           product.indexInPage
         ], function(err) {
           if (err) {
-            console.error(`[DB] 기본 제품 정보 저장 실패 (URL: ${(product as any).url}):`, err);
+            log.error(`[DB] 기본 제품 정보 저장 실패 (URL: ${(product as any).url}):`, err);
           }
         });
       }
@@ -686,13 +687,13 @@ export async function saveBasicProductsToDb(products: Product[]): Promise<number
 
       db.run('COMMIT', function(err) {
         if (err) {
-          console.error('[DB] 트랜잭션 커밋 실패:', err);
+          log.error('[DB] 트랜잭션 커밋 실패:', err);
           db.run('ROLLBACK');
           reject(err);
           return;
         }
         
-        console.log(`[DB] ${this.changes}개의 기본 제품 정보가 저장되었습니다.`);
+        log.info(`[DB] ${this.changes}개의 기본 제품 정보가 저장되었습니다.`);
         resolve(products.length);
       });
     });
@@ -703,9 +704,9 @@ export async function saveBasicProductsToDb(products: Product[]): Promise<number
 app.on('quit', () => {
     db.close((err) => {
         if (err) {
-            console.error('Error closing database:', err.message);
+            log.error('Error closing database:', err.message);
         } else {
-            console.log('Database connection closed.');
+            log.info('Database connection closed.');
         }
     });
 });
@@ -735,7 +736,7 @@ export async function fetchAndUpdateVendors(): Promise<{
 }> {
     return new Promise(async (resolve) => {
         try {
-            console.log('[DB] Starting vendors fetch and update from JSON API');
+            log.info('[DB] Starting vendors fetch and update from JSON API');
             
             // Use axios for HTTP requests
             // Import axios directly from node_modules
@@ -752,7 +753,7 @@ export async function fetchAndUpdateVendors(): Promise<{
             let hasMoreData = true;
             let pageCount = 0;
             const MAX_PAGES = 10; // 페이지 제한 증가
-            let previousKey: string | null = null;
+            
             let vendorCount = new Set<number>(); // Track unique vendors to detect duplicates
             let seenNextKeys = new Set<string>(); // Track previous next_key values
             
@@ -769,7 +770,7 @@ export async function fetchAndUpdateVendors(): Promise<{
                     apiUrl = 'https://on.dcl.csa-iot.org/dcl/vendorinfo/vendors';
                 }
                 
-                console.log(`[DB] Fetching vendors from: ${apiUrl} (page ${pageCount}/${MAX_PAGES})`);
+                log.info(`[DB] Fetching vendors from: ${apiUrl} (page ${pageCount}/${MAX_PAGES})`);
                 
                 let response: any;
                 try {
@@ -778,14 +779,14 @@ export async function fetchAndUpdateVendors(): Promise<{
                     
                     // Check if we have valid data
                     if (!response.data || !Array.isArray(response.data.vendorInfo)) {
-                        console.error('[DB] Unexpected API response format:', response.data);
+                        log.error('[DB] Unexpected API response format:', response.data);
                         // 응답 구조 로깅
-                        console.log('[DB] API response keys:', Object.keys(response.data || {}));
-                        console.log('[DB] Pagination info:', JSON.stringify(response.data?.pagination || {}));
+                        log.info('[DB] API response keys:', Object.keys(response.data || {}));
+                        log.info('[DB] Pagination info:', JSON.stringify(response.data?.pagination || {}));
                         break; // Exit pagination loop on error
                     }
                 } catch (apiError) {
-                    console.error(`[DB] API request failed for page ${pageCount}:`, apiError);
+                    log.error(`[DB] API request failed for page ${pageCount}:`, apiError);
                     break; // Exit pagination loop on error
                 }
                 
@@ -804,7 +805,7 @@ export async function fetchAndUpdateVendors(): Promise<{
                 
                 // If we didn't add any new unique vendors, we might be in a loop
                 if (vendorCount.size === previousVendorCount && pageCount > 1) {
-                    console.log(`[DB] No new unique vendors detected, possible pagination loop`);
+                    log.info(`[DB] No new unique vendors detected, possible pagination loop`);
                     hasMoreData = false;
                     break;
                 }
@@ -813,14 +814,14 @@ export async function fetchAndUpdateVendors(): Promise<{
                 vendors.push(...pageVendors);
                 totalFetched += pageVendors.length;
                 
-                console.log(`[DB] Fetched ${pageVendors.length} vendors from current page (total unique: ${vendorCount.size})`);
+                log.info(`[DB] Fetched ${pageVendors.length} vendors from current page (total unique: ${vendorCount.size})`);
                 
                 // Check for next page - safely access pagination property with optional chaining
                 const nextKeyFromResponse = response.data.pagination?.key || response.data.pagination?.next_key || null;
                 
                 // 이미 사용한 next_key 값을 재사용하는지 확인 (무한 루프 방지)
                 if (nextKeyFromResponse && seenNextKeys.has(nextKeyFromResponse)) {
-                    console.log(`[DB] Already seen next_key detected (${nextKeyFromResponse}), stopping pagination`);
+                    log.info(`[DB] Already seen next_key detected (${nextKeyFromResponse}), stopping pagination`);
                     hasMoreData = false;
                 } else if (nextKeyFromResponse) {
                     // 새로운 다음 키는 저장하고 계속 진행
@@ -829,23 +830,23 @@ export async function fetchAndUpdateVendors(): Promise<{
                         seenNextKeys.add(nextKey);
                     }
                     hasMoreData = true;
-                    console.log(`[DB] More data available, next_key: ${nextKey}`);
+                    log.info(`[DB] More data available, next_key: ${nextKey}`);
                 } else {
                     // 더 이상 다음 페이지가 없음
                     nextKey = null;
                     hasMoreData = false;
-                    console.log(`[DB] No more vendor data available`);
+                    log.info(`[DB] No more vendor data available`);
                 }
                 
                 if (hasMoreData) {
                     // 중복 로그 방지
                 } else {
-                    console.log(`[DB] No more vendor data available or max pages reached (${pageCount}/${MAX_PAGES})`);
+                    log.info(`[DB] No more vendor data available or max pages reached (${pageCount}/${MAX_PAGES})`);
                 }
             }
             
             if (vendors.length === 0) {
-                console.warn('[DB] No vendors found in the API response');
+                log.warn('[DB] No vendors found in the API response');
                 resolve({
                     added: 0,
                     updated: 0,
@@ -855,7 +856,7 @@ export async function fetchAndUpdateVendors(): Promise<{
                 return;
             }
             
-            console.log(`[DB] Found ${vendors.length} vendors in total (${vendorCount.size} unique)`);
+            log.info(`[DB] Found ${vendors.length} vendors in total (${vendorCount.size} unique)`);
             
             // Insert or update the vendors in the database
             // Use a transaction for better performance and reliability
@@ -879,7 +880,7 @@ export async function fetchAndUpdateVendors(): Promise<{
                             // First, check if the vendor already exists
                             db.get('SELECT vendorId FROM vendors WHERE vendorId = ?', [vendor.vendorId], (err: Error | null, row: any) => {
                                 if (err) {
-                                    console.error(`[DB] Error checking if vendor exists: ${err.message}`);
+                                    log.error(`[DB] Error checking if vendor exists: ${err.message}`);
                                     processedCount++;
                                     return;
                                 }
@@ -890,7 +891,7 @@ export async function fetchAndUpdateVendors(): Promise<{
                                     vendor.companyLegalName,
                                     function(this: { changes: number }, err: Error | null) {
                                         if (err) {
-                                            console.error(`[DB] Error inserting/updating vendor: ${err.message}`);
+                                            log.error(`[DB] Error inserting/updating vendor: ${err.message}`);
                                         } else {
                                             // If changes were made, it could be an insert or update
                                             if (this.changes > 0) {
@@ -910,7 +911,7 @@ export async function fetchAndUpdateVendors(): Promise<{
                                             
                                             db.run('COMMIT', function(err: Error | null) {
                                                 if (err) {
-                                                    console.error('[DB] Error committing transaction:', err);
+                                                    log.error('[DB] Error committing transaction:', err);
                                                     db.run('ROLLBACK');
                                                     rejectTransaction(err);
                                                     return;
@@ -926,14 +927,14 @@ export async function fetchAndUpdateVendors(): Promise<{
                     });
                 });
                 
-                console.log(`[DB] Vendors update completed: ${added} added, ${updated} updated, total ${vendors.length}`);
+                log.info(`[DB] Vendors update completed: ${added} added, ${updated} updated, total ${vendors.length}`);
                 resolve({
                     added,
                     updated,
                     total: vendors.length
                 });
             } catch (dbError) {
-                console.error('[DB] Database error during vendor update:', dbError);
+                log.error('[DB] Database error during vendor update:', dbError);
                 resolve({
                     added: 0,
                     updated: 0, 
@@ -942,7 +943,7 @@ export async function fetchAndUpdateVendors(): Promise<{
                 });
             }
         } catch (error) {
-            console.error('[DB] Error fetching and updating vendors:', error);
+            log.error('[DB] Error fetching and updating vendors:', error);
             resolve({
                 added: 0,
                 updated: 0,
@@ -961,7 +962,7 @@ export async function getVendors(): Promise<Vendor[]> {
     return new Promise((resolve, reject) => {
         db.all('SELECT * FROM vendors ORDER BY vendorId', (err, rows) => {
             if (err) {
-                console.error('[DB] Error getting vendors:', err);
+                log.error('[DB] Error getting vendors:', err);
                 reject(err);
                 return;
             }

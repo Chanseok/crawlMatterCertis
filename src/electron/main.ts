@@ -5,6 +5,7 @@ import fs from 'fs';
 import XLSX from 'xlsx';
 import { getStaticData, pollResources } from './resourceManager.js';
 import { getPreloadPath, getUIPath } from './pathResolver.js';
+import log from './logger.js';
 import {
     initializeDatabase,
     getProductsFromDb,
@@ -68,8 +69,8 @@ const IPC_CHANNELS = {
 app.on('ready', async () => {
     // 디버깅을 위해 preload 경로 로깅
     const preloadPath = getPreloadPath();
-    console.log('Using preload script path:', preloadPath);
-    console.log('File exists check will be in main process logs');
+    log.info('Using preload script path:', preloadPath);
+    log.info('File exists check will be in main process logs');
 
     const mainWindow = new BrowserWindow({
         width: 800,
@@ -84,7 +85,7 @@ app.on('ready', async () => {
 
     // 메인 윈도우 닫힘 이벤트 처리
     mainWindow.on('close', (_e) => {
-        console.log('Main window close event triggered');
+        log.info('Main window close event triggered');
         
         // 실행 중인 크롤링 작업이 있다면 중지 시도
         stopCrawling();
@@ -96,9 +97,9 @@ app.on('ready', async () => {
     // Initialize the database first
     try {
         await initializeDatabase();
-        console.log('Database initialized successfully.');
+        log.info('Database initialized successfully.');
     } catch (error) {
-        console.error('Failed to initialize database:', error);
+        log.error('Failed to initialize database:', error);
         app.quit();
         return;
     }
@@ -106,10 +107,10 @@ app.on('ready', async () => {
     // getUIPath 함수 반환값에 따라 loadURL 또는 loadFile 호출
     const uiPath = getUIPath();
     if (uiPath.startsWith('http')) {
-        console.log('Loading URL:', uiPath);
+        log.info('Loading URL:', uiPath);
         mainWindow.loadURL(uiPath);
     } else {
-        console.log('Loading file:', uiPath);
+        log.info('Loading file:', uiPath);
         mainWindow.loadFile(uiPath);
     }
 
@@ -134,37 +135,37 @@ app.on('ready', async () => {
 
     // 데이터베이스 핸들러
     ipcMain.handle(IPC_CHANNELS.GET_PRODUCTS, async (_event, args) => {
-        console.log('[IPC] getProducts called with args:', args);
+        log.info('[IPC] getProducts called with args:', args);
         const { page, limit } = args || {};
         return await getProductsFromDb(page, limit);
     });
 
     ipcMain.handle(IPC_CHANNELS.GET_PRODUCT_BY_ID, async (_event, id) => {
-        console.log('[IPC] getProductById called with id:', id);
+        log.info('[IPC] getProductById called with id:', id);
         return await getProductByIdFromDb(id);
     });
 
     ipcMain.handle(IPC_CHANNELS.SEARCH_PRODUCTS, async (_event, args) => {
-        console.log('[IPC] searchProducts called with args:', args);
+        log.info('[IPC] searchProducts called with args:', args);
         const { query, page, limit } = args || {};
         return await searchProductsInDb(query, page, limit);
     });
 
     ipcMain.handle(IPC_CHANNELS.GET_DATABASE_SUMMARY, async (_event) => {
-        console.log('[IPC] getDatabaseSummary called');
+        log.info('[IPC] getDatabaseSummary called');
         return await getDatabaseSummaryFromDb();
     });
 
     ipcMain.handle(IPC_CHANNELS.MARK_LAST_UPDATED, async (_event, count) => {
-        console.log('[IPC] markLastUpdated called with count:', count);
+        log.info('[IPC] markLastUpdated called with count:', count);
         return await markLastUpdatedInDb(count);
     });
 
     // 크롤링 핸들러
     ipcMain.handle(IPC_CHANNELS.START_CRAWLING, async (_event, args) => {
         // 매개변수 디버깅 로깅 추가
-        console.log('[IPC] startCrawling called with args (raw):', args);
-        console.log('[IPC] startCrawling args type:', typeof args);
+        log.info('[IPC] startCrawling called with args (raw):', args);
+        log.info('[IPC] startCrawling args type:', typeof args);
         
         // 안전한 매개변수 처리
         let mode: AppMode = 'development'; // 기본값
@@ -177,38 +178,38 @@ app.on('ready', async () => {
                 // 설정 데이터 추출 및 업데이트
                 if ('config' in args && args.config) {
                     const newConfig = args.config;
-                    console.log('[IPC] Updating config from UI:', JSON.stringify(newConfig));
+                    log.info('[IPC] Updating config from UI:', JSON.stringify(newConfig));
                     
                     // autoAddToLocalDB 값 명시적 로깅
                     if (newConfig.autoAddToLocalDB !== undefined) {
-                        console.log(`[IPC] autoAddToLocalDB setting from UI: ${newConfig.autoAddToLocalDB}`);
+                        log.info(`[IPC] autoAddToLocalDB setting from UI: ${newConfig.autoAddToLocalDB}`);
                     }
                     configManager.updateConfig(newConfig); // Update central config store
                 }
             }
         } catch (err) {
-            console.error('[IPC] Error parsing startCrawling args or updating config:', err);
+            log.error('[IPC] Error parsing startCrawling args or updating config:', err);
             // Optionally, return an error if config update itself fails critically
         }
         
         // 항상 최신 설정 적용 보장
         const currentConfigForCrawling = configManager.getConfig();
-        console.log(`[IPC] Start crawling requested in ${mode} mode with effective config:`, currentConfigForCrawling);
+        log.info(`[IPC] Start crawling requested in ${mode} mode with effective config:`, currentConfigForCrawling);
         
         try {
             // 항상 시작 전 상태 확인 수행
             // '상태 체크'를 누르지 않고 '크롤링'을 누르는 경우에도
             // 사이트 로컬 비교 패널에 올바른 정보를 표시하기 위함
-            console.log('[IPC] Performing mandatory status check before crawling...');
+            log.info('[IPC] Performing mandatory status check before crawling...');
             let statusSummary;
             try {
                 statusSummary = await checkCrawlingStatus();
-                console.log('[IPC] Pre-crawling status check completed successfully');
+                log.info('[IPC] Pre-crawling status check completed successfully');
                 // 상태 정보가 UI로 전송될 수 있도록 이벤트 발생
                 // 이 이벤트는 UI에서 사이트 로컬 비교 패널 업데이트에 사용됨
                 crawlerEvents.emit('crawlingStatusSummary', statusSummary);
             } catch (statusError) {
-                console.error('[IPC] Error during mandatory pre-crawling status check:', statusError);
+                log.error('[IPC] Error during mandatory pre-crawling status check:', statusError);
                 // 상태 체크에 실패해도 크롤링 자체는 진행시킴
                 // 하지만 이런 경우는 크롤링 범위 파악에 오류가 발생할 수 있음
             }
@@ -219,24 +220,24 @@ app.on('ready', async () => {
             // 상태 체크 결과를 함께 반환
             return { success, status: statusSummary };
         } catch (error) {
-            console.error('[IPC] Error during crawling:', error);
+            log.error('[IPC] Error during crawling:', error);
             return { success: false, error: String(error) };
         }
     });
 
     ipcMain.handle(IPC_CHANNELS.STOP_CRAWLING, async (_event) => {
-        console.log('[IPC] stopCrawling called');
+        log.info('[IPC] stopCrawling called');
         try {
             const success = stopCrawling();
             return { success };
         } catch (error) {
-            console.error('[IPC] Error stopping crawling:', error);
+            log.error('[IPC] Error stopping crawling:', error);
             return { success: false, error: String(error) };
         }
     });
 
     ipcMain.handle(IPC_CHANNELS.EXPORT_TO_EXCEL, async (_event, args) => {
-        console.log('[IPC] exportToExcel called with args:', args);
+        log.info('[IPC] exportToExcel called with args:', args);
         try {
             // 다운로드 폴더 기본 경로 가져오기
             const userDownloadFolder = app.getPath('downloads');
@@ -390,93 +391,93 @@ app.on('ready', async () => {
             
             try {
                 XLSX.writeFile(workbook, filePath);
-                console.log(`Excel 파일이 성공적으로 내보내졌습니다: ${filePath}`);
+                log.info(`Excel 파일이 성공적으로 내보내졌습니다: ${filePath}`);
                 return { success: true, path: filePath };
             } catch (writeError) {
-                console.error('[IPC] Error writing Excel file:', writeError);
+                log.error('[IPC] Error writing Excel file:', writeError);
                 return { success: false, error: `파일 저장 중 오류 발생: ${String(writeError)}` };
             }
         } catch (error) {
-            console.error('[IPC] Error exporting to Excel:', error);
+            log.error('[IPC] Error exporting to Excel:', error);
             return { success: false, error: String(error) };
         }
     });
 
     ipcMain.handle(IPC_CHANNELS.CHECK_CRAWLING_STATUS, async (_event) => {
-        console.log('[IPC] checkCrawlingStatus called');
+        log.info('[IPC] checkCrawlingStatus called');
         try {
             const status = await checkCrawlingStatus(); // await 추가하여 Promise가 resolve되도록 수정
             return { success: true, status };
         } catch (error) {
-            console.error('[IPC] Error checking crawling status:', error);
+            log.error('[IPC] Error checking crawling status:', error);
             return { success: false, error: String(error) };
         }
     });
 
     // 설정 관련 핸들러 등록
     ipcMain.handle(IPC_CHANNELS.GET_CONFIG, async () => {
-        console.log('[IPC] getConfig called');
+        log.info('[IPC] getConfig called');
         try {
             const config = configManager.getConfig();
             return { success: true, config };
         } catch (error) {
-            console.error('[IPC] Error getting config:', error);
+            log.error('[IPC] Error getting config:', error);
             return { success: false, error: String(error) };
         }
     });
 
     ipcMain.handle(IPC_CHANNELS.UPDATE_CONFIG, async (_event, partialConfig) => {
-        console.log('[IPC] updateConfig called with:', partialConfig);
+        log.info('[IPC] updateConfig called with:', partialConfig);
         try {
             const updatedConfig = configManager.updateConfig(partialConfig);
             return { success: true, config: updatedConfig };
         } catch (error) {
-            console.error('[IPC] Error updating config:', error);
+            log.error('[IPC] Error updating config:', error);
             return { success: false, error: String(error) };
         }
     });
 
     ipcMain.handle(IPC_CHANNELS.RESET_CONFIG, async () => {
-        console.log('[IPC] resetConfig called');
+        log.info('[IPC] resetConfig called');
         try {
             const resetConfig = configManager.resetConfig();
             return { success: true, config: resetConfig };
         } catch (error) {
-            console.error('[IPC] Error resetting config:', error);
+            log.error('[IPC] Error resetting config:', error);
             return { success: false, error: String(error) };
         }
     });
     
     // 페이지 범위로 레코드 삭제 핸들러 추가
     ipcMain.handle(IPC_CHANNELS.DELETE_RECORDS_BY_PAGE_RANGE, async (_event, args) => {
-        console.log('[BACKEND-IPC] deleteRecordsByPageRange 호출됨, args:', JSON.stringify(args));
+        log.info('[BACKEND-IPC] deleteRecordsByPageRange 호출됨, args:', JSON.stringify(args));
         try {
             const { startPageId, endPageId } = args || {};
             
             if (typeof startPageId !== 'number' || typeof endPageId !== 'number') {
-                console.error('[BACKEND-IPC] 오류: 시작 및 종료 페이지 ID가 숫자가 아님');
+                log.error('[BACKEND-IPC] 오류: 시작 및 종료 페이지 ID가 숫자가 아님');
                 throw new Error('시작 및 종료 페이지 ID가 숫자로 제공되어야 합니다.');
             }
             
-            console.log(`[BACKEND-IPC] 삭제 범위 검증: startPageId=${startPageId}, endPageId=${endPageId}`);
+            log.info(`[BACKEND-IPC] 삭제 범위 검증: startPageId=${startPageId}, endPageId=${endPageId}`);
             
             if (startPageId < endPageId) {
-                console.error('[BACKEND-IPC] 오류: 시작 페이지가 종료 페이지보다 작음');
+                log.error('[BACKEND-IPC] 오류: 시작 페이지가 종료 페이지보다 작음');
                 throw new Error('시작 페이지 ID는 종료 페이지 ID보다 크거나 같아야 합니다.');
             }
             
             // 특별 케이스: 마지막 한 페이지 남은 경우 (startPageId === endPageId) 로그 추가
             if (startPageId === endPageId) {
-                console.log(`[BACKEND-IPC] 마지막 한 페이지 삭제 시도 감지: pageId=${startPageId}`);
+                log.info(`[BACKEND-IPC] 마지막 한 페이지 삭제 시도 감지: pageId=${startPageId}`);
             }
             
             // 데이터베이스에서 페이지 범위로 레코드 삭제 함수 호출
             const deletedCount = await deleteProductsByPageRange(startPageId, endPageId);
-            console.log(`[BACKEND-IPC] 데이터베이스에서 ${deletedCount}개 레코드 삭제됨`);
+            log.info(`[BACKEND-IPC] 데이터베이스에서 ${deletedCount}개 레코드 삭제됨`);
             
             // 삭제 후 최대 페이지 ID 조회
             const maxPageIdResult = await getMaxPageIdFromDb();
-            console.log(`[BACKEND-IPC] 삭제 후 최대 페이지 ID: ${maxPageIdResult}`);
+            log.info(`[BACKEND-IPC] 삭제 후 최대 페이지 ID: ${maxPageIdResult}`);
             
             return {
                 success: true,
@@ -484,7 +485,7 @@ app.on('ready', async () => {
                 maxPageId: maxPageIdResult
             };
         } catch (error) {
-            console.error(`[BACKEND-IPC] deleteRecordsByPageRange 오류:`, error);
+            log.error(`[BACKEND-IPC] deleteRecordsByPageRange 오류:`, error);
             return {
                 success: false,
                 deletedCount: 0,
@@ -495,7 +496,7 @@ app.on('ready', async () => {
 
     // 제품 수동 저장 핸들러 추가
     ipcMain.handle(IPC_CHANNELS.SAVE_PRODUCTS_TO_DB, async (_event, products) => {
-        console.log('[IPC] saveProductsToDB called with products count:', products?.length || 0);
+        log.info('[IPC] saveProductsToDB called with products count:', products?.length || 0);
         try {
             if (!products || !Array.isArray(products) || products.length === 0) {
                 return {
@@ -507,7 +508,7 @@ app.on('ready', async () => {
             const { saveProductsToDb } = await import('./database.js');
             const saveResult = await saveProductsToDb(products);
             
-            console.log(`[IPC] Products saved to DB - Added: ${saveResult.added}, Updated: ${saveResult.updated}, Unchanged: ${saveResult.unchanged}, Failed: ${saveResult.failed}`);
+            log.info(`[IPC] Products saved to DB - Added: ${saveResult.added}, Updated: ${saveResult.updated}, Unchanged: ${saveResult.unchanged}, Failed: ${saveResult.failed}`);
             
             // 저장 결과 이벤트 발생 (UI 로 전달)
             return {
@@ -515,7 +516,7 @@ app.on('ready', async () => {
                 ...saveResult
             };
         } catch (error) {
-            console.error('[IPC] Error saving products to DB:', error);
+            log.error('[IPC] Error saving products to DB:', error);
             return {
                 success: false,
                 error: String(error)
@@ -525,13 +526,13 @@ app.on('ready', async () => {
 
     // Vendor 관련 IPC 핸들러
     ipcMain.handle(IPC_CHANNELS.FETCH_AND_UPDATE_VENDORS, async (_event) => {
-        console.log('[IPC] fetchAndUpdateVendors called');
+        log.info('[IPC] fetchAndUpdateVendors called');
         try {
             const result = await fetchAndUpdateVendors();
-            console.log(`[IPC] fetchAndUpdateVendors result: ${result.added} added, ${result.updated} updated, total ${result.total}`);
+            log.info(`[IPC] fetchAndUpdateVendors result: ${result.added} added, ${result.updated} updated, total ${result.total}`);
             return result;
         } catch (error) {
-            console.error('[IPC] Error fetching and updating vendors:', error);
+            log.error('[IPC] Error fetching and updating vendors:', error);
             return {
                 success: false,
                 added: 0,
@@ -543,16 +544,16 @@ app.on('ready', async () => {
     });
 
     ipcMain.handle(IPC_CHANNELS.GET_VENDORS, async (_event) => {
-        console.log('[IPC] getVendors called');
+        log.info('[IPC] getVendors called');
         try {
             const vendors = await getVendors();
-            console.log(`[IPC] getVendors returned ${vendors.length} vendors`);
+            log.info(`[IPC] getVendors returned ${vendors.length} vendors`);
             return { 
                 success: true, 
                 vendors 
             };
         } catch (error) {
-            console.error('[IPC] Error getting vendors:', error);
+            log.error('[IPC] Error getting vendors:', error);
             return { 
                 success: false, 
                 vendors: [],
@@ -598,20 +599,20 @@ function setupCrawlerEvents(mainWindow: BrowserWindow): void {
     
     // DB 저장 완료 이벤트 (추가)
     crawlerEvents.on('dbSaveComplete', (data: any) => {
-        console.log('[MAIN] DB Save Complete event received:', data);
+        log.info('[MAIN] DB Save Complete event received:', data);
         mainWindow.webContents.send('dbSaveComplete', data);
     });
     
     // DB 저장 스킵 이벤트 (추가)
     crawlerEvents.on('dbSaveSkipped', (data: any) => {
-        console.log('[MAIN] DB Save Skipped event received:', data);
+        log.info('[MAIN] DB Save Skipped event received:', data);
         mainWindow.webContents.send('dbSaveSkipped', data);
     });
 }
 
 // 앱 종료 준비 함수
 function prepareForAppTermination(): void {
-    console.log('Preparing for app termination...');
+    log.info('Preparing for app termination...');
     
     try {
         // 실행 중인 크롤링 작업 중지 시도
@@ -619,15 +620,15 @@ function prepareForAppTermination(): void {
         
         // 기타 실행 중인 프로세스나 리소스 정리
         // 예: 데이터베이스 연결 해제, 임시 파일 정리 등
-        console.log('Cleanup completed successfully');
+        log.info('Cleanup completed successfully');
     } catch (error) {
-        console.error('Error during app termination cleanup:', error);
+        log.error('Error during app termination cleanup:', error);
     }
 }
 
 // 앱이 종료되기 직전 이벤트
 app.on('before-quit', (_event) => {
-    console.log('Before-quit event triggered');
+    log.info('Before-quit event triggered');
     
     // 종료 전 정리 작업 수행
     prepareForAppTermination();
@@ -636,7 +637,7 @@ app.on('before-quit', (_event) => {
 // Quit when all windows are closed (modified to also quit on macOS)
 app.on('window-all-closed', () => {
     // 모든 창이 닫힐 때 앱을 완전히 종료 (macOS에서도)
-    console.log('All windows closed, quitting application');
+    log.info('All windows closed, quitting application');
     app.quit();
 });
 
