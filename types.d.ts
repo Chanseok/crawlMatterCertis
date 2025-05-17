@@ -99,7 +99,7 @@ export type CrawlingProgress = {
 export type CrawlingStatusSummary = {
     dbLastUpdated: Date | null;
     dbProductCount: number;
-    siteTotalPages: number;
+    siteTotalPages?: number; // 사이트에서 가져온 총 페이지 수
     siteProductCount: number;
     diff: number;
     needCrawling: boolean;
@@ -110,6 +110,7 @@ export type CrawlingStatusSummary = {
     estimatedTotalTime?: number; 
     userPageLimit?: number; 
     error?: string; 
+    actualTargetPageCountForStage1?: number; // 1단계 실제 크롤링 대상 페이지 수
 };
 
 // 데이터베이스 요약 정보 타입

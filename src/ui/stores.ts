@@ -76,6 +76,7 @@ export interface CrawlingStatusSummary {
   diff: number;
   needCrawling: boolean;
   crawlingRange: { startPage: number; endPage: number };
+  actualTargetPageCountForStage1?: number; // 1단계 실제 크롤링 대상 페이지 수
 }
 
 // map의 타입은 object만 허용하므로 null 대신 빈 객체 사용

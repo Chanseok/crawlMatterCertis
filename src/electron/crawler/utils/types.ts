@@ -50,6 +50,7 @@ export interface CrawlingSummary {
     
     // 페이지 범위 선택 기능(CRAWL-RANGE-001)에 필요한 추가 속성
     selectedPageCount?: number;        // 선택된 페이지 수
+    actualTargetPageCountForStage1?: number; // 1단계 실제 크롤링 대상 페이지 수 (추가)
     estimatedProductCount?: number;    // 예상 제품 수집 개수
     estimatedTotalTime?: number;       // 예상 소요 시간 (밀리초)
     userPageLimit?: number;            // 사용자 지정 페이지 제한

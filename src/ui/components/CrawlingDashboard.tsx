@@ -54,8 +54,10 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
   // 3. 설정된 pageRangeLimit 사용
   // 4. API 응답의 totalPages 사용
   // 5. 기본값 1 사용
-  const targetPageCount = statusData.targetPageCount || 
-    (crawlingRange ? (crawlingRange.endPage - crawlingRange.startPage + 1) : 0) ||
+  const targetPageCount = 
+    (progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || // 1단계일때 실제 크롤링 대상 페이지 사용
+    statusData.targetPageCount || 
+    (crawlingRange ? (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 0) ||
     config.pageRangeLimit || 
     progress.totalPages || 
     statusSummary?.siteTotalPages || 
@@ -534,13 +536,13 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
                     return displaySuccessCount;
                   })()}
                 </span>/{statusSummary?.crawlingRange ? 
-                          (statusSummary.crawlingRange.endPage - statusSummary.crawlingRange.startPage + 1) : 
+                          (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
                           targetPageCount}
                 {' '}페이지 ({Math.round(calculatedPercentage)}%)
               </span>
               <span>
                 총 페이지 수: {statusSummary?.crawlingRange ? 
-                          (statusSummary.crawlingRange.endPage - statusSummary.crawlingRange.startPage + 1) : 
+                          (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
                           targetPageCount}
               </span>
             </div>
@@ -555,7 +557,7 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
             <p className={`text-lg sm:text-xl font-bold ${animatedDigits.processedItems ? 'animate-pulse-once' : ''}`}>
               {isBeforeStatusCheck ? `상태확인 전` :
                 isAfterStatusCheck ? `0 / ${statusSummary?.crawlingRange ? 
-                                       (statusSummary.crawlingRange.endPage - statusSummary.crawlingRange.startPage + 1) : 
+                                       (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
                                        statusData.targetPageCount || targetPageCount}` :
                 status === 'running' && progress.currentStage === 1 ? 
                   (() => {
@@ -581,8 +583,10 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
                     }
                     
                     // 크롤링 중에는 최신 crawlingRange 기반으로 계산된 페이지 수 사용
-                    const actualTargetPageCount = statusSummary?.crawlingRange ? 
-                      (statusSummary.crawlingRange.endPage - statusSummary.crawlingRange.startPage + 1) : 
+                    const actualTargetPageCount = 
+                      (progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || // 1단계일때 실제 크롤링 대상 페이지 사용
+                      statusSummary?.crawlingRange ? 
+                      (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
                       targetPageCount;
                     
                     return `${successCount} / ${actualTargetPageCount}`;
@@ -663,8 +667,10 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
           <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-100 dark:border-blue-800 text-sm">
             <div className="font-medium text-blue-800 dark:text-blue-300 mb-1">진행 정보:</div>
             <ul className="text-xs text-gray-700 dark:text-gray-300">
-              <li>• 총 페이지 수: {statusSummary?.crawlingRange ? 
-                                 (statusSummary.crawlingRange.endPage - statusSummary.crawlingRange.startPage + 1) : 
+              <li>• 총 페이지 수: {
+                (progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || // 1단계일때 실제 크롤링 대상 페이지 사용
+                statusSummary?.crawlingRange ? 
+                                 (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
                                  statusData.targetPageCount || targetPageCount}페이지</li>
               <li>• 현재까지 성공한 페이지: {(() => {
                 // 성공한 페이지 수 계산 - 모든 소스에서 가장 높은 값을 사용
@@ -701,8 +707,10 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
         {progress.message && (
           <div className="mt-4 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-100 dark:border-blue-800 text-sm text-blue-800 dark:text-blue-300">
             {progress.currentStage === 1 && targetPageCount ?
-              `${progress.message} (목표 페이지: ${statusSummary?.crawlingRange ? 
-                                       (statusSummary.crawlingRange.endPage - statusSummary.crawlingRange.startPage + 1) : 
+              `${progress.message} (목표 페이지: ${ 
+                (progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || // 1단계일때 실제 크롤링 대상 페이지 사용
+                statusSummary?.crawlingRange ? 
+                                       (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
                                        targetPageCount}페이지)` :
               progress.message
             }
@@ -790,8 +798,9 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
                   {Math.round(progress.processedItems || 0)} / {
                     progress.totalItems ||
                     statusSummary?.siteProductCount ||
-                    ((statusSummary?.crawlingRange ? 
-                      (statusSummary.crawlingRange.endPage - statusSummary.crawlingRange.startPage + 1) : 
+                    (((progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || // 1단계일때 실제 크롤링 대상 페이지 사용
+                      statusSummary?.crawlingRange ? 
+                      (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
                       targetPageCount) * (config.productsPerPage || 12))
                   } 제품 수집 완료
                 </div>

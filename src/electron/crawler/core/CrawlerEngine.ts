@@ -327,6 +327,9 @@ export class CrawlerEngine {
         ? crawlingRange.startPage - crawlingRange.endPage + 1 
         : 0;
       
+      // actualTargetPageCountForStage1 계산 (selectedPageCount와 동일하게 사용)
+      const actualTargetPageCountForStage1 = selectedPageCount;
+
       let estimatedProductCount = 0;
       if (selectedPageCount > 0) {
         if (selectedPageCount === 1 && totalPages === 1) {
@@ -362,6 +365,7 @@ export class CrawlerEngine {
         needCrawling: siteProductCount > dbSummary.productCount && selectedPageCount > 0,
         crawlingRange,
         selectedPageCount,
+        actualTargetPageCountForStage1, // 추가된 필드
         estimatedProductCount,
         estimatedTotalTime,
         userPageLimit: userPageLimit > 0 ? userPageLimit : undefined,
@@ -383,6 +387,7 @@ export class CrawlerEngine {
         needCrawling: false,
         crawlingRange: { startPage: 0, endPage: 0 },
         selectedPageCount: 0,
+        actualTargetPageCountForStage1: 0, // 오류 발생 시 기본값
         estimatedProductCount: 0,
         estimatedTotalTime: 0,
         lastPageProductCount: 0

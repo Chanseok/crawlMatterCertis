@@ -63,7 +63,7 @@ export const PageProgressDisplay: React.FC = () => {
   
   // 크롤링 범위 계산 (statusSummary에 있는 경우)
   const crawlingRange = statusSummary?.crawlingRange;
-  const calculatedPageCount = crawlingRange ? (crawlingRange.endPage - crawlingRange.startPage + 1) : 0;
+  const calculatedPageCount = crawlingRange ? (crawlingRange.startPage - crawlingRange.endPage + 1) : 0;
   
   // 콘솔 로그 추가 - 계산된 값 확인용
   console.log('PageProgressDisplay - 계산된 페이지 값:', {
@@ -74,7 +74,12 @@ export const PageProgressDisplay: React.FC = () => {
   });
   
   // 기본값으로 계산된 페이지 범위, statusStore의 targetPageCount, 또는 config의 pageRangeLimit 사용
-  let displayTotalPages: number | string = calculatedPageCount || status.targetPageCount || config.pageRangeLimit || '-';
+  let displayTotalPages: number | string = 
+    (progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || // 1단계일때 실제 크롤링 대상 페이지 사용
+    calculatedPageCount || 
+    status.targetPageCount || 
+    config.pageRangeLimit || 
+    '-';
   
   // 크롤링 상태에 따른 표시 설정
   // 1단계 제품 정보 수집 단계에서는 사용자가 설정한 수집 대상 페이지 범위를 우선적으로 표시
@@ -110,7 +115,9 @@ export const PageProgressDisplay: React.FC = () => {
   // 기타 크롤링 상태 (예: 2단계 진행 중, 전체 완료 등)에서는 기존 로직을 따릅니다.
   else if (crawlingStatus === 'running' || crawlingStatus === 'completed') {
     // 상태 저장소에서 targetPageCount 사용 (상태 체크 버튼 클릭 시 설정됨)
-    if (status.targetPageCount && status.targetPageCount > 0) {
+    if (statusSummary?.actualTargetPageCountForStage1 && progress.currentStage === 1) { // 1단계일때 실제 크롤링 대상 페이지 사용
+      displayTotalPages = statusSummary.actualTargetPageCountForStage1;
+    } else if (status.targetPageCount && status.targetPageCount > 0) {
       displayTotalPages = status.targetPageCount;
     }
     // 상태 요약 정보가 있는 경우 (상태 체크 후)
