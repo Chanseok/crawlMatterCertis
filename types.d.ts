@@ -221,6 +221,9 @@ export type MethodParamsMapping = {
     'deleteRecordsByPageRange': { startPageId: number; endPageId: number };
     // 제품 수동 저장 메서드 추가
     'saveProductsToDB': MatterProduct[];
+    // Vendor 관련 메서드
+    'fetchAndUpdateVendors': void;
+    'getVendors': void;
 };
 
 // 메서드 반환값 맵핑
@@ -249,8 +252,28 @@ export type MethodReturnMapping = {
         unchanged?: number; 
         failed?: number; 
         error?: string;
-        duplicateInfo?: any;
     };
+    // Vendor 관련 메서드 반환 타입
+    'fetchAndUpdateVendors': {
+        success?: boolean;
+        added: number;
+        updated: number;
+        total: number;
+        error?: string;
+    };
+    'getVendors': {
+        success: boolean;
+        vendors: Vendor[];
+        error?: string;
+    };
+};
+
+// Vendor 타입 정의
+export type Vendor = {
+    vendorId: string;
+    vendorNumber: number;
+    vendorName: string;
+    companyLegalName: string;
 };
 
 export type UnsubscribeFunction = () => void;
@@ -291,17 +314,21 @@ export interface IElectronAPI extends IPlatformAPI {
     getProducts: (params: MethodParamsMapping['getProducts']) => Promise<MethodReturnMapping['getProducts']>;
     getProductById: (id: MethodParamsMapping['getProductById']) => Promise<MethodReturnMapping['getProductById']>;
     getDatabaseSummary: () => Promise<MethodReturnMapping['getDatabaseSummary']>;
-    checkCrawlingStatus: () => Promise<MethodReturnMapping['checkCrawlingStatus']>;
     searchProducts: (params: MethodParamsMapping['searchProducts']) => Promise<MethodReturnMapping['searchProducts']>;
-    markLastUpdated: (timestamp: MethodParamsMapping['markLastUpdated']) => Promise<MethodReturnMapping['markLastUpdated']>;
+    markLastUpdated: (count: MethodParamsMapping['markLastUpdated']) => Promise<MethodReturnMapping['markLastUpdated']>;
+    checkCrawlingStatus: () => Promise<MethodReturnMapping['checkCrawlingStatus']>;
     
-    // 설정 관련 메서드 추가
+    // 설정 관련 API
     getConfig: () => Promise<MethodReturnMapping['crawler:get-config']>;
     updateConfig: (config: MethodParamsMapping['crawler:update-config']) => Promise<MethodReturnMapping['crawler:update-config']>;
-    resetConfig: (config: MethodParamsMapping['crawler:reset-config']) => Promise<MethodReturnMapping['crawler:reset-config']>;
+    resetConfig: () => Promise<MethodReturnMapping['crawler:reset-config']>;
     
-    // 페이지 범위로 레코드 삭제 메서드 추가
+    // 레코드 삭제 API
     deleteRecordsByPageRange: (params: MethodParamsMapping['deleteRecordsByPageRange']) => Promise<MethodReturnMapping['deleteRecordsByPageRange']>;
+    
+    // Vendor 관련 API
+    fetchAndUpdateVendors: () => Promise<MethodReturnMapping['fetchAndUpdateVendors']>;
+    getVendors: () => Promise<MethodReturnMapping['getVendors']>;
 }
 
 // Window 인터페이스 확장은 글로벌로 유지

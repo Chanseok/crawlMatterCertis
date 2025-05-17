@@ -13,7 +13,9 @@ import {
     getDatabaseSummaryFromDb,
     markLastUpdatedInDb,
     deleteProductsByPageRange,
-    getMaxPageIdFromDb
+    getMaxPageIdFromDb,
+    fetchAndUpdateVendors,
+    getVendors
 } from './database.js';
 import { startCrawling, stopCrawling, checkCrawlingStatus } from './crawler/index.js';
 import { crawlerEvents } from './crawler/utils/progress.js';
@@ -56,7 +58,11 @@ const IPC_CHANNELS = {
     DELETE_RECORDS_BY_PAGE_RANGE: 'deleteRecordsByPageRange',
     
     // 제품 수동 저장 채널 추가
-    SAVE_PRODUCTS_TO_DB: 'saveProductsToDB'
+    SAVE_PRODUCTS_TO_DB: 'saveProductsToDB',
+    
+    // Vendor 관련 채널 추가
+    FETCH_AND_UPDATE_VENDORS: 'fetchAndUpdateVendors',
+    GET_VENDORS: 'getVendors'
 };
 
 app.on('ready', async () => {
@@ -512,6 +518,44 @@ app.on('ready', async () => {
             console.error('[IPC] Error saving products to DB:', error);
             return {
                 success: false,
+                error: String(error)
+            };
+        }
+    });
+
+    // Vendor 관련 IPC 핸들러
+    ipcMain.handle(IPC_CHANNELS.FETCH_AND_UPDATE_VENDORS, async (_event) => {
+        console.log('[IPC] fetchAndUpdateVendors called');
+        try {
+            const result = await fetchAndUpdateVendors();
+            console.log(`[IPC] fetchAndUpdateVendors result: ${result.added} added, ${result.updated} updated, total ${result.total}`);
+            return result;
+        } catch (error) {
+            console.error('[IPC] Error fetching and updating vendors:', error);
+            return {
+                success: false,
+                added: 0,
+                updated: 0,
+                total: 0,
+                error: String(error)
+            };
+        }
+    });
+
+    ipcMain.handle(IPC_CHANNELS.GET_VENDORS, async (_event) => {
+        console.log('[IPC] getVendors called');
+        try {
+            const vendors = await getVendors();
+            console.log(`[IPC] getVendors returned ${vendors.length} vendors`);
+            return { 
+                success: true, 
+                vendors 
+            };
+        } catch (error) {
+            console.error('[IPC] Error getting vendors:', error);
+            return { 
+                success: false, 
+                vendors: [],
                 error: String(error)
             };
         }

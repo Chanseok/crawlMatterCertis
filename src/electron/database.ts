@@ -64,6 +64,19 @@ export async function initializeDatabase(): Promise<void> {
                 console.log("'product_details' table checked/created.");
             });
 
+            // 'vendors' 테이블 생성
+            db.run(`
+                CREATE TABLE IF NOT EXISTS vendors (
+                    vendorId TEXT PRIMARY KEY,
+                    vendorNumber INTEGER,
+                    vendorName TEXT,
+                    companyLegalName TEXT
+                )
+                `, (err) => {
+                if (err) return reject(err);
+                console.log("'vendors' table checked/created.");
+            });
+
             // Check if tables are empty 
             db.get("SELECT COUNT(*) as count FROM products", async (err, row: { count: number }) => {
                 if (err) return reject(err);
@@ -76,7 +89,15 @@ export async function initializeDatabase(): Promise<void> {
                     if (rowDetails.count === 0) {
                         console.log("EMPTY 'product_details' table...");
                     }
-                    resolve(); // Resolve after both checks/populations are done
+
+                    // Check if vendors table is empty
+                    db.get("SELECT COUNT(*) as count FROM vendors", async (err, vendorsRow: { count: number }) => {
+                        if (err) return reject(err);
+                        if (vendorsRow.count === 0) {
+                            console.log("EMPTY 'vendors' table...");
+                        }
+                        resolve(); // Resolve after checks are done
+                    });
                 });
             });
 
@@ -689,3 +710,182 @@ app.on('quit', () => {
         }
     });
 });
+
+// Types used within database.ts
+interface DbSummaryData {
+    lastUpdated: string | null;
+    newlyAddedCount: number;
+}
+
+// Vendor type definition
+export interface Vendor {
+    vendorId: string;
+    vendorNumber: number;
+    vendorName: string;
+    companyLegalName: string;
+}
+
+/**
+ * Fetch and update vendors from the DCL web UI
+ * @returns Object with counts of processed vendors
+ */
+export async function fetchAndUpdateVendors(): Promise<{ 
+    added: number; 
+    updated: number; 
+    total: number; 
+    error?: string 
+}> {
+    return new Promise(async (resolve, reject) => {
+        try {
+            console.log('[DB] Starting vendors fetch and update from https://webui.dcl.csa-iot.org/vendors');
+            
+            // Use axios and cheerio for HTTP requests and HTML parsing
+            const axios = require('axios');
+            const cheerio = require('cheerio');
+            
+            const response = await axios.get('https://webui.dcl.csa-iot.org/vendors');
+            const html = response.data;
+            const $ = cheerio.load(html);
+            
+            const vendors: Vendor[] = [];
+            
+            // Process the table
+            // Find the table rows, excluding the header row
+            $('table tbody tr').each((_index: number, element: any) => {
+                const columns = $(element).find('td');
+                
+                // Each vendor should have 4 columns
+                if (columns.length >= 4) {
+                    const vendorId = $(columns[0]).text().trim();
+                    const vendorNumberText = $(columns[1]).text().trim();
+                    const vendorName = $(columns[2]).text().trim();
+                    const companyLegalName = $(columns[3]).text().trim();
+                    
+                    // Try to parse the vendor number as an integer
+                    const vendorNumber = parseInt(vendorNumberText, 10);
+                    
+                    if (vendorId && !isNaN(vendorNumber)) {
+                        vendors.push({
+                            vendorId,
+                            vendorNumber,
+                            vendorName,
+                            companyLegalName
+                        });
+                    }
+                }
+            });
+            
+            if (vendors.length === 0) {
+                throw new Error('No vendors found on the page');
+            }
+            
+            console.log(`[DB] Found ${vendors.length} vendors`);
+            
+            // Insert or update the vendors in the database
+            let added = 0;
+            let updated = 0;
+            
+            // Use a transaction for better performance and reliability
+            await new Promise<void>((resolveTransaction, rejectTransaction) => {
+                db.serialize(() => {
+                    db.run('BEGIN TRANSACTION');
+                    
+                    const stmt = db.prepare(`
+                        INSERT INTO vendors (vendorId, vendorNumber, vendorName, companyLegalName)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(vendorId) DO UPDATE SET
+                            vendorNumber = excluded.vendorNumber,
+                            vendorName = excluded.vendorName,
+                            companyLegalName = excluded.companyLegalName
+                    `);
+                    
+                    let processedCount = 0;
+                    
+                    // Process each vendor in the array
+                    for (const vendor of vendors) {
+                        // First, check if the vendor already exists
+                        db.get('SELECT vendorId FROM vendors WHERE vendorId = ?', [vendor.vendorId], (err: Error | null, row: any) => {
+                            if (err) {
+                                console.error(`[DB] Error checking if vendor exists: ${err.message}`);
+                                processedCount++;
+                                return;
+                            }
+                            
+                            stmt.run(
+                                vendor.vendorId,
+                                vendor.vendorNumber,
+                                vendor.vendorName,
+                                vendor.companyLegalName,
+                                function(this: { changes: number }, err: Error | null) {
+                                    if (err) {
+                                        console.error(`[DB] Error inserting/updating vendor: ${err.message}`);
+                                    } else {
+                                        // If changes were made, it could be an insert or update
+                                        if (this.changes > 0) {
+                                            if (row) {
+                                                updated++;
+                                            } else {
+                                                added++;
+                                            }
+                                        }
+                                    }
+                                    
+                                    processedCount++;
+                                    
+                                    // Check if all vendors have been processed
+                                    if (processedCount === vendors.length) {
+                                        stmt.finalize();
+                                        
+                                        db.run('COMMIT', function(err: Error | null) {
+                                            if (err) {
+                                                console.error('[DB] Error committing transaction:', err);
+                                                db.run('ROLLBACK');
+                                                rejectTransaction(err);
+                                                return;
+                                            }
+                                            
+                                            resolveTransaction();
+                                        });
+                                    }
+                                }
+                            );
+                        });
+                    }
+                });
+            });
+            
+            console.log(`[DB] Vendors update completed: ${added} added, ${updated} updated, total ${vendors.length}`);
+            resolve({
+                added,
+                updated,
+                total: vendors.length
+            });
+        } catch (error) {
+            console.error('[DB] Error fetching and updating vendors:', error);
+            resolve({
+                added: 0,
+                updated: 0,
+                total: 0,
+                error: error instanceof Error ? error.message : String(error)
+            });
+        }
+    });
+}
+
+/**
+ * Get vendors from the database
+ * @returns Array of vendors
+ */
+export async function getVendors(): Promise<Vendor[]> {
+    return new Promise((resolve, reject) => {
+        db.all('SELECT * FROM vendors ORDER BY vendorNumber', (err, rows) => {
+            if (err) {
+                console.error('[DB] Error getting vendors:', err);
+                reject(err);
+                return;
+            }
+            
+            resolve(rows as Vendor[]);
+        });
+    });
+}

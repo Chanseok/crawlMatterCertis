@@ -9,6 +9,7 @@ import { configStore, updateConfigSettings } from '../stores';
  * - 제품 상세 재시도 횟수 설정
  * - 자동 DB 추가 설정
  * - 크롤러 타입 설정
+ * - 벤더 정보 갱신 기능
  */
 export function CrawlingSettings() {
   const config = useStore(configStore);
@@ -19,6 +20,16 @@ export function CrawlingSettings() {
   const [productDetailRetry, setProductDetailRetry] = useState(config.productDetailRetryCount);
   const [autoAddToDb, setAutoAddToDb] = useState(config.autoAddToLocalDB);
   const [crawlerType, setCrawlerType] = useState(config.crawlerType || 'axios');
+  
+  // 벤더 정보 상태
+  const [vendorRefreshing, setVendorRefreshing] = useState(false);
+  const [vendorRefreshResult, setVendorRefreshResult] = useState<{
+    success?: boolean;
+    added?: number;
+    updated?: number;
+    total?: number;
+    error?: string;
+  } | null>(null);
   
   // 파생 상태
   const [estimatedProducts, setEstimatedProducts] = useState(0);
@@ -66,6 +77,27 @@ export function CrawlingSettings() {
       autoAddToLocalDB: autoAddToDb,
       crawlerType: crawlerType
     });
+  };
+  
+  // 벤더 정보 갱신
+  const handleRefreshVendors = async () => {
+    setVendorRefreshing(true);
+    setVendorRefreshResult(null);
+    
+    try {
+      // 실제 벤더 정보 갱신 API 호출
+      const result = await window.electron.fetchAndUpdateVendors();
+      console.log('Vendor refresh result:', result);
+      setVendorRefreshResult(result);
+    } catch (error: any) {
+      console.error('Error refreshing vendors:', error);
+      setVendorRefreshResult({
+        success: false,
+        error: error.message
+      });
+    } finally {
+      setVendorRefreshing(false);
+    }
   };
   
   return (
@@ -219,6 +251,45 @@ export function CrawlingSettings() {
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
           Axios/Cheerio는 가벼운 HTTP 요청을 사용하며, Playwright는 실제 브라우저를 사용합니다. 사이트가 복잡한 경우 Playwright가 더 안정적일 수 있습니다.
         </p>
+      </div>
+      
+      {/* 벤더 정보 갱신 */}
+      <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 rounded-md border border-green-100 dark:border-green-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              벤더 정보 갱신
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              수집된 제품의 벤더 정보를 최신 상태로 유지합니다.
+            </p>
+            {vendorRefreshResult && (
+              <div className={`mt-2 text-xs ${
+                vendorRefreshResult.success !== false
+                  ? 'text-green-600 dark:text-green-400' 
+                  : 'text-red-600 dark:text-red-400'
+              }`}>
+                {vendorRefreshResult.success !== false
+                  ? `성공: ${vendorRefreshResult.added} 추가, ${vendorRefreshResult.updated} 업데이트, 총 ${vendorRefreshResult.total}건`
+                  : `오류: ${vendorRefreshResult.error}`
+                }
+              </div>
+            )}
+          </div>
+          <div className="flex items-center">
+            <button
+              onClick={handleRefreshVendors}
+              disabled={vendorRefreshing}
+              className={`px-3 py-1 rounded-md text-sm font-medium focus:outline-none transition-all duration-200 ${
+                vendorRefreshing
+                  ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+              }`}
+            >
+              {vendorRefreshing ? '갱신 중...' : '벤더 정보 갱신'}
+            </button>
+          </div>
+        </div>
       </div>
       
       {/* 저장 버튼 */}
