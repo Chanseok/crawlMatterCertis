@@ -15,7 +15,8 @@ import {
   crawlingStatusSummaryStore,
   exportToExcel,
   checkCrawlingStatus,
-  startCrawling
+  startCrawling,
+  addLog
 } from './stores';
 
 // 새로 분리된 컴포넌트들 import
@@ -25,8 +26,12 @@ import { TabsNavigation } from './components/tabs/TabsNavigation';
 import { AppLayout } from './components/layout/AppLayout';
 import { useTabs } from './hooks/useTabs';
 import { useCrawlingComplete } from './hooks/useCrawlingComplete';
+import { useApiInitialization } from './hooks/useApiInitialization';
 
 function App() {
+  // API 초기화 (앱 시작 시 한 번만 수행)
+  const { isInitialized } = useApiInitialization();
+  
   // nanostores를 통한 상태 관리
   const crawlingStatus = useStore(crawlingStatusStore);
   const products = useStore(productsStore);
@@ -36,7 +41,14 @@ function App() {
   const { activeTab, handleTabChange } = useTabs('status');
   
   // 크롤링 완료 관련 데이터 훅
-  const { crawlingResults, autoSavedToDb, showCompleteView } = useCrawlingComplete();
+  const { crawlingResults, autoSavedToDb, showCompleteView, error } = useCrawlingComplete();
+  
+  // 에러 처리
+  useEffect(() => {
+    if (error) {
+      addLog(`크롤링 결과 처리 오류: ${error}`, 'error');
+    }
+  }, [error]);
   
   // 섹션별 확장/축소 상태
   const [statusExpanded, setStatusExpanded] = useState<boolean>(true);
