@@ -33,6 +33,25 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   // 상태 체크 및 비교 섹션 관련 상태
   const [isStatusChecking, setIsStatusChecking] = useState<boolean>(false);
   const [compareExpandedInApp, setCompareExpandedInApp] = useState<boolean>(false);
+  
+  // 크롤링 상태에 따른 버튼 레이블 결정
+  const getCrawlingButtonLabel = () => {
+    if (crawlingStatus === 'running') {
+      return '크롤링 중지';
+    } else if (isStatusChecking) {
+      return '상태 체크 중...';
+    } else if (
+      // 대기 상태를 확인할 때는 변수 값을 직접 비교하지 않고, 
+      // 상태 키워드 포함 여부로 판단하는 방식으로 변경
+      ['initializing'].includes(crawlingStatus)
+    ) {
+      return '대기 중...';
+    } else if (crawlingStatus === 'initializing') {
+      return '준비 중...';
+    } else {
+      return '크롤링 시작';
+    }
+  };
 
   // 크롤링 시작/중지 핸들러
   const handleCrawlToggle = useCallback(async () => {
@@ -52,15 +71,26 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         // 상태 체크를 하지 않았다면 자동으로 수행
         if (!hasStatusData) {
           addLog('크롤링을 시작하기 전에 상태 확인을 자동으로 수행합니다...', 'info');
+          setCompareExpandedInApp(true); // 비교 패널 자동으로 확장
+          
+          try {
+            setIsStatusChecking(true);
+            await checkCrawlingStatus();
+          } catch (error) {
+            addLog(`자동 상태 체크 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'warning');
+            // 오류가 있더라도 크롤링 시도
+          } finally {
+            setIsStatusChecking(false);
+          }
         }
         
-        // 어느 경우든 크롤링 시작 (내부에서 상태 체크 수행)
+        // 크롤링 시작
         await startCrawling();
       } catch (error) {
         addLog(`크롤링 시작 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
       }
     }
-  }, [crawlingStatus]);
+  }, [crawlingStatus, setCompareExpandedInApp, setIsStatusChecking]);
 
   // 데이터 내보내기 핸들러
   const handleExport = useCallback(() => {
@@ -106,9 +136,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-all duration-200
           shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow border border-gray-600
           focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50"
-          disabled={crawlingStatus === 'running'}
+          disabled={crawlingStatus === 'running' || isStatusChecking}
         >
-          상태 체크
+          {isStatusChecking ? '체크 중...' : '상태 체크'}
         </button>
         
         <button
@@ -120,9 +150,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               ? 'bg-red-500 hover:bg-red-600 border border-red-600 focus:ring-red-400'
               : 'bg-blue-500 hover:bg-blue-600 border border-blue-600 focus:ring-blue-400'
           }`}
-          disabled={crawlingStatus === 'paused'}
+          disabled={crawlingStatus === 'paused' || isStatusChecking}
         >
-          {crawlingStatus === 'running' ? '크롤링 중지' : '크롤링 시작'}
+          {getCrawlingButtonLabel()}
         </button>
         
         <button

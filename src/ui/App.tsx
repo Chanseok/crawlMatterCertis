@@ -9,7 +9,6 @@ import {
   searchQueryStore,
   searchProducts,
   productsStore,
-  crawlingProgressStore,
   loadConfig,
   stopCrawling,
   crawlingStatusSummaryStore,
@@ -30,7 +29,7 @@ import { useApiInitialization } from './hooks/useApiInitialization';
 
 function App() {
   // API 초기화 (앱 시작 시 한 번만 수행)
-  const { isInitialized } = useApiInitialization();
+  useApiInitialization();
   
   // nanostores를 통한 상태 관리
   const crawlingStatus = useStore(crawlingStatusStore);
@@ -46,8 +45,9 @@ function App() {
     autoSavedToDb, 
     showCompleteView, 
     error, 
-    isLoading, 
-    setLoading 
+    isSavingToDb, 
+    setLoading,
+    resetAllStates
   } = useCrawlingComplete();
   
   // 에러 처리
@@ -59,12 +59,22 @@ function App() {
   
   // 크롤링 상태 변경 시 로딩 상태 업데이트
   useEffect(() => {
-    if (crawlingStatus === 'crawling') {
+    // 크롤링 중이거나 waiting, queued 등 진행 중인 상태일 때 로딩 표시
+    if (['crawling', 'running', 'waiting', 'queued'].includes(crawlingStatus)) {
       setLoading(true);
-    } else if (['ready', 'error', 'completed'].includes(crawlingStatus)) {
+    } 
+    // ready, error, completed 등 종료된 상태일 때 로딩 중지
+    else if (['ready', 'error', 'completed', 'idle', 'stopped'].includes(crawlingStatus)) {
       setLoading(false);
     }
   }, [crawlingStatus, setLoading]);
+  
+  // DB 저장 상태 모니터링
+  useEffect(() => {
+    if (isSavingToDb) {
+      addLog('크롤링된 제품 정보를 DB에 저장하는 중...', 'info');
+    }
+  }, [isSavingToDb]);
   
   // 섹션별 확장/축소 상태
   const [statusExpanded, setStatusExpanded] = useState<boolean>(true);
@@ -96,6 +106,9 @@ function App() {
       stopCrawling();
     } else {
       try {
+        // 크롤링 시작 전에 이전 크롤링 결과 상태를 리셋
+        resetAllStates();
+        
         // 크롤링 시작 전 최신 설정이 적용되도록 보장
         await loadConfig();
         
@@ -105,13 +118,18 @@ function App() {
                              currentSummary.siteTotalPages !== undefined && 
                              currentSummary.siteTotalPages > 0;
         
+        // 상태 체크가 필요한 경우 로그 출력
+        if (!hasStatusData) {
+          addLog('상태 체크 데이터가 없습니다. 크롤링 시작 시 자동으로 상태 체크를 수행합니다.', 'info');
+        }
+        
         // 어느 경우든 크롤링 시작 (내부에서 상태 체크 수행)
         await startCrawling();
       } catch (error) {
-        console.error(`크롤링 시작 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`);
+        addLog(`크롤링 시작 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
       }
     }
-  }, [crawlingStatus]);
+  }, [crawlingStatus, resetAllStates]);
 
   // 데이터 내보내기 핸들러
   const handleExport = useCallback(() => {
@@ -200,6 +218,7 @@ function App() {
           <CrawlingCompleteView 
             products={crawlingResults} 
             autoSavedToDb={autoSavedToDb}
+            isSavingToDb={isSavingToDb}
           />
         )}
         

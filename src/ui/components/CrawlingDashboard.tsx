@@ -5,6 +5,7 @@ import { useEffect, useState, useRef, Dispatch, SetStateAction } from 'react';
 import { ExpandableSection } from './ExpandableSection';
 import StatusCheckLoadingAnimation from './StatusCheckLoadingAnimation';
 import { format } from 'date-fns';
+import { RetryStatusIndicator } from './RetryStatusIndicator';
 
 interface CrawlingDashboardProps {
   isAppStatusChecking: boolean;
@@ -257,13 +258,6 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
         successPageCount = Math.max(successPageCount, progress.currentPage);
       }
       
-      // 디버깅 로그 추가
-      console.log('CrawlingDashboard - 진행률 계산:', { 
-        successPageCount, 
-        targetPageCount, 
-        percentage: targetPageCount > 0 ? (successPageCount / targetPageCount * 100) : 0
-      });
-      
       return targetPageCount > 0 ? (successPageCount / targetPageCount * 100) : 0;
     } else {
       // 다른 단계들은 API에서 받은 진행률 그대로 사용
@@ -282,12 +276,9 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
       const successCount = tasks.filter(task => task.status === 'success').length;
       if (successCount > 0 && successCount !== successPagesCount) {
         setSuccessPagesCount(successCount);
-        console.log(`성공 페이지 수 업데이트: ${successCount}개`);
         
         // 현재 성공한 페이지 수가 progress.currentPage보다 크면 업데이트
         if (successCount > (progress.currentPage || 0) && progress.currentStage === 1) {
-          console.log(`현재 페이지 값 업데이트 필요: ${progress.currentPage} → ${successCount}`);
-          
           // 강제로 업데이트 트리거
           updateCrawlingProgress({
             currentPage: successCount
@@ -455,24 +446,8 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
   }
 
   function getRetryInfo() {
-    if (progress.retryCount !== undefined && progress.retryCount > 0) {
-      // 설정된 재시도 횟수와 현재 재시도 횟수를 표시 - 단계별로 다른 설정값 사용
-      const maxRetries = progress.maxRetries !== undefined 
-        ? progress.maxRetries 
-        : (progress.currentStage === 1 
-            ? config.productListRetryCount 
-            : config.productDetailRetryCount) || 3;
-            
-      return (
-        <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-md border border-yellow-100 dark:border-yellow-800 text-sm text-yellow-800 dark:text-yellow-300">
-          재시도 횟수: {progress.retryCount}/{maxRetries}회
-          {progress.stage1PageStatuses && (
-            <span> (남은 페이지: {progress.stage1PageStatuses.filter(p => p.status === 'incomplete' || p.status === 'failed').length}개)</span>
-          )}
-        </div>
-      );
-    }
-    return null;
+    // RetryStatusIndicator 컴포넌트가 내부적으로 필요한 상태(재시도 중인지 여부)를 처리함
+    return <RetryStatusIndicator className="mt-2" />;
   }
 
   function getEstimatedEndTime() {
@@ -712,13 +687,6 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
                   const successTasksCount = tasks.filter(task => task.status === 'success').length;
                   successCount = Math.max(successCount, successTasksCount);
                 }
-                
-                console.log('Progress info - 성공 페이지 계산:', {
-                  fromStage1: progress.stage1PageStatuses?.filter(p => p.status === 'success').length || 0,
-                  fromCurrentPage: progress.currentPage || 0,
-                  fromTasks: concurrentTasksStore.get().filter(task => task.status === 'success').length,
-                  finalCount: successCount
-                });
                 
                 return successCount;
               })()}페이지</li>

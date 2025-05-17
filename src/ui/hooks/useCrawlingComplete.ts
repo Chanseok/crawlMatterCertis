@@ -11,6 +11,17 @@ export function useCrawlingComplete() {
   const [showCompleteView, setShowCompleteView] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSavingToDb, setIsSavingToDb] = useState<boolean>(false);
+  
+  // 모든 상태를 리셋하는 유틸리티 함수
+  const resetAllStates = useCallback(() => {
+    setCrawlingResults([]);
+    setAutoSavedToDb(undefined);
+    setShowCompleteView(false);
+    setError(null);
+    setIsLoading(false);
+    setIsSavingToDb(false);
+  }, []);
 
   // 이벤트 콜백 핸들러들 (메모이제이션으로 불필요한 리렌더링 방지)
   const handleCrawlingComplete = useCallback((data: CrawlingCompleteData) => {
@@ -20,6 +31,12 @@ export function useCrawlingComplete() {
       setAutoSavedToDb(data.autoSavedToDb);
       setShowCompleteView(true);
       setError(null);
+      
+      // 자동 저장 진행 중인 경우 상태 표시
+      if (data.autoSavedToDb === undefined) {
+        setIsSavingToDb(true);
+      }
+      
       addLog(`크롤링 완료: ${data.products.length}개 항목 발견`, 'info');
     } else {
       setError('크롤링 결과가 비어 있거나 잘못되었습니다.');
@@ -28,6 +45,7 @@ export function useCrawlingComplete() {
   }, []);
 
   const handleDbSaveComplete = useCallback((data: DbSaveCompleteData) => {
+    setIsSavingToDb(false);
     if (data.success) {
       setAutoSavedToDb(true);
       setError(null);
@@ -39,6 +57,7 @@ export function useCrawlingComplete() {
   }, []);
 
   const handleDbSaveSkipped = useCallback((data: DbSaveSkippedData) => {
+    setIsSavingToDb(false);
     setAutoSavedToDb(false);
     addLog(`DB 저장 건너뜀${data.reason ? ': ' + data.reason : ''}`, 'info');
   }, []);
@@ -86,9 +105,11 @@ export function useCrawlingComplete() {
     showCompleteView, 
     error,
     isLoading,
+    isSavingToDb,
     setLoading,
     setShowCompleteView,
     resetCrawlingResults,
+    resetAllStates,
     hideCompleteView
   };
 }

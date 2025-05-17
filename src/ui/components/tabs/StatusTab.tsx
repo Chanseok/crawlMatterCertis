@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useStore } from '@nanostores/react';
 import { crawlingProgressStore } from '../../stores';
 import { ExpandableSection } from '../ExpandableSection';
 import { CrawlingDashboard } from '../CrawlingDashboard';
 import PageProgressDisplay from '../PageProgressDisplay';
 import { ConcurrentTasksVisualizer } from '../../Charts';
+import { SetStateAction } from 'react';
 
 interface StatusTabProps {
   statusExpanded: boolean;
@@ -33,6 +34,25 @@ export const StatusTab: React.FC<StatusTabProps> = ({
 }) => {
   const progress = useStore(crawlingProgressStore);
   
+  // Use useState here to create a proper state setter function that matches the expected type
+  const [localCompareExpanded, setLocalCompareExpanded] = useState(compareExpandedInApp);
+  
+  // Update local state when prop changes
+  useEffect(() => {
+    setLocalCompareExpanded(compareExpandedInApp);
+  }, [compareExpandedInApp]);
+  
+  // Create a handler function that both updates local state and calls the parent's setter
+  const handleCompareExpandedChange = useCallback((value: SetStateAction<boolean>) => {
+    setLocalCompareExpanded(value);
+    // Convert SetStateAction<boolean> to boolean before passing to the parent setter
+    if (typeof value === 'function') {
+      setCompareExpandedInApp(value(localCompareExpanded));
+    } else {
+      setCompareExpandedInApp(value);
+    }
+  }, [localCompareExpanded, setCompareExpandedInApp]);
+  
   return (
     <>
       <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">크롤링 제어</h2>
@@ -45,8 +65,8 @@ export const StatusTab: React.FC<StatusTabProps> = ({
       >
         <CrawlingDashboard 
           isAppStatusChecking={isStatusChecking} 
-          appCompareExpanded={compareExpandedInApp}
-          setAppCompareExpanded={setCompareExpandedInApp}
+          appCompareExpanded={localCompareExpanded}
+          setAppCompareExpanded={handleCompareExpandedChange}
         />
       </ExpandableSection>
       

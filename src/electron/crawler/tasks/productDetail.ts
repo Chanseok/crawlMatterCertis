@@ -261,7 +261,7 @@ export class ProductDetailCollector {
       // 제품 정보 테이블에서 세부 정보 추출
       const infoTable = $('.product-certificates-table');
       
-      infoTable.find('tr').each((index: number, row: any) => {
+      infoTable.find('tr').each((_, row: any) => {
         const cells = $(row).find('td');
         if (cells.length >= 2) {
           const key = $(cells[0]).text().trim().toLowerCase();
@@ -340,7 +340,7 @@ export class ProductDetailCollector {
     const categories: string[] = [];
     
     // 카테고리 목록을 찾아서 추출
-    $('.categories li, .application-categories li').each((index: number, elem: any) => {
+    $('.categories li, .application-categories li').each((_, elem: any) => {
       const category = $(elem).text().trim();
       if (category) {
         categories.push(category);

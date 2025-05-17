@@ -6,13 +6,14 @@ import type { MatterProduct } from '../../../types';
 interface CrawlingCompleteViewProps {
   products: MatterProduct[];
   autoSavedToDb?: boolean;
+  isSavingToDb?: boolean;
 }
 
 /**
  * 크롤링 완료 후 수집된 제품 정보를 표시하고
  * 자동 DB 저장이 꺼져 있는 경우 수동으로 DB에 저장할 수 있는 UI 제공
  */
-export function CrawlingCompleteView({ products, autoSavedToDb }: CrawlingCompleteViewProps) {
+export function CrawlingCompleteView({ products, autoSavedToDb, isSavingToDb = false }: CrawlingCompleteViewProps) {
   const config = useStore(configStore);
   const [saving, setSaving] = useState(false);
 
@@ -37,16 +38,24 @@ export function CrawlingCompleteView({ products, autoSavedToDb }: CrawlingComple
         <h2 className="text-xl font-semibold text-gray-800 dark:text-white">수집 결과</h2>
         
         {/* 자동 저장 여부에 따라 배지 표시 */}
-        {autoSavedToDb === undefined ? (
-          <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+        {isSavingToDb ? (
+          <span className="flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+            <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            DB 저장 중
+          </span>
+        ) : autoSavedToDb === undefined ? (
+          <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
             대기 중
           </span>
         ) : autoSavedToDb ? (
-          <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
-            자동 저장됨
+          <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+            DB 저장 완료
           </span>
         ) : (
-          <span className="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+          <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
             검토 필요
           </span>
         )}
@@ -72,7 +81,15 @@ export function CrawlingCompleteView({ products, autoSavedToDb }: CrawlingComple
           <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div className="text-sm text-gray-500 dark:text-gray-400">DB 저장 상태</div>
             <div className="text-lg font-medium">
-              {autoSavedToDb ? (
+              {isSavingToDb ? (
+                <span className="flex items-center text-blue-600 dark:text-blue-400">
+                  <svg className="animate-spin mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  저장 중...
+                </span>
+              ) : autoSavedToDb ? (
                 <span className="text-green-600 dark:text-green-400">저장 완료</span>
               ) : isAutoSaveDisabled ? (
                 <span className="text-amber-600 dark:text-amber-400">수동 저장 필요</span>

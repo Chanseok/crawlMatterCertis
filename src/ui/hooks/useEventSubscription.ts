@@ -1,21 +1,32 @@
 import { useEffect, useRef } from 'react';
 import { getPlatformApi } from '../platform/api';
 import { addLog } from '../stores';
+import type { EventPayloadMapping } from '../../../types';
+
+// Extended version of EventPayloadMapping that allows string keys
+type ExtendedEventKey = keyof EventPayloadMapping | string;
+
+// Type utility to get the payload type from either a known key or a custom string event
+type EventPayload<T extends ExtendedEventKey> = 
+  T extends keyof EventPayloadMapping 
+    ? EventPayloadMapping[T] 
+    : any;
 
 type EventCallback<T> = (data: T) => void;
 
 /**
  * 단일 이벤트 구독을 위한 훅
  */
-export function useEventSubscription<T>(
-  eventName: string, 
-  callback: EventCallback<T>, 
+export function useEventSubscription<K extends ExtendedEventKey>(
+  eventName: K, 
+  callback: EventCallback<EventPayload<K>>, 
   errorHandler?: (error: unknown) => void
 ) {
   useEffect(() => {
     try {
       const api = getPlatformApi();
-      const unsubscribe = api.subscribeToEvent(eventName, callback);
+      // Type assertion to allow string event names
+      const unsubscribe = api.subscribeToEvent(eventName as any, callback);
       
       return () => {
         unsubscribe();
@@ -34,9 +45,9 @@ export function useEventSubscription<T>(
 /**
  * 여러 이벤트 구독을 위한 훅
  */
-export interface EventSubscription<T = any> {
-  eventName: string;
-  callback: EventCallback<T>;
+export interface EventSubscription<K extends ExtendedEventKey = any> {
+  eventName: K;
+  callback: EventCallback<EventPayload<K>>;
 }
 
 export function useMultipleEventSubscriptions(
@@ -55,7 +66,8 @@ export function useMultipleEventSubscriptions(
       
       // 새로운 구독 등록
       subscriptions.forEach(({ eventName, callback }) => {
-        const unsubscribe = api.subscribeToEvent(eventName, callback);
+        // Type assertion to allow string event names
+        const unsubscribe = api.subscribeToEvent(eventName as any, callback);
         unsubscribeFunctions.current.push(unsubscribe);
       });
       
