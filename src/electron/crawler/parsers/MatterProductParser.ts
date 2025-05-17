@@ -482,6 +482,73 @@ export class MatterProductParser {
       }
     }
 
+    /**
+     * 쉼표로 구분된 여러 primaryDeviceTypeId 값을 표준 16진수 형식으로 정규화
+     * @param value 콤마로 구분된 원본 primaryDeviceTypeId 값
+     * @returns 콤마로 구분된 정규화된 ID 문자열
+     */
+    function normalizePrimaryDeviceTypeIds(value: string | undefined): string | undefined {
+      if (!value) return value;
+      
+      // 쉼표로 구분된 각 ID 처리
+      const idList = value.split(',').map(id => id.trim());
+      
+      // 각 ID를 개별적으로 정규화
+      const normalizedIds = idList.map(id => {
+        if (!id || ['', 'n/a', '-', 'none', 'unknown'].includes(id.toLowerCase().trim())) {
+          return id;
+        }
+        
+        const trimmedValue = id.trim();
+        
+        // 이미 정규화된 형식인지 확인 (0xXXXX 형식)
+        const normalizedRegex = /^0x[0-9A-F]{4}$/;
+        if (normalizedRegex.test(trimmedValue)) {
+          return trimmedValue;
+        }
+        
+        let hexValue: string;
+        
+        // 0x 접두사가 있는 16진수 (대소문자 구분 없음)
+        if (/^0x[0-9A-Fa-f]+$/i.test(trimmedValue)) {
+          // 0x 뒤의 16진수 부분만 추출
+          hexValue = trimmedValue.substring(2).toUpperCase();
+        } 
+        // 16진수처럼 보이는 문자열 (숫자와 A-F로만 구성, 0x 접두사 없음)
+        else if (/^[0-9A-Fa-f]+$/i.test(trimmedValue)) {
+          hexValue = trimmedValue.toUpperCase();
+        } 
+        // 순수 10진수로 보이는 값
+        else if (/^\d+$/.test(trimmedValue)) {
+          try {
+            // 10진수를 16진수로 변환 (앞에 0x 제외)
+            hexValue = parseInt(trimmedValue, 10).toString(16).toUpperCase();
+          } catch (e) {
+            // 변환 실패 시 원본 값 반환
+            return id;
+          }
+        } 
+        // 그 외의 경우 변환 불가
+        else {
+          return id;
+        }
+        
+        // 4자리로 패딩 (0 채우기)
+        hexValue = hexValue.padStart(4, '0');
+        
+        // 최대 4자리만 유지 (초과하는 경우 잘라냄)
+        if (hexValue.length > 4) {
+          hexValue = hexValue.substring(hexValue.length - 4);
+        }
+        
+        // 최종 형식으로 반환 (0x + 4자리 대문자 16진수)
+        return `0x${hexValue}`;
+      });
+      
+      // 정규화된 모든 ID를 다시 결합
+      return normalizedIds.filter(Boolean).join(', ');
+    }
+
     function extractAdditionalInfo(output: typeof extractedFields, details: ProductDetails): void {
       output.familySku = details.familySku || '';
       output.familyVariantSku = details.familyVariantSku || '';
@@ -489,7 +556,13 @@ export class MatterProductParser {
       output.tisTrpTested = details.tisTrpTested || '';
       output.specificationVersion = details.specificationVersion || '';
       output.transportInterface = details.transportInterface || '';
-      output.primaryDeviceTypeId = details.primaryDeviceTypeId || '';
+      
+      // primaryDeviceTypeId 정규화 적용
+      if (details.primaryDeviceTypeId) {
+        output.primaryDeviceTypeId = normalizePrimaryDeviceTypeIds(details.primaryDeviceTypeId);
+      } else {
+        output.primaryDeviceTypeId = '';
+      }
     }
 
     // 실행 로직

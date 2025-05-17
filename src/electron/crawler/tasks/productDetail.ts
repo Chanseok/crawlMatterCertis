@@ -305,6 +305,9 @@ export class ProductDetailCollector {
       // 하드웨어 ID 정보 보강
       this.enhanceHardwareIds($, extractedFields);
       
+      // Primary Device Type ID 정보 보강 및 표준화
+      this.enhancePrimaryDeviceTypeIds($, extractedFields);
+      
       // 애플리케이션 카테고리 추출
       this.extractCategories($, extractedFields);
       
@@ -351,6 +354,26 @@ export class ProductDetailCollector {
       hexValue = hexValue.substring(hexValue.length - 4);
     }
     return `0x${hexValue}`;
+  }
+
+  /**
+   * 쉼표로 구분된 여러 primaryDeviceTypeId 값을 표준 16진수 형식으로 정규화합니다.
+   * 각 ID는 0x 접두사를 가진 4자리 16진수 형식으로 변환됩니다.
+   * 
+   * @param value 콤마로 구분된 원본 primaryDeviceTypeId 값
+   * @returns 콤마로 구분된 정규화된 ID 문자열
+   */
+  private normalizePrimaryDeviceTypeIds(value: string | undefined): string | undefined {
+    if (!value) return value;
+    
+    // 쉼표로 구분된 각 ID 처리
+    const idList = value.split(',').map(id => id.trim());
+    
+    // 각 ID를 개별적으로 정규화
+    const normalizedIds = idList.map(id => this.normalizeHexId(id));
+    
+    // 정규화된 모든 ID를 다시 결합
+    return normalizedIds.filter(Boolean).join(', ');
   }
 
   /**
@@ -1053,112 +1076,6 @@ export class ProductDetailCollector {
   }
 
   /**
-   * 표 형식 데이터에서 정보 추출
-   * 표 형식 데이터에서 구조화된 정보를 더 효과적으로 추출
-   */
-  private extractFromTable($: cheerio.CheerioAPI, fields: Record<string, any>): void {
-    // 일반적인 테이블 구조에서 정보 추출
-    $('.product-certificates-table, table, .specs-table, .data-table, .product-details-table')
-      .each((_, table) => {
-        // 1. 표준 tr/td 구조 처리
-        $(table).find('tr').each((_, row) => {
-          const cells = $(row).find('td, th');
-          
-          // 기본 2열 테이블 처리 (키:값 구조)
-          if (cells.length >= 2) {
-            const key = $(cells[0]).text().trim().toLowerCase();
-            const value = $(cells[1]).text().trim();
-            
-            if (key && value) {
-              this.mapKeyToField(key, value, fields);
-            }
-          }
-          // 테이블 헤더와 셀이 1:1 매핑되지 않는 경우 처리
-          else if (cells.length === 1) {
-            const cellText = $(cells[0]).text().trim();
-            
-            // 셀에 "키: 값" 형식이 있는지 확인
-            const colonIndex = cellText.indexOf(':');
-            if (colonIndex > 0) {
-              const key = cellText.substring(0, colonIndex).trim().toLowerCase();
-              const value = cellText.substring(colonIndex + 1).trim();
-              
-              if (key && value) {
-                this.mapKeyToField(key, value, fields);
-              }
-            }
-          }
-        });
-        
-        // 2. 테이블 헤더 (thead)와 바디 (tbody) 구조 처리
-        const headerRow = $(table).find('thead tr').first();
-        const bodyRows = $(table).find('tbody tr');
-        
-        if (headerRow.length > 0 && bodyRows.length > 0) {
-          // 헤더 셀 (th 또는 td) 가져오기
-          const headerCells = headerRow.find('th, td');
-          const headerTexts: string[] = [];
-          
-          // 헤더 텍스트 수집
-          headerCells.each((i, cell) => {
-            headerTexts[i] = $(cell).text().trim().toLowerCase();
-          });
-          
-          // 각 바디 행에 대해 처리
-          bodyRows.each((_, row) => {
-            const bodyCells = $(row).find('td');
-            
-            // 헤더 텍스트와 바디 셀 값을 매핑
-            bodyCells.each((i, cell) => {
-              if (i < headerTexts.length) {
-                const key = headerTexts[i];
-                const value = $(cell).text().trim();
-                
-                if (key && value) {
-                  this.mapKeyToField(key, value, fields);
-                }
-              }
-            });
-          });
-        }
-      });
-    
-    // 테이블과 유사한 div 구조 처리 (일부 사이트에서 사용)
-    $('.details-grid, .product-grid, .specs-grid').each((_, grid) => {
-      $(grid).find('.grid-row, .row').each((_, row) => {
-        const keyElem = $(row).find('.key, .label, .property');
-        const valueElem = $(row).find('.value, .data, .property-value');
-        
-        if (keyElem.length > 0 && valueElem.length > 0) {
-          const key = keyElem.text().trim().toLowerCase();
-          const value = valueElem.text().trim();
-          
-          if (key && value) {
-            this.mapKeyToField(key, value, fields);
-          }
-        }
-      });
-    });
-    
-    // dl/dt/dd 구조 처리 (정의 목록)
-    $('dl, .definition-list').each((_, list) => {
-      const terms = $(list).find('dt');
-      const descriptions = $(list).find('dd');
-      
-      terms.each((i, term) => {
-        if (i < descriptions.length) {
-          const key = $(term).text().trim().toLowerCase();
-          const value = $(descriptions.eq(i)).text().trim();
-          
-          if (key && value) {
-            this.mapKeyToField(key, value, fields);
-          }
-        }
-      });
-    });
-  }
-
-  /**
    * 목록 항목에서 정보 추출
    * 목록 항목에서 콜론으로 구분된 정보를 더 효과적으로 추출
    */
@@ -1235,7 +1152,7 @@ export class ProductDetailCollector {
     
     // 정의 목록 (dl/dt/dd) 처리 - 별도로 처리
     $('dl, .definition-list').each((_, defList) => {
-      $(defList).find('dt').each((i, dt) => {
+      $(defList).find('dt').each((_, dt) => {
         const key = $(dt).text().trim().toLowerCase();
         
         // 해당 dt의 다음 dd 요소 찾기
@@ -1263,6 +1180,58 @@ export class ProductDetailCollector {
           this.mapKeyToField(key, value, fields);
         }
       }
+    });
+  }
+
+  /**
+   * 테이블 형식에서 정보 추출
+   * 다양한 형태의 테이블에서 제품 정보 추출
+   */
+  private extractFromTable($: cheerio.CheerioAPI, fields: Record<string, any>): void {
+    // 테이블 검색 - 다양한 테이블 클래스 포함
+    const tableSelectors = [
+      '.product-certificates-table', 
+      '.specs-table', 
+      '.tech-specs-table', 
+      '.product-info-table', 
+      '.details-table',
+      'table.specs',
+      'table.data-table',
+      'table.product-data'
+    ];
+    
+    // 모든 해당 테이블 처리
+    $(tableSelectors.join(', ')).each((_, table) => {
+      $(table).find('tr').each((_, row) => {
+        const cells = $(row).find('td, th');
+        
+        // 최소한 두 개의 셀이 있는 행만 처리 (키-값 쌍)
+        if (cells.length >= 2) {
+          // 첫 번째 셀은 키로, 두 번째 셀은 값으로 사용
+          const key = $(cells[0]).text().trim().toLowerCase();
+          const value = $(cells[1]).text().trim();
+          
+          if (key && value) {
+            this.mapKeyToField(key, value, fields);
+          }
+        }
+      });
+    });
+    
+    // 정의 목록 형식의 테이블 (dl/dt/dd)도 처리
+    $('dl.specs, dl.product-specs, dl.data-list').each((_, defList) => {
+      $(defList).find('dt').each((_, dt) => {
+        const key = $(dt).text().trim().toLowerCase();
+        const dd = $(dt).next('dd');
+        
+        if (dd.length > 0) {
+          const value = dd.text().trim();
+          
+          if (key && value) {
+            this.mapKeyToField(key, value, fields);
+          }
+        }
+      });
     });
   }
 
@@ -1842,5 +1811,57 @@ export class ProductDetailCollector {
         message: `제품 상세 정보 재시도 완료: 모든 항목 성공`
       });
     }
+  }
+
+  /**
+   * Primary Device Type ID 정보 보강 및 정규화
+   */
+  private enhancePrimaryDeviceTypeIds($: cheerio.CheerioAPI, fields: Record<string, any>): void {
+    // 이미 primaryDeviceTypeId가 있으면 정규화만 수행
+    if (fields.primaryDeviceTypeId) {
+      fields.primaryDeviceTypeId = this.normalizePrimaryDeviceTypeIds(fields.primaryDeviceTypeId);
+      return;
+    }
+    
+    // 페이지 내용에서 primaryDeviceTypeId 추출 시도
+    const possibleLabels = [
+      'primary device type id', 
+      'device type id', 
+      'primary device id',
+      'devicetypeid'
+    ];
+    
+    // 제품 상세 내용에서 primaryDeviceTypeId 찾기
+    $('div.entry-product-details > div > ul li').each((_, elem) => {
+      const text = $(elem).text().trim().toLowerCase();
+      
+      for (const label of possibleLabels) {
+        if (text.includes(label)) {
+          const parts = text.split(':');
+          if (parts.length > 1) {
+            fields.primaryDeviceTypeId = this.normalizePrimaryDeviceTypeIds(parts[1].trim());
+            return false; // 루프 중단
+          }
+        }
+      }
+    });
+    
+    // 테이블 구조에서 primaryDeviceTypeId 찾기
+    $('.product-certificates-table tr').each((_, row) => {
+      const cells = $(row).find('td');
+      if (cells.length >= 2) {
+        const key = $(cells[0]).text().trim().toLowerCase();
+        
+        for (const label of possibleLabels) {
+          if (key.includes(label)) {
+            const value = $(cells[1]).text().trim();
+            if (value) {
+              fields.primaryDeviceTypeId = this.normalizePrimaryDeviceTypeIds(value);
+              return false; // 루프 중단
+            }
+          }
+        }
+      }
+    });
   }
 }

@@ -365,19 +365,22 @@ export class ProductListCollector {
     let isComplete = currentProductsOnPage.length >= targetProductCount;
 
     try {
-      newlyFetchedProducts = await Promise.race([
-        this.crawlPageWithTimeout(pageNumber, signal, attempt),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new PageTimeoutError('Timeout', pageNumber, attempt)), this.pageTimeoutMs)
-        )
-      ]);
+      // 기존 캐시된 제품 데이터 가져오기
+      const cachedProducts = this.productCache.get(pageNumber) || [];
+      
+      // 새 데이터 가져오기 (crawlPageWithTimeout에 타임아웃 적용됨)
+      newlyFetchedProducts = await this.crawlPageWithTimeout(pageNumber, signal, attempt);
 
-      const existingProductsFromCache = this.productCache.get(pageNumber) || [];
-      const allProductsForPage = ProductListCollector._mergeAndDeduplicateProductLists(
-        existingProductsFromCache, newlyFetchedProducts
+      // 새 제품과 기존 제품을 URL 기준으로 병합
+      const mergedProducts = ProductListCollector._mergeAndDeduplicateProductLists(
+        cachedProducts, newlyFetchedProducts
       );
-      this.productCache.set(pageNumber, allProductsForPage);
-      currentProductsOnPage = allProductsForPage;
+      
+      // 병합된 제품을 캐시에 저장
+      this.productCache.set(pageNumber, mergedProducts);
+      currentProductsOnPage = mergedProducts;
+
+      // 타겟 수와 비교하여 성공 여부 결정
       isComplete = currentProductsOnPage.length >= targetProductCount;
 
       const currentProcessingStatus: PageProcessingStatusValue = isComplete ? 'success' : 'incomplete';
@@ -438,6 +441,15 @@ export class ProductListCollector {
     for (let retryCycleIndex = 0; retryCycleIndex < productListRetryCount && currentIncompletePages.length > 0; retryCycleIndex++) {
       this.currentStageRetryCount = firstRetryCycleAttemptNumber + retryCycleIndex;
       const overallAttemptNumberForPagesInThisCycle = 1 + this.currentStageRetryCount;
+      
+      // 지수 백오프 적용 (새로 추가)
+      const baseDelay = 1000; // 기본 1초
+      const retryDelay = Math.min(
+        Math.pow(1.5, retryCycleIndex) * baseDelay + (Math.random() * 500),
+        30000 // 최대 30초
+      );
+      console.log(`[ProductListCollector] Waiting ${Math.round(retryDelay)}ms before retry cycle ${this.currentStageRetryCount}/${productListRetryCount}`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
 
       if (this.abortController.signal.aborted) {
         currentIncompletePages.forEach(pNum => this._updatePageStatusInternal(pNum, 'failed', overallAttemptNumberForPagesInThisCycle));
@@ -570,12 +582,44 @@ export class ProductListCollector {
     concurrency: number,
     currentAttemptNumber: number
   ): Promise<{ results: (CrawlResult | null)[] }> {
+    // 연속 실패 감지를 위한 변수 추가
+    let consecutiveFailures = 0;
+    const MAX_CONSECUTIVE_FAILURES = 3;
+  
     const results: (CrawlResult | null)[] = await promisePool(
       pageNumbersToCrawl,
       async (pageNumber, signalFromPool) => {
-        return this.processPageCrawl(
-          pageNumber, siteTotalPages, signalFromPool, currentAttemptNumber
-        );
+        try {
+          const result = await this.processPageCrawl(
+            pageNumber, siteTotalPages, signalFromPool, currentAttemptNumber
+          );
+          
+          if (result && !result.error) {
+            consecutiveFailures = 0; // 성공 시 카운터 리셋
+          } else {
+            consecutiveFailures++;
+            
+            // 연속 실패가 임계값을 초과하면 잠시 대기
+            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+              const pauseTime = 5000; // 5초 대기
+              console.log(`[ProductListCollector] Detected ${consecutiveFailures} consecutive failures. Pausing for ${pauseTime}ms`);
+              await new Promise(resolve => setTimeout(resolve, pauseTime));
+              consecutiveFailures = 0; // 대기 후 카운터 리셋
+            }
+          }
+          
+          return result;
+        } catch (error) {
+          consecutiveFailures++;
+          // 연속 실패가 임계값을 초과하면 잠시 대기
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            const pauseTime = 5000; // 5초 대기
+            console.log(`[ProductListCollector] Detected ${consecutiveFailures} consecutive failures. Pausing for ${pauseTime}ms`);
+            await new Promise(resolve => setTimeout(resolve, pauseTime));
+            consecutiveFailures = 0; // 대기 후 카운터 리셋
+          }
+          throw error;
+        }
       },
       concurrency,
       this.abortController
@@ -619,8 +663,21 @@ export class ProductListCollector {
     }
 
     try {
+      // 명시적인 타임아웃 적용
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new PageTimeoutError(
+          `Page ${pageNumber} timed out after ${this.pageTimeoutMs}ms on attempt ${attempt}`,
+          pageNumber,
+          attempt
+        )), this.pageTimeoutMs);
+      });
+      
       // PageCrawler를 사용하여 페이지 크롤링
-      const result = await this.pageCrawler.crawlPage(pageNumber, signal, attempt);
+      // Promise.race로 타임아웃 처리
+      const result = await Promise.race([
+        this.pageCrawler.crawlPage(pageNumber, signal, attempt),
+        timeoutPromise
+      ]);
       
       // 수집된 데이터 처리
       const { totalPages: siteTotal, lastPageProductCount: siteLastPageCount } = await this.fetchTotalPagesCached();
