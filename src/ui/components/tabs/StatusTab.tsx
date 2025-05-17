@@ -5,6 +5,7 @@ import { ExpandableSection } from '../ExpandableSection';
 import { CrawlingDashboard } from '../CrawlingDashboard';
 import PageProgressDisplay from '../PageProgressDisplay';
 import { ConcurrentTasksVisualizer } from '../../Charts';
+import StatusCheckAnimation from '../StatusCheckAnimation';
 import { SetStateAction } from 'react';
 
 interface StatusTabProps {
@@ -34,6 +35,9 @@ export const StatusTab: React.FC<StatusTabProps> = ({
 }) => {
   const progress = useStore(crawlingProgressStore);
   
+  // 애니메이션 상태 관리
+  const [showAnimation, setShowAnimation] = useState(false);
+  
   // Use useState here to create a proper state setter function that matches the expected type
   const [localCompareExpanded, setLocalCompareExpanded] = useState(compareExpandedInApp);
   
@@ -53,9 +57,28 @@ export const StatusTab: React.FC<StatusTabProps> = ({
     }
   }, [localCompareExpanded, setCompareExpandedInApp]);
   
+  // 상태 체크 버튼 핸들러 함수
+  const handleStatusCheck = useCallback(() => {
+    setShowAnimation(true);
+  }, []);
+
+  // 애니메이션 완료 후 실제 상태 체크 함수 호출
+  const handleAnimationComplete = useCallback(() => {
+    onCheckStatus();
+    setTimeout(() => {
+      setShowAnimation(false);
+    }, 500); // 애니메이션이 완전히 끝난 후 상태 초기화
+  }, [onCheckStatus]);
+  
   return (
     <>
       <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">크롤링 제어</h2>
+      
+      {/* 상태 체크 애니메이션 */}
+      <StatusCheckAnimation 
+        isChecking={showAnimation} 
+        onAnimationComplete={handleAnimationComplete} 
+      />
       
       {/* 크롤링 대시보드 */}
       <ExpandableSection
@@ -73,12 +96,12 @@ export const StatusTab: React.FC<StatusTabProps> = ({
       {/* 버튼 그룹 */}
       <div className="flex justify-between mb-4">
         <button
-          onClick={onCheckStatus}
+          onClick={handleStatusCheck}
           className="flex-1 py-2 px-2 mr-2 rounded-md text-white font-medium bg-gray-500 hover:bg-gray-600 
           disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-all duration-200
           shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow border border-gray-600
           focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50"
-          disabled={crawlingStatus === 'running'}
+          disabled={crawlingStatus === 'running' || isStatusChecking || showAnimation}
         >
           상태 체크
         </button>
