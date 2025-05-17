@@ -78,6 +78,7 @@ export class MatterProductParser {
       const detailItems = document.querySelectorAll('.entry-product-details div ul li');
 
       for (const item of detailItems) {
+        // 1. span.label과 span.value 구조 확인 (기존 로직)
         const label = item.querySelector('span.label');
         const value = item.querySelector('span.value');
 
@@ -117,6 +118,71 @@ export class MatterProductParser {
             else if (labelText === 'device type' || labelText.includes('product type') ||
               labelText.includes('category'))
               details.deviceType = valueText;
+          }
+        }
+        // 2. 개선된 로직: 콜론(:) 분리 처리
+        else {
+          const fullText = item.textContent?.trim() || '';
+          const colonIndex = fullText.indexOf(':');
+          
+          if (colonIndex > 0) {
+            const rawLabel = fullText.substring(0, colonIndex).trim().toLowerCase();
+            let rawValue = fullText.substring(colonIndex + 1).trim();
+            
+            // 라벨 타입 인식
+            if (rawLabel.includes('manufacturer') || rawLabel.includes('company')) {
+              details.manufacturer = rawValue;
+            }
+            else if (rawLabel.includes('vendor') || rawLabel.includes('vid')) {
+              details.vid = rawValue;
+            }
+            else if (rawLabel.includes('product id') || rawLabel.includes('pid')) {
+              details.pid = rawValue;
+            }
+            else if (rawLabel.includes('family sku')) {
+              details.familySku = rawValue;
+            }
+            else if (rawLabel.includes('family variant sku')) {
+              details.familyVariantSku = rawValue;
+            }
+            else if (rawLabel.includes('firmware version') || 
+                    (rawLabel.includes('firmware') && !rawLabel.includes('hardware'))) {
+              details.firmwareVersion = rawValue;
+            }
+            else if (rawLabel.includes('hardware version') || 
+                    (rawLabel.includes('hardware') && !rawLabel.includes('firmware'))) {
+              details.hardwareVersion = rawValue;
+            }
+            else if (rawLabel.includes('certificate') || rawLabel.includes('cert id')) {
+              // 인증 ID 패턴 확인 (특수 형식)
+              const match = rawValue.match(/([A-Za-z0-9-]+\d+[-][A-Za-z0-9-]+)/);
+              if (match) details.certificateId = match[1];
+              else details.certificateId = rawValue;
+            }
+            else if (rawLabel.includes('certification date') || 
+                    (rawLabel.includes('date') && rawLabel.includes('cert'))) {
+              details.certificationDate = rawValue;
+            }
+            else if (rawLabel.includes('family id')) {
+              details.familyId = rawValue;
+            }
+            else if ((rawLabel.includes('tis') && rawLabel.includes('trp')) || 
+                    rawLabel.includes('tis/trp')) {
+              details.tisTrpTested = rawValue;
+            }
+            else if (rawLabel.includes('specification version') || rawLabel.includes('spec version')) {
+              details.specificationVersion = rawValue;
+            }
+            else if (rawLabel.includes('transport interface')) {
+              details.transportInterface = rawValue;
+            }
+            else if (rawLabel.includes('primary device type') || rawLabel.includes('device type id')) {
+              details.primaryDeviceTypeId = rawValue;
+            }
+            else if (rawLabel.includes('device type') || rawLabel.includes('product type') || 
+                    rawLabel.includes('category')) {
+              details.deviceType = rawValue;
+            }
           }
         }
       }
@@ -230,15 +296,18 @@ export class MatterProductParser {
           const text = li.textContent || '';
           if (text.toLowerCase().includes('certification') || text.toLowerCase().includes('certificate') ||
             text.toLowerCase().includes('cert id')) {
-            const match = text.match(/([A-Za-z0-9-]+\d+[-][A-Za-z0-9]+)/);
+            // 더 유연한 인증 ID 패턴 매칭
+            const match = text.match(/([A-Za-z0-9-]+\d+[-][A-Za-z0-9-]+)/);
             if (match) {
               certificationId = match[1];
               break;
             }
 
+            // 콜론 뒤의 값 추출 로직 강화
             const parts = text.split(':');
-            if (parts.length > 1 && parts[1].trim()) {
-              certificationId = parts[1].trim();
+            if (parts.length > 1) {
+              // 여러 콜론이 있을 경우 첫 번째 콜론 이후의 모든 텍스트
+              certificationId = parts.slice(1).join(':').trim();
               break;
             }
           }
@@ -252,15 +321,18 @@ export class MatterProductParser {
         for (const li of detailsList) {
           const text = li.textContent || '';
           if (text.toLowerCase().includes('date')) {
+            // 더 강화된 날짜 패턴 매칭
             const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})|(\d{4}-\d{1,2}-\d{1,2})|([A-Za-z]+\s+\d{1,2},?\s+\d{4})/);
             if (dateMatch) {
               certificationDate = dateMatch[0];
               break;
             }
 
+            // 콜론 뒤의 값 추출 로직 강화
             const parts = text.split(':');
-            if (parts.length > 1 && parts[1].trim()) {
-              certificationDate = parts[1].trim();
+            if (parts.length > 1) {
+              // 여러 콜론이 있을 경우 첫 번째 콜론 이후의 모든 텍스트를 가져옴
+              certificationDate = parts.slice(1).join(':').trim();
               break;
             }
           }
@@ -282,15 +354,27 @@ export class MatterProductParser {
         for (const li of detailsList) {
           const text = li.textContent || '';
           if (!softwareVersion && (text.toLowerCase().includes('software') || text.toLowerCase().includes('firmware'))) {
-            const parts = text.split(':');
-            if (parts.length > 1) {
-              softwareVersion = parts[1].trim();
+            // 버전 패턴 매칭 강화
+            const versionMatch = text.match(/v?(\d+(\.\d+)+)/i);
+            if (versionMatch) {
+              softwareVersion = versionMatch[0];
+            } else {
+              const parts = text.split(':');
+              if (parts.length > 1) {
+                softwareVersion = parts.slice(1).join(':').trim();
+              }
             }
           }
           if (!hardwareVersion && text.toLowerCase().includes('hardware')) {
-            const parts = text.split(':');
-            if (parts.length > 1) {
-              hardwareVersion = parts[1].trim();
+            // 버전 패턴 매칭 강화
+            const versionMatch = text.match(/v?(\d+(\.\d+)+)/i);
+            if (versionMatch) {
+              hardwareVersion = versionMatch[0];
+            } else {
+              const parts = text.split(':');
+              if (parts.length > 1) {
+                hardwareVersion = parts.slice(1).join(':').trim();
+              }
             }
           }
         }
@@ -309,15 +393,27 @@ export class MatterProductParser {
         for (const li of detailsList) {
           const text = li.textContent || '';
           if (!vid && (text.toLowerCase().includes('vendor id') || text.toLowerCase().includes('vid'))) {
-            const parts = text.split(':');
-            if (parts.length > 1) {
-              vid = parts[1].trim();
+            // 벤더 ID 패턴 매칭 (예: 0xXXXX 또는 단순 숫자)
+            const vidMatch = text.match(/(0x[0-9A-Fa-f]+)|(\d{4,6})/);
+            if (vidMatch) {
+              vid = vidMatch[0];
+            } else {
+              const parts = text.split(':');
+              if (parts.length > 1) {
+                vid = parts.slice(1).join(':').trim();
+              }
             }
           }
           if (!pid && (text.toLowerCase().includes('product id') || text.toLowerCase().includes('pid'))) {
-            const parts = text.split(':');
-            if (parts.length > 1) {
-              pid = parts[1].trim();
+            // 제품 ID 패턴 매칭 (예: 0xXXXX 또는 단순 숫자)
+            const pidMatch = text.match(/(0x[0-9A-Fa-f]+)|(\d{4,6})/);
+            if (pidMatch) {
+              pid = pidMatch[0];
+            } else {
+              const parts = text.split(':');
+              if (parts.length > 1) {
+                pid = parts.slice(1).join(':').trim();
+              }
             }
           }
         }
