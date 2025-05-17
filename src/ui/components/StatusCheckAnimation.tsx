@@ -28,7 +28,7 @@ export const StatusCheckAnimation: React.FC<StatusCheckAnimationProps> = ({
       { stage: 6, delay: 5000 }   // 완료
     ];
     
-    let timeouts: NodeJS.Timeout[] = [];
+    let timeouts: number[] = []; // Changed NodeJS.Timeout[] to number[]
     
     stages.forEach(({ stage, delay }) => {
       const timeout = setTimeout(() => {

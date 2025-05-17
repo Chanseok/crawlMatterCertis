@@ -133,7 +133,7 @@ concurrentTasksStore.listen(tasks => {
 // 작업별 상태 정보 저장 (task ID를 키로 사용)
 export interface TaskStatusDetail {
   id: string | number;
-  status: 'pending' | 'running' | 'success' | 'error' | 'stopped';
+  status: 'pending' | 'running' | 'success' | 'error' | 'stopped' | 'attempting';
   details?: any;
   startTime?: number;
   endTime?: number;
@@ -282,12 +282,14 @@ export function initializeApiSubscriptions() {
       const mergedTasks = taskStatus.map((newTaskData: any) => {
         const prevTask = prevTasks.find(pt => pt.pageNumber === newTaskData.pageNumber);
         
-        let newStatus: 'pending' | 'running' | 'success' | 'error' | 'stopped';
+        // 'attempting' 상태를 newStatus 타입에 추가
+        let newStatus: 'pending' | 'running' | 'success' | 'error' | 'stopped' | 'attempting'; 
         if (prevTask && prevTask.status === 'success' && newTaskData.status !== 'success') {
           newStatus = 'success';
         } else {
           // Ensure the status from newTaskData is validated to the correct type
-          newStatus = validateTaskStatus(newTaskData.status as string);
+          // validateTaskStatus가 'attempting'을 반환할 수 있다고 가정
+          newStatus = validateTaskStatus(newTaskData.status as string) as typeof newStatus;
         }
         
         // Return a new object with all properties from newTaskData, but with the correctly typed status
@@ -318,18 +320,23 @@ export function initializeApiSubscriptions() {
           details = { description: message };
         }
         
-        // status 값을 안전하게 변환
-        const validStatus = validateTaskStatus(status);
+        // status 값을 안전하게 변환 (validateTaskStatus의 반환 타입에 'attempting'이 포함되어야 함)
+        const validStatus = validateTaskStatus(status) as 'pending' | 'running' | 'success' | 'error' | 'stopped' | 'attempting';
         
         // 작업 상태에 따라 처리
-        if (validStatus === 'running' || validStatus === 'pending') {
+        if (validStatus === 'running' || validStatus === 'pending' || validStatus === 'attempting') {
           // 실행 중인 작업 목록에 추가/업데이트
           const activeTasks = {...activeTasksStore.get()};
+          
+          // 이미 존재하는 작업의 경우 시작 시간 유지
+          const existingTask = activeTasksStore.get()[taskId];
+          const startTime = existingTask?.startTime || Date.now();
+          
           activeTasks[taskId] = {
             id: taskId,
             status: validStatus, // 변환된 status 사용
             details,
-            startTime: Date.now(),
+            startTime: startTime, // 시작 시간 유지
             message: typeof message === 'string' ? message : JSON.stringify(details)
           };
           activeTasksStore.set(activeTasks);
@@ -485,12 +492,12 @@ function validateCrawlingStatus(status: string | undefined): CrawlingStatus {
 }
 
 // TaskStatusDetail의 status 값을 안전하게 변환하는 헬퍼 함수
-function validateTaskStatus(status: string): 'pending' | 'running' | 'success' | 'error' | 'stopped' {
-  const validStatuses: ('pending' | 'running' | 'success' | 'error' | 'stopped')[] = 
-    ['pending', 'running', 'success', 'error', 'stopped'];
+function validateTaskStatus(status: string): 'pending' | 'running' | 'success' | 'error' | 'stopped' | 'attempting' {
+  const validStatuses: ('pending' | 'running' | 'success' | 'error' | 'stopped' | 'attempting')[] = 
+    ['pending', 'running', 'success', 'error', 'stopped', 'attempting'];
   
   return validStatuses.includes(status as any) 
-    ? (status as 'pending' | 'running' | 'success' | 'error' | 'stopped') 
+    ? (status as 'pending' | 'running' | 'success' | 'error' | 'stopped' | 'attempting') 
     : 'error'; // 기본값으로 'error' 사용
 }
 

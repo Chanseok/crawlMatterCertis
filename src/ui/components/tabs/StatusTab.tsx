@@ -136,12 +136,14 @@ export const StatusTab: React.FC<StatusTabProps> = ({
       <div className="mt-6 transition-all duration-500 ease-in-out" 
            style={{ 
              opacity: progress.currentStage === 2 ? 0 : 1,
-             maxHeight: progress.currentStage === 2 ? '0' : '200px',
+             maxHeight: progress.currentStage === 2 ? '0' : '250px', // 높이 증가
              overflow: 'hidden'
            }}>
         <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">제품 목록 페이지 읽기</h3>
         <PageProgressDisplay />
-        <ConcurrentTasksVisualizer />
+        <div className="relative">
+          <ConcurrentTasksVisualizer />
+        </div>
       </div>
     </>
   );
