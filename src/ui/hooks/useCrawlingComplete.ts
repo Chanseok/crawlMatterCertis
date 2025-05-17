@@ -3,7 +3,12 @@ import { addLog } from '../stores';
 import { useMultipleEventSubscriptions, EventSubscription } from './useEventSubscription';
 import type { MatterProduct } from '../../../types';
 import { CrawlingCompleteData, DbSaveCompleteData, DbSaveSkippedData } from '../types/crawling';
+import { useDebugLog } from './useDebugLog';
 
+/**
+ * 크롤링 완료 및 DB 저장 관련 이벤트를 처리하는 커스텀 훅
+ * 이벤트 리스너를 등록하고 상태를 관리하여 UI에서 사용할 수 있게 함
+ */
 export function useCrawlingComplete() {
   // 상태 관리
   const [crawlingResults, setCrawlingResults] = useState<MatterProduct[]>([]);
@@ -12,6 +17,16 @@ export function useCrawlingComplete() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSavingToDb, setIsSavingToDb] = useState<boolean>(false);
+  
+  // 디버그 로깅
+  useDebugLog('useCrawlingComplete', {
+    resultsCount: crawlingResults.length,
+    autoSavedToDb,
+    showCompleteView,
+    error,
+    isLoading,
+    isSavingToDb
+  }, [crawlingResults, autoSavedToDb, showCompleteView, error, isLoading, isSavingToDb]);
   
   // 모든 상태를 리셋하는 유틸리티 함수
   const resetAllStates = useCallback(() => {
