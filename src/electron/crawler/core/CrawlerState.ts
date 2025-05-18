@@ -3,8 +3,9 @@
  * 크롤링 상태를 관리하는 클래스
  */
 
-import type { Product, MatterProduct } from '../../../../types.js';
+import type { Product, MatterProduct, PageProcessingStatusItem, PageProcessingStatusValue } from '../../../../types.js';
 import { crawlerEvents } from '../utils/progress.js';
+import { PageValidator, PageValidationResult } from '../utils/page-validator.js';
 
 export type CrawlingStage =
   | 'preparation'
@@ -35,6 +36,13 @@ export interface ProgressData {
   percentage?: number;  // 진행률 퍼센트 (0-100)
 }
 
+// 페이지 처리 상태 타입 정의
+export interface PageProcessingStatus {
+  pageNumber: number;
+  status: 'idle' | 'fetching' | 'processing' | 'completed' | 'failed';
+  error?: string;
+}
+
 export class CrawlerState {
   private products: Product[] = [];
   private matterProducts: MatterProduct[] = [];
@@ -47,6 +55,134 @@ export class CrawlerState {
   private detailStageNewCount: number = 0;
   private detailStageUpdatedCount: number = 0;
   
+  // 페이지당 기대되는 제품 수
+  private _expectedProductsPerPage: number = 12;
+  
+  // 페이지 번호별 수집된 제품 정보를 저장하는 맵
+  private pageProductsCache: Map<number, Product[]> = new Map();
+  
+  // 페이지 처리 상태를 저장하는 배열
+  private pageProcessingStatuses: Map<number, PageProcessingStatusItem> = new Map();
+
+  /**
+   * 페이지 처리 상태 가져오기
+   */
+  public getPageProductsCache(pageNumber: number): Product[] {
+    return this.pageProductsCache.get(pageNumber) || [];
+  }
+
+  /**
+   * 페이지 처리 상태 가져오기
+   */
+  public getPageProcessingStatus(pageNumber: number): PageProcessingStatusItem | undefined {
+    return this.pageProcessingStatuses.get(pageNumber);
+  }
+
+  /**
+   * 모든 페이지 처리 상태 가져오기
+   */
+  public getAllPageProcessingStatuses(): PageProcessingStatusItem[] {
+    return Array.from(this.pageProcessingStatuses.values());
+  }
+
+  /**
+   * 페이지 처리 상태 업데이트
+   */
+  public updatePageProcessingStatus(
+    pageNumber: number, 
+    status: PageProcessingStatusValue, 
+    attempt: number = 1
+  ): void {
+    this.pageProcessingStatuses.set(pageNumber, {
+      pageNumber,
+      status,
+      attempt
+    });
+  }
+
+  /**
+   * 페이지가 완전히 수집되었는지 확인
+   */
+  public isPageCompletelyCollected(pageNumber: number): boolean {
+    const status = this.pageProcessingStatuses.get(pageNumber);
+    return status?.status === 'success';
+  }
+
+  /**
+   * 페이지 상태를 초기화 (재시도를 위해)
+   * 캐시된 제품 정보는 유지하면서 상태만 재설정
+   */
+  public resetPageStatus(pageNumber: number): void {
+    if (this.pageProcessingStatuses.has(pageNumber)) {
+      const currentStatus = this.pageProcessingStatuses.get(pageNumber)!;
+      this.pageProcessingStatuses.set(pageNumber, {
+        ...currentStatus,
+        status: 'waiting',
+        attempt: (currentStatus.attempt || 0) + 1
+      });
+    } else {
+      this.pageProcessingStatuses.set(pageNumber, {
+        pageNumber,
+        status: 'waiting',
+        attempt: 1
+      });
+    }
+  }
+
+  /**
+   * 페이지별 제품 캐시를 업데이트합니다.
+   * 기존에 캐시된 제품과 새로 수집한 제품을 병합합니다.
+   */
+  public updatePageProductsCache(pageNumber: number, newProducts: Product[]): Product[] {
+    // 기존 캐시된 제품 가져오기
+    const existingProducts = this.getPageProductsCache(pageNumber);
+    
+    // URL 기준으로 중복 제거하며 병합
+    const mergedProducts = this.mergeProductsWithoutDuplicates(existingProducts, newProducts);
+    
+    // 업데이트된 캐시 저장
+    this.pageProductsCache.set(pageNumber, mergedProducts);
+    console.log(`[CrawlerState] 페이지 ${pageNumber}의 제품 캐시 업데이트: 기존 ${existingProducts.length}개 + 신규 ${newProducts.length}개 = 병합 후 ${mergedProducts.length}개`);
+    
+    return mergedProducts;
+  }
+
+  /**
+   * 두 제품 배열을 URL 기준으로 중복 없이 병합합니다.
+   */
+  private mergeProductsWithoutDuplicates(existing: Product[], newItems: Product[]): Product[] {
+    // URL을 키로 사용하여 맵 생성
+    const productMap = new Map<string, Product>();
+    
+    // 기존 제품 추가
+    existing.forEach(product => {
+      if (product.url) {
+        productMap.set(product.url, product);
+      }
+    });
+    
+    // 새 제품 추가 또는 업데이트 (기존 정보와 병합)
+    newItems.forEach(product => {
+      if (!product.url) return;
+      
+      const existingProduct = productMap.get(product.url);
+      if (existingProduct) {
+        // 기존 제품과 새 제품 정보 병합
+        productMap.set(product.url, {
+          ...existingProduct,
+          ...product,
+          // 항목별 병합 로직이 필요하면 여기서 구현
+        });
+      } else {
+        // 새 제품 추가
+        productMap.set(product.url, product);
+      }
+    });
+    
+    // 맵에서 배열로 변환하여 반환
+    return Array.from(productMap.values());
+  }
+
   constructor() {
     this.progressData = {
       stage: 'preparation',
@@ -286,6 +422,10 @@ public updateProgress(data: Partial<ProgressData>): void {
     this.detailStageProcessedCount = 0;
     this.detailStageNewCount = 0;
     this.detailStageUpdatedCount = 0;
+    
+    // 스마트 병합을 위한 상태 초기화
+    this.pageProductsCache.clear();
+    this.pageProcessingStatuses.clear();
   }
 
   /**
@@ -319,5 +459,46 @@ public updateProgress(data: Partial<ProgressData>): void {
    */
   public getDetailStageUpdatedCount(): number {
     return this.detailStageUpdatedCount;
+  }
+
+  /**
+   * 페이지가 완전히 수집되었는지 확인 (강화된 검증)
+   * @param pageNumber 검증할 페이지 번호
+   * @param isLastPage 마지막 페이지 여부
+   * @param lastPageExpectedCount 마지막 페이지의 기대 제품 수 (알려진 경우)
+   * @returns 검증 결과
+   */
+  public validatePageCompleteness(
+    pageNumber: number, 
+    isLastPage: boolean = false,
+    lastPageExpectedCount?: number
+  ): PageValidationResult {
+    const products = this.getPageProductsCache(pageNumber);
+    
+    // PageValidator를 사용하여 완전성 검증
+    return PageValidator.validatePage(
+      pageNumber,
+      products,
+      isLastPage,
+      this._expectedProductsPerPage, // 설정에서 가져온 기대 제품 수
+      lastPageExpectedCount
+    );
+  }
+
+  /**
+   * 마지막으로 설정된 기대 제품 수 조회 (페이지당)
+   */
+  public get expectedProductsPerPage(): number {
+    return this._expectedProductsPerPage || 12; // 기본값 12
+  }
+
+  /**
+   * 페이지당 기대 제품 수 설정
+   * @param count 페이지당 기대 제품 수
+   */
+  public setExpectedProductsPerPage(count: number): void {
+    if (count > 0) {
+      this._expectedProductsPerPage = count;
+    }
   }
 }

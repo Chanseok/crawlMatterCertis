@@ -129,6 +129,7 @@ export class ProgressManager {
   ): void {
     this.retryCount = currentAttempt;
     
+    // 재시도 정보를 전역 이벤트로 발생
     updateRetryStatus('list-retry', {
       stage: 'productList',
       currentAttempt,
@@ -139,11 +140,15 @@ export class ProgressManager {
       itemIds
     });
     
+    // 재시도 상태를 UI에 즉시 표시 - 상태를 'preparing'으로 설정하여 즉시 표시되도록 함
     crawlerEvents.emit('crawlingTaskStatus', {
       taskId: 'list-retry',
       status: 'running',
-      message: `Product list retry cycle ${currentAttempt}/${maxAttempt}: ${remainingItems} pages`
+      message: `Product list retry cycle ${currentAttempt}/${maxAttempt}: ${remainingItems} pages preparing for retry`
     });
+    
+    // 즉시 진행 상황 업데이트 발송
+    this.sendProgressUpdate(false);
   }
 
   /**

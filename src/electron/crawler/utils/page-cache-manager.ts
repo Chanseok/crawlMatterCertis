@@ -61,6 +61,17 @@ export class PageCacheManager<T> {
   }
 
   /**
+   * 캐시된 데이터가 있을 경우 동기적으로 반환
+   * 캐시된 데이터가 없으면 null 반환
+   */
+  getSync(): T | null {
+    if (this.hasValidCache()) {
+      return this.cache;
+    }
+    return null;
+  }
+
+  /**
    * 캐시 TTL 설정
    */
   setTtl(ttlMs: number): void {
