@@ -33,6 +33,9 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = ({
   
   // 애니메이션 키를 사용하여 컴포넌트 강제 리렌더링
   const [animationKey, setAnimationKey] = useState<number>(0);
+  
+  // 로켓 애니메이션 여부 - 수집 중에도 로켓 애니메이션 표시
+  const [showRocketAnimation, setShowRocketAnimation] = useState<boolean>(false);
 
   // 페이지 번호에 해당하는 작업 찾기
   const taskKey = `page-${pageNumber}`;
@@ -40,9 +43,12 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = ({
 
   // 작업 상태에 따라 디스플레이 상태 업데이트
   useEffect(() => {
-    let timerId: NodeJS.Timeout | undefined;
+    let timerId: ReturnType<typeof setTimeout> | undefined;
 
     if (currentTask && (currentTask.status === 'running' || currentTask.status === 'attempting')) {
+      // 수집 중일 때는 로켓 애니메이션 표시
+      setShowRocketAnimation(true);
+      
       // 페이지 타임아웃 설정 가져오기
       const pageTimeoutMs = currentConfig.pageTimeoutMs || 60000; // 기본값 60초
       const taskStartTime = currentTask.startTime || Date.now();
@@ -67,9 +73,10 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = ({
           // 타임아웃 발생 또는 작업 완료/실패 시 기본 상태로 돌아감
           setDisplayState('default');
           setSecondsLeft(null);
+          setShowRocketAnimation(false);
           if (timerId) clearInterval(timerId);
         } else {
-          // 수집 중이지만, 카운트다운 시작 전 (로켓 없이 '수집중' 표시)
+          // 수집 중이지만, 카운트다운 시작 전
           setDisplayState('collecting');
           setSecondsLeft(null);
         }
@@ -81,6 +88,7 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = ({
       // 작업이 없거나 'running'/'attempting' 상태가 아니면 기본 상태
       setDisplayState('default');
       setSecondsLeft(null);
+      setShowRocketAnimation(false);
     }
 
     return () => {
@@ -90,7 +98,14 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = ({
 
   return (
     <div key={animationKey} className="task-progress-container" data-task-id={taskKey}>
-      {/* 수집 중 상태 (로켓 이미지 대신 '수집중' 텍스트 표시) */}
+      {/* 로켓 날아가는 애니메이션 - 수집 중일 때도 표시 */}
+      {showRocketAnimation && (
+        <div className="task-progress-indicator">
+          <div className="flying-emoji">{statusEmoji}</div>
+        </div>
+      )}
+      
+      {/* 수집 중 상태 텍스트 표시 */}
       {displayState === 'collecting' && (
         <div className="task-collecting">
           <span className="collecting-text">수집중</span>
@@ -120,7 +135,7 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = ({
       )}
       
       {/* 기본 상태 (로켓 이모지 표시) */}
-      {displayState === 'default' && (
+      {displayState === 'default' && !showRocketAnimation && (
         <div className="task-indicator default">
           <span role="img" aria-label="rocket">{statusEmoji}</span>
         </div>
