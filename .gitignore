@@ -13,6 +13,7 @@ dist-react
 dist-electron
 dist-output
 data-for-dev
+test-results
 *.local
 
 # Editor directories and files

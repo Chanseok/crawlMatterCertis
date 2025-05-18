@@ -10,6 +10,7 @@ import { configStore, updateConfigSettings } from '../stores';
  * - 자동 DB 추가 설정
  * - 크롤러 타입 설정
  * - 벤더 정보 갱신 기능
+ * - 배치 처리 설정
  */
 export function CrawlingSettings() {
   const config = useStore(configStore);
@@ -20,6 +21,16 @@ export function CrawlingSettings() {
   const [productDetailRetry, setProductDetailRetry] = useState(config.productDetailRetryCount);
   const [autoAddToDb, setAutoAddToDb] = useState(config.autoAddToLocalDB);
   const [crawlerType, setCrawlerType] = useState(config.crawlerType || 'axios');
+  
+  // 배치 처리 관련 상태
+  const [batchSize, setBatchSize] = useState(config.batchSize || 30);
+  const [batchDelayMs, setBatchDelayMs] = useState(config.batchDelayMs || 2000);
+  const [enableBatchProcessing, setEnableBatchProcessing] = useState(
+    config.enableBatchProcessing !== false
+  );
+  
+  // 배치 처리 표시 임계값 (이 값 이상이면 배치 처리 설정 표시)
+  const BATCH_THRESHOLD = 50;
   
   // 벤더 정보 상태
   const [vendorRefreshing, setVendorRefreshing] = useState(false);
@@ -42,6 +53,11 @@ export function CrawlingSettings() {
     setProductDetailRetry(config.productDetailRetryCount);
     setAutoAddToDb(config.autoAddToLocalDB);
     setCrawlerType(config.crawlerType || 'axios');
+    
+    // 배치 처리 설정 업데이트
+    setBatchSize(config.batchSize || 30);
+    setBatchDelayMs(config.batchDelayMs || 2000);
+    setEnableBatchProcessing(config.enableBatchProcessing !== false);
   }, [config]);
   
   // 페이지 수에 따른 예상 제품 수 및 시간 계산
@@ -75,7 +91,11 @@ export function CrawlingSettings() {
       productListRetryCount: productListRetry,
       productDetailRetryCount: productDetailRetry,
       autoAddToLocalDB: autoAddToDb,
-      crawlerType: crawlerType
+      crawlerType: crawlerType,
+      // 배치 처리 설정 추가
+      batchSize: batchSize,
+      batchDelayMs: batchDelayMs,
+      enableBatchProcessing: enableBatchProcessing
     });
   };
   
@@ -253,6 +273,110 @@ export function CrawlingSettings() {
         </p>
       </div>
       
+      {/* 배치 처리 설정 - 페이지 수가 임계값 이상일 때만 표시 */}
+      {pageLimit >= BATCH_THRESHOLD && (
+        <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-md border border-yellow-100 dark:border-yellow-800">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                배치 처리 설정
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                대량의 페이지를 수집할 때 리소스 사용을 최적화하기 위한 설정입니다.
+              </p>
+            </div>
+            <div className="flex items-center">
+              <input
+                id="enable-batch"
+                type="checkbox"
+                className="h-5 w-5 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                checked={enableBatchProcessing}
+                onChange={() => setEnableBatchProcessing(!enableBatchProcessing)}
+              />
+              <label htmlFor="enable-batch" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                배치 처리 사용
+              </label>
+            </div>
+          </div>
+          
+          {enableBatchProcessing && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+              {/* 배치 크기 설정 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  배치 크기 (10~100)
+                </label>
+                <div className="flex items-center">
+                  <input
+                    type="range"
+                    min="10"
+                    max="100"
+                    value={batchSize}
+                    onChange={(e) => setBatchSize(parseInt(e.target.value))}
+                    className="w-full mr-3"
+                  />
+                  <input
+                    type="number"
+                    min="10"
+                    max="100"
+                    value={batchSize}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value);
+                      if (!isNaN(value) && value >= 10 && value <= 100) {
+                        setBatchSize(value);
+                      }
+                    }}
+                    className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-right"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  한 번에 처리할 페이지 수입니다. 값이 작을수록 메모리 사용량이 감소합니다.
+                </p>
+              </div>
+              
+              {/* 배치 간 지연 설정 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  배치 간 지연 (1000~10000ms)
+                </label>
+                <div className="flex items-center">
+                  <input
+                    type="range"
+                    min="1000"
+                    max="10000"
+                    step="500"
+                    value={batchDelayMs}
+                    onChange={(e) => setBatchDelayMs(parseInt(e.target.value))}
+                    className="w-full mr-3"
+                  />
+                  <input
+                    type="number"
+                    min="1000"
+                    max="10000"
+                    step="500"
+                    value={batchDelayMs}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value);
+                      if (!isNaN(value) && value >= 1000 && value <= 10000) {
+                        setBatchDelayMs(value);
+                      }
+                    }}
+                    className="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-right"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  다음 배치 시작 전 대기 시간(ms)입니다. 값이 클수록 리소스 사용량이 감소합니다.
+                </p>
+              </div>
+            </div>
+          )}
+          
+          <div className="mt-3 text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/40 p-2 rounded">
+            <span className="font-medium">참고:</span> 현재 {pageLimit}페이지 설정됨 - 이는 대량의 페이지 수집이므로 배치 처리를 통해 시스템 리소스 사용을 최적화할 수 있습니다.
+          </div>
+        </div>
+      )}
+      
       {/* 벤더 정보 갱신 */}
       <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 rounded-md border border-green-100 dark:border-green-800">
         <div className="flex items-center justify-between">
@@ -291,6 +415,80 @@ export function CrawlingSettings() {
           </div>
         </div>
       </div>
+      
+      {/* 배치 처리 설정 (페이지 수가 임계값 이상일 때만 표시) */}
+      {pageLimit >= BATCH_THRESHOLD && (
+        <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-md border border-yellow-100 dark:border-yellow-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                배치 처리 설정
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                대량의 데이터를 효율적으로 처리하기 위한 설정입니다.
+              </p>
+            </div>
+          </div>
+          
+          {/* 배치 크기 설정 */}
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              배치 크기 ({batchSize}개)
+            </label>
+            <input
+              type="range"
+              min="1"
+              max="100"
+              value={batchSize}
+              onChange={(e) => setBatchSize(parseInt(e.target.value))}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <span>1</span>
+              <span>100</span>
+            </div>
+          </div>
+          
+          {/* 배치 지연 시간 설정 */}
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              배치 지연 시간 ({batchDelayMs}ms)
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="10000"
+              step="100"
+              value={batchDelayMs}
+              onChange={(e) => setBatchDelayMs(parseInt(e.target.value))}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <span>0ms</span>
+              <span>10초</span>
+            </div>
+          </div>
+          
+          {/* 배치 처리 활성화 설정 */}
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              배치 처리 활성화
+            </label>
+            <div className="flex items-center">
+              <input
+                id="enable-batch-processing"
+                type="checkbox"
+                className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                checked={enableBatchProcessing}
+                onChange={() => setEnableBatchProcessing(!enableBatchProcessing)}
+              />
+              <label htmlFor="enable-batch-processing" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                활성화
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* 저장 버튼 */}
       <div className="flex justify-end">

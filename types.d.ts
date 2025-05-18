@@ -145,6 +145,11 @@ export interface CrawlerConfig {
     customUserAgent?: string;
     productsPerPage: number;
     
+    // 배치 처리 관련 설정
+    batchSize?: number;          // 배치당 페이지 수 (기본값: 30)
+    batchDelayMs?: number;       // 배치 간 지연 시간 (ms) (기본값: 2000)
+    enableBatchProcessing?: boolean; // 배치 처리 활성화 여부 (기본값: true)
+    
     // 엑셀 내보내기 관련 설정
     lastExcelExportPath?: string;  // 마지막으로 내보낸 엑셀 파일 경로
     

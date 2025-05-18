@@ -59,11 +59,17 @@ export class CrawlerEngine {
 
     // Get the latest configuration AT THE START of the crawling process
     const currentConfig = configManager.getConfig();
-
+    
+    // 배치 처리 설정 가져오기
+    const batchSize = currentConfig.batchSize || 30; // 기본값 30페이지
+    const batchDelayMs = currentConfig.batchDelayMs || 2000; // 기본값 2초
+    const enableBatchProcessing = currentConfig.enableBatchProcessing !== false; // 기본값 true
+    
     // 크롤링 상태 초기화
     initializeCrawlingState();
     this.isCrawling = true;
     this.abortController = new AbortController();
+    const startTime = Date.now();
 
     // Use the latest config for BrowserManager
     // Ensure browserManager is always (re)created with the latest config for a new crawling session
@@ -92,43 +98,124 @@ export class CrawlerEngine {
 
       // 사용자 설정 가져오기 (CRAWL-RANGE-001) - from the already fetched currentConfig
       const userPageLimit = currentConfig.pageRangeLimit;
-
-      // 1/2단계: 제품 목록 수집 시작 알림 - totalPages will be fetched using cache first
+      
       // 제품 목록 수집기 생성 (1단계) - Pass the latest currentConfig
       const productListCollector = new ProductListCollector(this.state, this.abortController, currentConfig, this.browserManager!);
       
-      // The old way of getting totalPagesFromCache for an initial simple progress update might still be useful 
-      // for a very brief moment before the detailed one from ProductListCollector arrives.
-      // However, ProductListCollector now sends its own initial update with page statuses.
-      // So, this immediate call to updateProductListProgress might be redundant or show brief intermediate state.
-      // For now, let's keep it to see the effect, but it might be removable.
-      const { totalPages: totalPagesFromCacheForBriefUpdate } = await productListCollector.fetchTotalPagesCached(false); 
-      // updateProductListProgress(0, totalPagesFromCacheForBriefUpdate, this.startTime); // Old simple call
+      // totalPages와 lastPageProductCount 정보 가져오기
+      const { totalPages: totalPagesFromCache, lastPageProductCount } = await productListCollector.fetchTotalPagesCached(true);
+      
+      // 크롤링 범위 계산
+      const { startPage, endPage } = await PageIndexManager.calculateCrawlingRange(
+        totalPagesFromCache, 
+        lastPageProductCount || 0,
+        userPageLimit
+      );
+      
+      // 크롤링할 페이지가 없는 경우 종료
+      if (startPage <= 0 || endPage <= 0 || startPage < endPage) {
+        console.log('[CrawlerEngine] No pages to crawl.');
+        this.isCrawling = false;
+        return true;
+      }
+      
+      // 총 크롤링할 페이지 수 계산
+      const totalPagesToCrawl = startPage - endPage + 1;
+      console.log(`[CrawlerEngine] Total pages to crawl: ${totalPagesToCrawl}, from page ${startPage} to ${endPage}`);
 
-      // Define the new enhanced progress callback
+      // Define the enhanced progress callback
       const enhancedProgressUpdater = (
         processedSuccessfully: number, 
         totalPagesInStage: number, 
         stage1PageStatuses: PageProcessingStatusItem[], 
         currentOverallRetryCountForStage: number, 
-        stage1StartTime: number, // Received from ProductListCollector
+        stage1StartTime: number,
         isStageComplete: boolean = false
       ) => {
         updateProductListProgress(
           processedSuccessfully, 
           totalPagesInStage, 
-          stage1StartTime, // Use the startTime from ProductListCollector for accurate duration of stage 1
+          stage1StartTime,
           stage1PageStatuses, 
           currentOverallRetryCountForStage, 
-          currentConfig.productListRetryCount, // Max retries from config
+          currentConfig.productListRetryCount,
           isStageComplete
         );
       };
       
-      productListCollector.setProgressCallback(enhancedProgressUpdater);
+      // 결과를 저장할 변수 초기화
+      let allCollectedProducts: Product[] = [];
+      let batchNumber = 0;
       
-      // 제품 목록 수집 실행
-      const products = await productListCollector.collect(userPageLimit);
+      // 배치 처리가 활성화되고 크롤링할 페이지가 배치 크기보다 큰 경우 배치 처리 실행
+      if (enableBatchProcessing && totalPagesToCrawl > batchSize) {
+        console.log(`[CrawlerEngine] Using batch processing with ${batchSize} pages per batch`);
+        
+        // 배치 수 계산
+        const totalBatches = Math.ceil(totalPagesToCrawl / batchSize);
+        let currentPage = startPage;
+        
+        // 각 배치 처리
+        for (let batch = 0; batch < totalBatches; batch++) {
+          if (this.abortController.signal.aborted) {
+            console.log('[CrawlerEngine] Crawling aborted during batch processing.');
+            break;
+          }
+          
+          batchNumber = batch + 1;
+          console.log(`[CrawlerEngine] Processing batch ${batchNumber}/${totalBatches}`);
+          
+          // 배치 범위 계산
+          const batchEndPage = Math.max(endPage, currentPage - batchSize + 1);
+          const batchRange = {
+            startPage: currentPage,
+            endPage: batchEndPage
+          };
+          
+          // 이 배치를 위한 새로운 수집기 생성
+          const batchCollector = new ProductListCollector(
+            this.state,
+            this.abortController,
+            currentConfig,
+            this.browserManager!
+          );
+          
+          batchCollector.setProgressCallback(enhancedProgressUpdater);
+          
+          // 이 배치에 대한 페이지 범위 설정
+          console.log(`[CrawlerEngine] Collecting batch ${batchNumber} range: ${batchRange.startPage} to ${batchRange.endPage}`);
+          const batchProducts = await batchCollector.collectPageRange(batchRange);
+          
+          // 결과 합치기
+          allCollectedProducts = allCollectedProducts.concat(batchProducts);
+          
+          // 이 배치의 실패 확인
+          const failedPages = this.state.getFailedPages();
+          if (failedPages.length > 0) {
+            console.warn(`[CrawlerEngine] Batch ${batchNumber} completed with ${failedPages.length} failed pages.`);
+          }
+          
+          // 다음 배치 준비
+          currentPage = batchEndPage - 1;
+          
+          // 각 배치 후 리소스 해제
+          await batchCollector.cleanupResources();
+          
+          // 배치간 지연 추가
+          if (batch < totalBatches - 1) {
+            console.log(`[CrawlerEngine] Waiting ${batchDelayMs}ms before next batch...`);
+            await new Promise(resolve => setTimeout(resolve, batchDelayMs));
+          }
+        }
+      } else {
+        // 작은 수집에 대해서는 원래 비배치 프로세스 사용
+        console.log('[CrawlerEngine] Using standard processing (no batching needed)');
+        productListCollector.setProgressCallback(enhancedProgressUpdater);
+        allCollectedProducts = await productListCollector.collect(userPageLimit);
+      }
+      
+      // 크롤링 제품 목록 사용
+      const products = allCollectedProducts;
       
       // The final progress update for stage 1 completion is now handled internally by productListCollector.collect() calling _sendProgressUpdate(true)
       // So, this explicit call might be redundant if productListCollector guarantees a final update.
@@ -161,13 +248,13 @@ export class CrawlerEngine {
 
       // 성공률 확인
       const failedPages = this.state.getFailedPages();
-      // Use totalPagesFromCacheForBriefUpdate for success rate calculation if it's the basis of the collection range
-      const successRate = totalPagesFromCacheForBriefUpdate > 0 ? (totalPagesFromCacheForBriefUpdate - failedPages.length) / totalPagesFromCacheForBriefUpdate : 1;
+      // Use totalPagesFromCache for success rate calculation if it's the basis of the collection range
+      const successRate = totalPagesFromCache > 0 ? (totalPagesFromCache - failedPages.length) / totalPagesFromCache : 1;
       const successRatePercent = (successRate * 100).toFixed(1);
       
       // 1단계에서 실패 페이지가 있으면 중단 (원래 동작으로 복원)
       if (failedPages.length > 0) {
-        const message = `[경고] 제품 목록 수집 성공률: ${successRatePercent}% (${totalPagesFromCacheForBriefUpdate - failedPages.length}/${totalPagesFromCacheForBriefUpdate}). 실패한 페이지가 있어 크롤링을 중단합니다.`;
+        const message = `[경고] 제품 목록 수집 성공률: ${successRatePercent}% (${totalPagesFromCache - failedPages.length}/${totalPagesFromCache}). 실패한 페이지가 있어 크롤링을 중단합니다.`;
         console.warn(`[CrawlerEngine] ${message}`);
         
         // 경고 이벤트 발생 및 크롤링 중단
@@ -175,7 +262,7 @@ export class CrawlerEngine {
           message,
           successRate: parseFloat(successRatePercent),
           failedPages: failedPages.length,
-          totalPages: totalPagesFromCacheForBriefUpdate, // Use totalPagesFromCacheForBriefUpdate
+          totalPages: totalPagesFromCache, // Use totalPagesFromCache
           continueProcess: false // 중단 설정
         });
         

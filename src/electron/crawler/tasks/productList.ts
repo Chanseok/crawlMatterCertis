@@ -60,6 +60,7 @@ export class ProductListCollector {
   // New members for detailed stage 1 progress
   private stage1PageStatuses: PageProcessingStatusItem[] = [];
   private currentStageRetryCount: number = 0; // Tracks the number of retry *cycles* for the stage
+  private totalPagesCount: number = 0; // Track total number of pages to process
   
   
   
@@ -202,6 +203,97 @@ export class ProductListCollector {
     } finally {
       this.cleanupResources();
     }
+  }
+
+  /**
+   * 지정된 페이지 범위만 수집
+   * @param pageRange 수집할 페이지 범위 {startPage, endPage}
+   * @returns 수집된 제품 정보
+   */
+  public async collectPageRange(pageRange: {startPage: number, endPage: number}): Promise<Product[]> {
+    this.productCache.clear();
+    
+    // ProgressManager 초기화 및 단계 설정
+    this.progressManager.setInitStage();
+    
+    this.currentStageRetryCount = 0;
+    this.stage1PageStatuses = [];
+
+    try {
+      const { totalPages: siteTotalPages, lastPageProductCount } = await this.fetchTotalPagesCached(false);
+      ProductListCollector.lastPageProductCount = lastPageProductCount;
+      
+      // Generate page numbers within range
+      const pageNumbersToCrawl: number[] = [];
+      for (let page = pageRange.startPage; page >= pageRange.endPage; page--) {
+        pageNumbersToCrawl.push(page);
+      }
+      
+      if (pageNumbersToCrawl.length === 0) {
+        this._sendProgressUpdate(true);
+        return [];
+      }
+      
+      this.stage1PageStatuses = pageNumbersToCrawl.map(pn => ({
+        pageNumber: pn,
+        status: 'waiting',
+        attempt: 0
+      }));
+
+      // Prepare progress tracking
+      const totalPages = pageNumbersToCrawl.length;
+      this.totalPagesCount = totalPages;
+      this._sendProgressUpdate();
+
+      // Process pages - similar to existing collect() method
+      console.log(`[ProductListCollector] Collecting ${totalPages} pages in range: ${pageRange.startPage}-${pageRange.endPage}`);
+      
+      // Use existing methods instead of startStage
+      this.progressManager.setInitStage();
+      this._sendProgressUpdate();
+      const collectedProducts = await this._crawlListOfPages(pageNumbersToCrawl, siteTotalPages);
+      
+      // Process any failed pages
+      const allPageErrors: Record<string, CrawlError[]> = {};
+      
+      const productListRetryCount = this.config.productListRetryCount || 3;
+
+      // Retry mechanism (similar to collect())
+      const failedPageNumbers = pageNumbersToCrawl.filter(p => {
+        const pageStatus = this.stage1PageStatuses.find(s => s.pageNumber === p);
+        return pageStatus && (pageStatus.status === 'failed' || pageStatus.status === 'incomplete');
+      });
+
+      if (failedPageNumbers.length > 0) {
+        await this.retryFailedPages(failedPageNumbers, siteTotalPages, allPageErrors);
+      }
+
+      // Summarize collection results
+      this._summarizeCollectionOutcome(pageNumbersToCrawl, siteTotalPages, allPageErrors, collectedProducts);
+      
+      return collectedProducts;
+    } catch (error) {
+      console.error('[ProductListCollector] Error collecting page range:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 리소스 정리 및 해제
+   */
+  public async cleanupResources(): Promise<void> {
+    console.log('[ProductListCollector] Cleaning up resources...');
+    
+    // Clear caches
+    this.productCache.clear();
+    
+    // If we're using a page crawler, clean it up
+    if (this.pageCrawler) {
+      await this.pageCrawler.cleanup();
+    }
+    
+    // Allow garbage collection
+    this.stage1PageStatuses = [];
   }
 
   private async _preparePageRange(userPageLimit: number): Promise<{
@@ -439,7 +531,7 @@ export class ProductListCollector {
     const firstRetryCycleAttemptNumber = 1;
 
     for (let retryCycleIndex = 0; retryCycleIndex < productListRetryCount && currentIncompletePages.length > 0; retryCycleIndex++) {
-      this.currentStageRetryCount = firstRetryCycleAttemptNumber + retryCycleIndex;
+      this.currentStageRetryCount = retryCycleIndex + 1; // Add 1 to start at retry cycle 1
       const overallAttemptNumberForPagesInThisCycle = 1 + this.currentStageRetryCount;
       
       // 지수 백오프 적용 (새로 추가)
@@ -535,9 +627,41 @@ export class ProductListCollector {
     // ProgressManager를 통해 수집 결과 요약 보고
     this.progressManager.summarizeCollectionOutcome(totalPages, collectedProducts.length);
   }
-
-  private cleanupResources(): void {
-    console.log('[ProductListCollector] Cleaning up resources...');
+  
+  /**
+   * 페이지 목록을 크롤링하는 메서드
+   * @param pageNumbersToCrawl 크롤링할 페이지 번호 배열
+   * @param siteTotalPages 사이트의 총 페이지 수
+   * @returns 수집된 제품 목록
+   */
+  private async _crawlListOfPages(
+    pageNumbersToCrawl: number[],
+    siteTotalPages: number
+  ): Promise<Product[]> {
+    initializeTaskStates(pageNumbersToCrawl);
+    
+    const incompletePages: number[] = [];
+    const allPageErrors: Record<string, CrawlError[]> = {};
+    const initialAttemptNumber = 1;
+    
+    debugLog(`[ProductListCollector] Starting crawl for ${pageNumbersToCrawl.length} pages.`);
+    
+    pageNumbersToCrawl.forEach(pNum => {
+      this._updatePageStatusInternal(pNum, 'attempting', initialAttemptNumber);
+    });
+    this._sendProgressUpdate();
+    
+    const { results } = await this.executeParallelCrawling(
+      pageNumbersToCrawl,
+      siteTotalPages,
+      this.config.initialConcurrency ?? 5,
+      initialAttemptNumber
+    );
+    
+    this._processBatchResultsAndUpdateStatus(results, incompletePages, allPageErrors, initialAttemptNumber);
+    
+    // Return the products that have been collected so far
+    return this.finalizeCollectedProducts(pageNumbersToCrawl);
   }
 
   public async getTotalPagesCached(force = false): Promise<number> {
@@ -703,9 +827,7 @@ export class ProductListCollector {
         }
         throw new PageOperationError(`Error crawling page ${pageNumber} (attempt ${attempt}): ${error.message}. URL: ${pageUrl}`, pageNumber, attempt);
       }
-      throw new PageOperationError(`Unknown error crawling page ${pageNumber} (attempt ${attempt}). URL: ${pageUrl}`, pageNumber, attempt);
+        throw new PageOperationError(`Unknown error crawling page ${pageNumber} (attempt ${attempt}). URL: ${pageUrl}`, pageNumber, attempt);
+      }
     }
-  }
-
-  // 페이지 최적화 및 네비게이션 메서드는 PageCrawler로 이동하여 제거
 }
