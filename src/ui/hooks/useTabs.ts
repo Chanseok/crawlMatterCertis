@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { addLog, loadConfig } from '../stores';
 
-export type TabType = 'settings' | 'status' | 'localDB';
+export type TabType = 'settings' | 'status' | 'localDB' | 'analysis';
 
 export function useTabs(defaultTab: TabType = 'status') {
   const [activeTab, setActiveTab] = useState<TabType>(defaultTab);

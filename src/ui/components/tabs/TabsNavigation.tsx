@@ -40,7 +40,17 @@ export const TabsNavigation: React.FC<TabsNavigationProps> = ({
         }`}
         onClick={() => onTabChange('localDB')}
       >
-        로컬DB
+        데이터베이스
+      </button>
+      <button
+        className={`px-4 py-2 text-sm font-medium ${
+          activeTab === 'analysis'
+            ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+        }`}
+        onClick={() => onTabChange('analysis')}
+      >
+        분석
       </button>
     </div>
   );

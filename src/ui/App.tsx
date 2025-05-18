@@ -26,6 +26,7 @@ import { AppLayout } from './components/layout/AppLayout';
 import { useTabs } from './hooks/useTabs';
 import { useCrawlingComplete } from './hooks/useCrawlingComplete';
 import { useApiInitialization } from './hooks/useApiInitialization';
+import { AnalysisTab } from './components/tabs/AnalysisTab';
 
 function App() {
   // API 초기화 (앱 시작 시 한 번만 수행)
@@ -201,6 +202,11 @@ function App() {
           {/* 로컬DB 탭 */}
           {activeTab === 'localDB' && (
             <LocalDBTab />
+          )}
+          
+          {/* 분석 탭 */}
+          {activeTab === 'analysis' && (
+            <AnalysisTab />
           )}
         </div>
         

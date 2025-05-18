@@ -6,7 +6,6 @@ import { ExpandableSection } from './ExpandableSection';
 import StatusCheckLoadingAnimation from './StatusCheckLoadingAnimation';
 import { format } from 'date-fns';
 import { RetryStatusIndicator } from './RetryStatusIndicator';
-import { BatchUITestButton } from './BatchUITestButton';
 
 interface CrawlingDashboardProps {
   isAppStatusChecking: boolean;
@@ -953,8 +952,7 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
         )}
       </ExpandableSection>
       
-      {/* 배치 UI 테스트 버튼 (개발 모드에서만 표시) */}
-      <BatchUITestButton />
+      {/* BatchUITestButton removed - moved to Settings tab */}
     </>
   );
 }
