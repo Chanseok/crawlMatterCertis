@@ -1,9 +1,18 @@
 /* 기본 레이아웃 스타일 */
 #root {
-  max-width: 1280px;
+ /* max-width: 1280px 제거 또는 증가 */
+  width: 100%;
+  max-width: 95%; /* 전체 화면의 95%까지 사용 */
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
+}
+
+/* 대형 화면에서는 더 넓게 */
+@media (min-width: 1920px) {
+  #root {
+    max-width: 90%;
+  }
 }
 
 /* 로고 효과는 유지 */

@@ -10,7 +10,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       <Header />
-      <main className="container mx-auto py-6 px-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <main className="w-full px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
         {children}
       </main>
       <Footer />
