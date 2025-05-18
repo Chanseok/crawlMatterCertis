@@ -10,6 +10,8 @@ const MIN_PAGE_RANGE_LIMIT = 1;
 const MAX_PAGE_RANGE_LIMIT = 500;
 const MIN_PRODUCTS_PER_PAGE = 1;
 const MAX_PRODUCTS_PER_PAGE = 100; // Example: Max 100 products per page for sanity
+const MIN_BATCH_RETRY_LIMIT = 1;
+const MAX_BATCH_RETRY_LIMIT = 10;
 
 // 기본 설정 값 (Consolidated DEFAULT_CONFIG)
 const DEFAULT_CONFIG: CrawlerConfig = {
@@ -20,6 +22,12 @@ const DEFAULT_CONFIG: CrawlerConfig = {
   productsPerPage: 12, // Default within validated range 1-100 (example)
   autoAddToLocalDB: true,
   crawlerType: 'axios', // Default crawler type is axios/cheerio
+  
+  // Batch processing defaults
+  batchSize: 30,
+  batchDelayMs: 2000,
+  enableBatchProcessing: true,
+  batchRetryLimit: 3, // Default batch retry limit
 
   // Fields previously in core/config.ts's defaultConfig
   baseUrl: 'https://csa-iot.org/csa-iot_products/',
@@ -136,6 +144,12 @@ export class ConfigManager {
 
     if (this.config.productsPerPage < MIN_PRODUCTS_PER_PAGE) this.config.productsPerPage = MIN_PRODUCTS_PER_PAGE;
     if (this.config.productsPerPage > MAX_PRODUCTS_PER_PAGE) this.config.productsPerPage = MAX_PRODUCTS_PER_PAGE;
+    
+    // 배치 재시도 횟수 검증
+    if (this.config.batchRetryLimit !== undefined) {
+      if (this.config.batchRetryLimit < MIN_BATCH_RETRY_LIMIT) this.config.batchRetryLimit = MIN_BATCH_RETRY_LIMIT;
+      if (this.config.batchRetryLimit > MAX_BATCH_RETRY_LIMIT) this.config.batchRetryLimit = MAX_BATCH_RETRY_LIMIT;
+    }
     
     this.saveConfig();
     return { ...this.config };

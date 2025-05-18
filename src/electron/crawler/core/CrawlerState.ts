@@ -201,6 +201,16 @@ public updateProgress(data: Partial<ProgressData>): void {
   }
   
   /**
+   * 실패한 페이지 목록 초기화
+   * 배치 재시도 등에 사용
+   */
+  public resetFailedPages(): void {
+    this.failedPages = [];
+    this.failedPageErrors = {};
+    console.log('[CrawlerState] Failed pages have been reset for retry.');
+  }
+  
+  /**
    * 실패한 제품 URL 목록 가져오기
    */
   public getFailedProducts(): string[] {

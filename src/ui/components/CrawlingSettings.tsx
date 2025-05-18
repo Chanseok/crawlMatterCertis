@@ -29,6 +29,7 @@ export function CrawlingSettings() {
   // 배치 처리 관련 상태
   const [batchSize, setBatchSize] = useState(config.batchSize || 30);
   const [batchDelayMs, setBatchDelayMs] = useState(config.batchDelayMs || 2000);
+  const [batchRetryLimit, setBatchRetryLimit] = useState(config.batchRetryLimit || 3);
   const [enableBatchProcessing, setEnableBatchProcessing] = useState(
     config.enableBatchProcessing !== false
   );
@@ -66,6 +67,7 @@ export function CrawlingSettings() {
     // 배치 처리 설정 업데이트
     setBatchSize(config.batchSize || 30);
     setBatchDelayMs(config.batchDelayMs || 2000);
+    setBatchRetryLimit(config.batchRetryLimit || 3);
     setEnableBatchProcessing(config.enableBatchProcessing !== false);
   }, [config]);
   
@@ -104,7 +106,8 @@ export function CrawlingSettings() {
       // 배치 처리 설정 추가
       batchSize: batchSize,
       batchDelayMs: batchDelayMs,
-      enableBatchProcessing: enableBatchProcessing
+      enableBatchProcessing: enableBatchProcessing,
+      batchRetryLimit: batchRetryLimit
     });
   };
   
@@ -395,6 +398,39 @@ export function CrawlingSettings() {
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   다음 배치 시작 전 대기 시간(ms)입니다. 값이 클수록 리소스 사용량이 감소합니다.
+                </p>
+              </div>
+              
+              {/* 배치 재시도 횟수 설정 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  배치 재시도 횟수 (1~10)
+                </label>
+                <div className="flex items-center">
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={batchRetryLimit}
+                    onChange={(e) => setBatchRetryLimit(parseInt(e.target.value))}
+                    className="w-full mr-3"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={batchRetryLimit}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value);
+                      if (!isNaN(value) && value >= 1 && value <= 10) {
+                        setBatchRetryLimit(value);
+                      }
+                    }}
+                    className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-right"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  배치 처리 실패 시 자동 재시도 횟수입니다. 네트워크 불안정 등의 일시적 오류에 대응합니다.
                 </p>
               </div>
             </div>

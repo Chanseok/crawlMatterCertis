@@ -97,6 +97,8 @@ export type CrawlingProgress = {
     // 배치 처리 정보
     currentBatch?: number;     // 현재 처리 중인 배치 번호
     totalBatches?: number;     // 총 배치 수
+    batchRetryCount?: number;  // 현재 배치의 재시도 횟수
+    batchRetryLimit?: number;  // 배치 최대 재시도 횟수 
 };
 
 // 크롤링 상태 요약 정보 타입
@@ -153,6 +155,7 @@ export interface CrawlerConfig {
     batchSize?: number;          // 배치당 페이지 수 (기본값: 30)
     batchDelayMs?: number;       // 배치 간 지연 시간 (ms) (기본값: 2000)
     enableBatchProcessing?: boolean; // 배치 처리 활성화 여부 (기본값: true)
+    batchRetryLimit?: number;    // 배치 실패 시 재시도 횟수 (기본값: 3)
     
     // 엑셀 내보내기 관련 설정
     lastExcelExportPath?: string;  // 마지막으로 내보낸 엑셀 파일 경로

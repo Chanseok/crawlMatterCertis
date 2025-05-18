@@ -512,11 +512,16 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
                 <span>배치 진행 상태</span>
                 <span className="font-medium">
                   {progress.currentBatch}/{progress.totalBatches} 배치
+                  {progress.batchRetryCount !== undefined && progress.batchRetryCount > 0 && (
+                    <span className="ml-2 text-amber-600 dark:text-amber-400">
+                      (재시도: {progress.batchRetryCount}/{progress.batchRetryLimit || 3})
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-1">
                 <div
-                  className="bg-amber-400 dark:bg-amber-500 h-2 rounded-full transition-all duration-300"
+                  className={`${progress.batchRetryCount ? 'bg-amber-500 dark:bg-amber-600' : 'bg-amber-400 dark:bg-amber-500'} h-2 rounded-full transition-all duration-300`}
                   style={{ width: `${Math.max(0.5, (progress.currentBatch / Math.max(progress.totalBatches, 1)) * 100)}%` }}
                 >
                 </div>
@@ -636,7 +641,8 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
           {progress.currentBatch !== undefined && progress.totalBatches !== undefined && progress.totalBatches > 1 ? (
             <div className="bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md border border-amber-100 dark:border-amber-800">
               <p className="text-xs text-amber-800 dark:text-amber-300 whitespace-nowrap overflow-hidden text-ellipsis">
-                배치 처리 현황
+                배치 처리 현황 {progress.batchRetryCount !== undefined && progress.batchRetryCount > 0 && 
+                  <span className="text-amber-600 dark:text-amber-400">(재시도 {progress.batchRetryCount}/{progress.batchRetryLimit || 3})</span>}
               </p>
               <p className="text-lg sm:text-xl font-bold text-amber-700 dark:text-amber-400">
                 {progress.currentBatch} / {progress.totalBatches}
@@ -734,7 +740,11 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
                 <li>• 현재 재시도 횟수: {progress.retryCount}회</li>
               )}
               {progress.currentBatch !== undefined && progress.totalBatches !== undefined && (
-                <li>• 배치 처리: <span className="font-medium text-blue-800 dark:text-blue-300">{progress.currentBatch}/{progress.totalBatches} 배치</span></li>
+                <li>• 배치 처리: <span className="font-medium text-blue-800 dark:text-blue-300">{progress.currentBatch}/{progress.totalBatches} 배치</span>
+                  {progress.batchRetryCount !== undefined && progress.batchRetryCount > 0 && (
+                    <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium"> (배치 재시도: {progress.batchRetryCount}/{progress.batchRetryLimit || 3})</span>
+                  )}
+                </li>
               )}
             </ul>
           </div>

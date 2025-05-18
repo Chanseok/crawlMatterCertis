@@ -60,7 +60,7 @@ export class ProductListCollector {
   // New members for detailed stage 1 progress
   private stage1PageStatuses: PageProcessingStatusItem[] = [];
   private currentStageRetryCount: number = 0; // Tracks the number of retry *cycles* for the stage
-  private totalPagesCount: number = 0; // Track total number of pages to process
+  // Track total number of pages to process
   
   
   
@@ -242,7 +242,7 @@ export class ProductListCollector {
 
       // Prepare progress tracking
       const totalPages = pageNumbersToCrawl.length;
-      this.totalPagesCount = totalPages;
+      this.progressManager.initializePages(pageNumbersToCrawl);
       this._sendProgressUpdate();
 
       // Process pages - similar to existing collect() method
@@ -256,8 +256,6 @@ export class ProductListCollector {
       // Process any failed pages
       const allPageErrors: Record<string, CrawlError[]> = {};
       
-      const productListRetryCount = this.config.productListRetryCount || 3;
-
       // Retry mechanism (similar to collect())
       const failedPageNumbers = pageNumbersToCrawl.filter(p => {
         const pageStatus = this.stage1PageStatuses.find(s => s.pageNumber === p);
@@ -528,7 +526,6 @@ export class ProductListCollector {
     }
 
     let currentIncompletePages = [...pagesToRetryInitially];
-    const firstRetryCycleAttemptNumber = 1;
 
     for (let retryCycleIndex = 0; retryCycleIndex < productListRetryCount && currentIncompletePages.length > 0; retryCycleIndex++) {
       this.currentStageRetryCount = retryCycleIndex + 1; // Add 1 to start at retry cycle 1

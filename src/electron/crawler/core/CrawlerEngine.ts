@@ -27,7 +27,7 @@ import type {
   FailedPageReport,
   FailedProductReport
 } from '../utils/types.js';
-import type { Product, MatterProduct, PageProcessingStatusItem } from '../../../../types.js'; // Added PageProcessingStatusItem
+import type { Product, MatterProduct, PageProcessingStatusItem } from '../../../../types.js';
 import { debugLog } from '../../util.js';
 import { configManager } from '../../ConfigManager.js';
 
@@ -64,13 +64,13 @@ export class CrawlerEngine {
     const batchSize = currentConfig.batchSize || 30; // 기본값 30페이지
     const batchDelayMs = currentConfig.batchDelayMs || 2000; // 기본값 2초
     const enableBatchProcessing = currentConfig.enableBatchProcessing !== false; // 기본값 true
+    const batchRetryLimit = currentConfig.batchRetryLimit || 3; // 기본값 3회
     
     // 크롤링 상태 초기화
     initializeCrawlingState();
     this.isCrawling = true;
     this.abortController = new AbortController();
-    const startTime = Date.now();
-
+    
     // Use the latest config for BrowserManager
     // Ensure browserManager is always (re)created with the latest config for a new crawling session
     this.browserManager = new BrowserManager(currentConfig);
@@ -169,6 +169,8 @@ export class CrawlerEngine {
           crawlerEvents.emit('crawlingProgress', {
             currentBatch: batchNumber,
             totalBatches: totalBatches,
+            batchRetryCount: 0,
+            batchRetryLimit: batchRetryLimit,
             message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치`
           });
           
@@ -179,34 +181,104 @@ export class CrawlerEngine {
             endPage: batchEndPage
           };
           
-          // 이 배치를 위한 새로운 수집기 생성
-          const batchCollector = new ProductListCollector(
-            this.state,
-            this.abortController,
-            currentConfig,
-            this.browserManager!
-          );
+          let batchSuccess = false;
+          let batchRetryCount = 0;
+          let batchProducts: Product[] = [];
           
-          batchCollector.setProgressCallback(enhancedProgressUpdater);
+          // 배치 수집 시도 (실패 시 재시도)
+          while (!batchSuccess && batchRetryCount <= batchRetryLimit) {
+            try {
+              if (batchRetryCount > 0) {
+                console.log(`[CrawlerEngine] Retrying batch ${batchNumber} (attempt ${batchRetryCount}/${batchRetryLimit})`);
+                
+                // 재시도 상태 업데이트
+                crawlerEvents.emit('crawlingProgress', {
+                  currentBatch: batchNumber,
+                  totalBatches: totalBatches,
+                  batchRetryCount: batchRetryCount,
+                  batchRetryLimit: batchRetryLimit,
+                  message: `배치 ${batchNumber} 재시도 중 (${batchRetryCount}/${batchRetryLimit})`
+                });
+                
+                // 재시도 전 잠시 대기 (지수 백오프 적용)
+                const retryDelay = Math.min(batchDelayMs * (1.5 ** batchRetryCount), 30000);
+                console.log(`[CrawlerEngine] Waiting ${retryDelay}ms before retry...`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+              }
+              
+              // 이 배치를 위한 새로운 수집기 생성
+              const batchCollector = new ProductListCollector(
+                this.state,
+                this.abortController,
+                currentConfig,
+                this.browserManager!
+              );
+              
+              batchCollector.setProgressCallback(enhancedProgressUpdater);
+              
+              // 이 배치에 대한 페이지 범위 설정
+              console.log(`[CrawlerEngine] Collecting batch ${batchNumber} range: ${batchRange.startPage} to ${batchRange.endPage}${batchRetryCount > 0 ? ` (retry ${batchRetryCount})` : ''}`);
+              batchProducts = await batchCollector.collectPageRange(batchRange);
+              
+              // 이 배치의 실패 확인
+              const failedPages = this.state.getFailedPages();
+              
+              // 재시도 결과 확인
+              if (failedPages.length === 0) {
+                // 성공한 경우
+                batchSuccess = true;
+                console.log(`[CrawlerEngine] Batch ${batchNumber} completed successfully${batchRetryCount > 0 ? ` after ${batchRetryCount} retries` : ''}`);
+              } else {
+                // 실패한 경우
+                console.warn(`[CrawlerEngine] Batch ${batchNumber} attempt ${batchRetryCount + 1} failed with ${failedPages.length} failed pages.`);
+                
+                // 재시도 횟수 증가
+                batchRetryCount++;
+                
+                // 마지막 시도였다면 실패로 처리
+                if (batchRetryCount > batchRetryLimit) {
+                  console.error(`[CrawlerEngine] Batch ${batchNumber} failed after ${batchRetryLimit} retries.`);
+                  
+                  // 실패 이벤트 발행
+                  const message = `배치 ${batchNumber} 처리 실패 (${batchRetryLimit}회 재시도 후)`;
+                  this.state.reportCriticalFailure(message);
+                  return false;
+                }
+                
+                // 실패한 페이지 초기화 (재시도를 위해)
+                this.state.resetFailedPages();
+              }
+              
+              // 수집기 리소스 정리
+              await batchCollector.cleanupResources();
+              
+            } catch (error) {
+              console.error(`[CrawlerEngine] Error processing batch ${batchNumber}:`, error);
+              
+              // 재시도 횟수 증가
+              batchRetryCount++;
+              
+              // 마지막 시도였다면 오류 발생
+              if (batchRetryCount > batchRetryLimit) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                const message = `배치 ${batchNumber} 처리 중 오류 발생 (${batchRetryLimit}회 재시도 후): ${errorMessage}`;
+                this.state.reportCriticalFailure(message);
+                return false;
+              }
+            }
+          }
           
-          // 이 배치에 대한 페이지 범위 설정
-          console.log(`[CrawlerEngine] Collecting batch ${batchNumber} range: ${batchRange.startPage} to ${batchRange.endPage}`);
-          const batchProducts = await batchCollector.collectPageRange(batchRange);
-          
-          // 결과 합치기
+          // 성공한 결과 추가
           allCollectedProducts = allCollectedProducts.concat(batchProducts);
           
-          // 이 배치의 실패 확인
-          const failedPages = this.state.getFailedPages();
-          if (failedPages.length > 0) {
-            console.warn(`[CrawlerEngine] Batch ${batchNumber} completed with ${failedPages.length} failed pages.`);
+          // 이 배치의 실패 확인 (최종 상태)
+          const currentFailedPages = this.state.getFailedPages();
+          if (currentFailedPages.length > 0) {
+            console.warn(`[CrawlerEngine] Batch ${batchNumber} completed with ${currentFailedPages.length} failed pages.`);
           }
           
           // 다음 배치 준비
           currentPage = batchEndPage - 1;
-          
-          // 각 배치 후 리소스 해제
-          await batchCollector.cleanupResources();
           
           // 배치간 지연 추가
           if (batch < totalBatches - 1) {
