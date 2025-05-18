@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, 
   Pie, Cell, ResponsiveContainer, LineChart, Line
@@ -299,7 +299,7 @@ export function AnalysisTab() {
                             fill="#8884d8"
                             dataKey="value"
                           >
-                            {statistics.topManufacturers.map((entry, index) => (
+                            {statistics.topManufacturers.map((_, index) => (
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>

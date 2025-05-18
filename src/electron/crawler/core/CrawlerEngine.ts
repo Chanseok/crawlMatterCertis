@@ -171,7 +171,7 @@ export class CrawlerEngine {
             totalBatches: totalBatches,
             batchRetryCount: 0,
             batchRetryLimit: batchRetryLimit,
-            message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치`
+            message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치 - 1단계: 제품 목록 수집`
           });
           
           // 배치 범위 계산
@@ -185,11 +185,11 @@ export class CrawlerEngine {
           let batchRetryCount = 0;
           let batchProducts: Product[] = [];
           
-          // 배치 수집 시도 (실패 시 재시도)
+          // 1단계: 배치 수집 시도 (실패 시 재시도)
           while (!batchSuccess && batchRetryCount <= batchRetryLimit) {
             try {
               if (batchRetryCount > 0) {
-                console.log(`[CrawlerEngine] Retrying batch ${batchNumber} (attempt ${batchRetryCount}/${batchRetryLimit})`);
+                console.log(`[CrawlerEngine] Retrying batch ${batchNumber} 1단계 (attempt ${batchRetryCount}/${batchRetryLimit})`);
                 
                 // 재시도 상태 업데이트
                 crawlerEvents.emit('crawlingProgress', {
@@ -197,7 +197,7 @@ export class CrawlerEngine {
                   totalBatches: totalBatches,
                   batchRetryCount: batchRetryCount,
                   batchRetryLimit: batchRetryLimit,
-                  message: `배치 ${batchNumber} 재시도 중 (${batchRetryCount}/${batchRetryLimit})`
+                  message: `배치 ${batchNumber} 1단계 재시도 중 (${batchRetryCount}/${batchRetryLimit})`
                 });
                 
                 // 재시도 전 잠시 대기 (지수 백오프 적용)
@@ -227,20 +227,20 @@ export class CrawlerEngine {
               if (failedPages.length === 0) {
                 // 성공한 경우
                 batchSuccess = true;
-                console.log(`[CrawlerEngine] Batch ${batchNumber} completed successfully${batchRetryCount > 0 ? ` after ${batchRetryCount} retries` : ''}`);
+                console.log(`[CrawlerEngine] Batch ${batchNumber} 1단계 completed successfully${batchRetryCount > 0 ? ` after ${batchRetryCount} retries` : ''}`);
               } else {
                 // 실패한 경우
-                console.warn(`[CrawlerEngine] Batch ${batchNumber} attempt ${batchRetryCount + 1} failed with ${failedPages.length} failed pages.`);
+                console.warn(`[CrawlerEngine] Batch ${batchNumber} 1단계 attempt ${batchRetryCount + 1} failed with ${failedPages.length} failed pages.`);
                 
                 // 재시도 횟수 증가
                 batchRetryCount++;
                 
                 // 마지막 시도였다면 실패로 처리
                 if (batchRetryCount > batchRetryLimit) {
-                  console.error(`[CrawlerEngine] Batch ${batchNumber} failed after ${batchRetryLimit} retries.`);
+                  console.error(`[CrawlerEngine] Batch ${batchNumber} 1단계 failed after ${batchRetryLimit} retries.`);
                   
                   // 실패 이벤트 발행
-                  const message = `배치 ${batchNumber} 처리 실패 (${batchRetryLimit}회 재시도 후)`;
+                  const message = `배치 ${batchNumber} 1단계 처리 실패 (${batchRetryLimit}회 재시도 후)`;
                   this.state.reportCriticalFailure(message);
                   return false;
                 }
@@ -253,7 +253,7 @@ export class CrawlerEngine {
               await batchCollector.cleanupResources();
               
             } catch (error) {
-              console.error(`[CrawlerEngine] Error processing batch ${batchNumber}:`, error);
+              console.error(`[CrawlerEngine] Error processing batch ${batchNumber} 1단계:`, error);
               
               // 재시도 횟수 증가
               batchRetryCount++;
@@ -261,15 +261,134 @@ export class CrawlerEngine {
               // 마지막 시도였다면 오류 발생
               if (batchRetryCount > batchRetryLimit) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                const message = `배치 ${batchNumber} 처리 중 오류 발생 (${batchRetryLimit}회 재시도 후): ${errorMessage}`;
+                const message = `배치 ${batchNumber} 1단계 처리 중 오류 발생 (${batchRetryLimit}회 재시도 후): ${errorMessage}`;
                 this.state.reportCriticalFailure(message);
                 return false;
               }
             }
           }
           
-          // 성공한 결과 추가
-          allCollectedProducts = allCollectedProducts.concat(batchProducts);
+          // 1단계가 성공했고 제품이 있는 경우에만 2단계 실행
+          if (batchSuccess && batchProducts.length > 0) {
+            // 2단계: 제품 상세 정보 수집 및 DB 저장
+            crawlerEvents.emit('crawlingProgress', {
+              currentBatch: batchNumber,
+              totalBatches: totalBatches,
+              batchRetryCount: 0,
+              batchRetryLimit: batchRetryLimit,
+              message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치 - 2단계: 제품 상세 정보 수집`
+            });
+            
+            console.log(`[CrawlerEngine] Starting batch ${batchNumber} 2단계 (detail collection) with ${batchProducts.length} products`);
+            
+            // 2단계 시작 시간
+            const detailStartTime = Date.now();
+            
+            // 2단계 진행 상황 초기화
+            updateProductDetailProgress(0, batchProducts.length, detailStartTime);
+            
+            // 2단계 상세 정보 수집기 생성
+            const batchDetailCollector = new ProductDetailCollector(
+              this.state,
+              this.abortController,
+              currentConfig,
+              this.browserManager!
+            );
+            
+            try {
+              // 이 배치의 제품 상세 정보 수집
+              const batchMatterProducts = await batchDetailCollector.collect(batchProducts);
+              
+              // 2단계 완료 이벤트
+              updateProductDetailProgress(
+                batchProducts.length, 
+                batchProducts.length, 
+                detailStartTime, 
+                true
+              );
+              
+              // DB 저장 단계
+              crawlerEvents.emit('crawlingProgress', {
+                currentBatch: batchNumber,
+                totalBatches: totalBatches,
+                message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치 - DB 저장`
+              });
+              
+              // 배치 결과를 DB에 저장
+              if (currentConfig.autoAddToLocalDB && batchMatterProducts.length > 0) {
+                try {
+                  console.log(`[CrawlerEngine] Saving batch ${batchNumber} products to DB (${batchMatterProducts.length} products)`);
+                  
+                  // 임시 파일 저장 (백업 용도)
+                  const batchFilename = `batch_${batchNumber}_${Date.now()}.json`;
+                  try {
+                    await this.saveBatchToTempFile(batchMatterProducts, batchFilename);
+                  } catch (saveErr) {
+                    const errorMessage = saveErr instanceof Error ? saveErr.message : String(saveErr);
+                    console.warn(`[CrawlerEngine] Failed to save temporary batch file: ${errorMessage}`);
+                  }
+                  
+                  // DB에 저장
+                  const saveResult = await saveProductsToDb(batchMatterProducts);
+                  
+                  // 저장 결과 로그
+                  console.log(`[CrawlerEngine] Batch ${batchNumber} DB Save Result: ${saveResult.added} added, ${saveResult.updated} updated`);
+                  
+                  // DB 저장 완료 이벤트
+                  crawlerEvents.emit('dbSaveComplete', {
+                    success: true,
+                    added: saveResult.added,
+                    updated: saveResult.updated,
+                    unchanged: saveResult.unchanged,
+                    failed: saveResult.failed,
+                    message: `배치 ${batchNumber}: ${saveResult.added}개 추가, ${saveResult.updated}개 업데이트됨`
+                  });
+                } catch (dbError) {
+                  console.error(`[CrawlerEngine] Error saving batch ${batchNumber} to DB:`, dbError);
+                  
+                  // DB 저장 오류 이벤트
+                  crawlerEvents.emit('dbSaveError', {
+                    error: `배치 ${batchNumber} DB 저장 오류: ${dbError instanceof Error ? dbError.message : String(dbError)}`
+                  });
+                }
+              } else {
+                console.log(`[CrawlerEngine] Skipping DB save for batch ${batchNumber} (auto-save disabled or no products)`);
+                
+                // DB 저장 스킵 이벤트
+                crawlerEvents.emit('dbSaveSkipped', {
+                  message: `배치 ${batchNumber} DB 저장 건너뜀 (${currentConfig.autoAddToLocalDB ? '제품 없음' : '자동 저장 비활성화'})`,
+                  count: batchMatterProducts.length
+                });
+              }
+              
+              // 배치 제품 정보 전체 목록에 추가
+              allCollectedProducts = allCollectedProducts.concat(batchProducts);
+              
+              console.log(`[CrawlerEngine] Batch ${batchNumber} complete`);
+              
+            } catch (detailError) {
+              console.error(`[CrawlerEngine] Error in batch ${batchNumber} 2단계 (detail collection):`, detailError);
+              
+              // 2단계 오류 이벤트
+              const errorMessage = detailError instanceof Error ? detailError.message : String(detailError);
+              const message = `배치 ${batchNumber} 2단계 처리 중 오류 발생: ${errorMessage}`;
+              
+              crawlerEvents.emit('crawlingProgress', {
+                currentBatch: batchNumber,
+                totalBatches: totalBatches,
+                message: message,
+                error: errorMessage
+              });
+              
+              // 치명적인 오류인 경우에만 전체 크롤링 중단
+              if (detailError instanceof Error && detailError.message.includes('CRITICAL')) {
+                this.state.reportCriticalFailure(message);
+                return false;
+              }
+            }
+          } else {
+            console.warn(`[CrawlerEngine] Batch ${batchNumber} has no products to process in 2단계, skipping`);
+          }
           
           // 이 배치의 실패 확인 (최종 상태)
           const currentFailedPages = this.state.getFailedPages();
@@ -280,9 +399,16 @@ export class CrawlerEngine {
           // 다음 배치 준비
           currentPage = batchEndPage - 1;
           
-          // 배치간 지연 추가
+          // 배치 간 지연 추가
           if (batch < totalBatches - 1) {
-            console.log(`[CrawlerEngine] Waiting ${batchDelayMs}ms before next batch...`);
+            console.log(`[CrawlerEngine] Batch ${batchNumber} complete. Waiting ${batchDelayMs}ms before next batch...`);
+            
+            crawlerEvents.emit('crawlingProgress', {
+              currentBatch: batchNumber,
+              totalBatches: totalBatches,
+              message: `배치 ${batchNumber} 완료. 다음 배치 준비 중...`
+            });
+            
             await new Promise(resolve => setTimeout(resolve, batchDelayMs));
           }
         }
@@ -296,9 +422,11 @@ export class CrawlerEngine {
       // 크롤링 제품 목록 사용
       const products = allCollectedProducts;
       
-      // The final progress update for stage 1 completion is now handled internally by productListCollector.collect() calling _sendProgressUpdate(true)
-      // So, this explicit call might be redundant if productListCollector guarantees a final update.
-      // updateProductListProgress(totalPagesFromCache, totalPagesFromCache, listStartTime, true); // Old completion call
+      // 배치 처리 완료 알림
+      crawlerEvents.emit('crawlingProgress', {
+        message: '모든 배치 처리가 완료되었습니다.',
+        status: 'completed_stage_1'
+      });
 
       // 중단 여부 확인 - 명시적으로 요청된 중단만 처리
       if (this.abortController.signal.aborted) {
@@ -351,34 +479,48 @@ export class CrawlerEngine {
         return false; // 함수 종료
       }
 
-      // 2/2단계: 제품 상세 정보 수집 시작 알림
-      const detailStartTime = Date.now();
-      updateProductDetailProgress(0, products.length, detailStartTime);
-      
-      debugLog(`[CrawlerEngine] Found ${products.length} products to process. Starting detail collection...`);
-      
-      // 제품 상세 정보 수집기 생성 (2단계)
-      const productDetailCollector = new ProductDetailCollector(this.state, this.abortController, currentConfig, this.browserManager); // Pass latest currentConfig and browserManager
-      
-      // 제품 상세 정보 수집 실행
-      const matterProducts = await productDetailCollector.collect(products);
+      // 배치 처리를 사용하지 않은 경우에만 여기서 2단계 실행
+      if (!enableBatchProcessing || totalPagesToCrawl <= batchSize) {
+        // 2/2단계: 제품 상세 정보 수집 시작 알림
+        const detailStartTime = Date.now();
+        updateProductDetailProgress(0, products.length, detailStartTime);
+        
+        debugLog(`[CrawlerEngine] Found ${products.length} products to process. Starting detail collection...`);
+        
+        // 제품 상세 정보 수집기 생성 (2단계)
+        const productDetailCollector = new ProductDetailCollector(this.state, this.abortController, currentConfig, this.browserManager); // Pass latest currentConfig and browserManager
+        
+        // 제품 상세 정보 수집 실행
+        const matterProducts = await productDetailCollector.collect(products);
 
-      // 2단계 완료 이벤트
-      updateProductDetailProgress(
-        products.length, 
-        products.length, 
-        detailStartTime, 
-        true
-      );
+        // 2단계 완료 이벤트
+        updateProductDetailProgress(
+          products.length, 
+          products.length, 
+          detailStartTime, 
+          true
+        );
 
-      // 중복 제거 및 정렬
-      deduplicateAndSortMatterProducts(matterProducts);
+        // 중복 제거 및 정렬
+        deduplicateAndSortMatterProducts(matterProducts);
 
-      // 데이터 일관성 검증
-      validateDataConsistency(products, matterProducts);
+        // 데이터 일관성 검증
+        validateDataConsistency(products, matterProducts);
 
-      // 제품 상세 결과 저장 및 처리
-      await this.handleDetailCrawlingResults(matterProducts);
+        // 제품 상세 결과 저장 및 처리
+        await this.handleDetailCrawlingResults(matterProducts);
+      } else {
+        // 배치 처리를 사용한 경우에는 여기서 2단계 추가 작업을 할 필요가 없음
+        console.log('[CrawlerEngine] All batches have been processed in batch mode, skipping additional detail collection.');
+        
+        // 모든 배치가 완료되었음을 알림
+        crawlerEvents.emit('crawlingComplete', {
+          success: true,
+          count: products.length,
+          message: '모든 배치가 처리되었습니다. 배치별 상세 정보가 이미 수집 및 저장되었습니다.',
+          autoSavedToDb: currentConfig.autoAddToLocalDB
+        });
+      }
 
       console.log('[CrawlerEngine] Crawling process completed successfully.');
       this.state.setStage('completed', '크롤링이 성공적으로 완료되었습니다.');
@@ -399,6 +541,9 @@ export class CrawlerEngine {
         // 모든 작업이 완료된 후 정리 목적으로만 abort 신호 발생
         this.abortController.abort('cleanup');
       }
+      
+      // 최종 완료 로그
+      console.log('[CrawlerEngine] Crawling process finalized.');
     }
   }
 
@@ -704,5 +849,32 @@ export class CrawlerEngine {
       message: 'Crawling process failed',
       details: errorMessage
     });
+  }
+
+  /**
+   * 배치 수집된 제품 정보를 임시 파일로 저장
+   * @param products 저장할 Matter 제품 정보 배열
+   * @param filename 저장할 파일 이름
+   * @returns 저장된 파일 경로
+   */
+  private async saveBatchToTempFile(products: MatterProduct[], filename: string): Promise<string> {
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const outputDir = path.resolve(process.cwd(), 'dist-output', 'batch-temp');
+      
+      // 디렉토리가 없으면 생성
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+      
+      const filePath = path.join(outputDir, filename);
+      fs.writeFileSync(filePath, JSON.stringify(products, null, 2), 'utf-8');
+      console.log(`[CrawlerEngine] Batch products saved to ${filePath}`);
+      return filePath;
+    } catch (error) {
+      console.error('[CrawlerEngine] Failed to save batch file:', error);
+      throw error;
+    }
   }
 }
