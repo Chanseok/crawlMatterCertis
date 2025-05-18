@@ -85,7 +85,11 @@ const electronAPI: IElectronAPI = {
     
     // Vendor 관련 API 추가
     fetchAndUpdateVendors: createMethodHandler('fetchAndUpdateVendors'),
-    getVendors: createMethodHandler('getVendors')
+    getVendors: createMethodHandler('getVendors'),
+    
+    // 배치 UI 테스트 API 추가
+    testBatchUI: (args: { batchCount?: number; delayMs?: number }) => 
+        ipcRenderer.invoke('testBatchUI', args)
 };
 
 // contextBridge를 통해 안전하게 API 노출

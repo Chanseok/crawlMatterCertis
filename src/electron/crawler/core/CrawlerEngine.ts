@@ -165,6 +165,13 @@ export class CrawlerEngine {
           batchNumber = batch + 1;
           console.log(`[CrawlerEngine] Processing batch ${batchNumber}/${totalBatches}`);
           
+          // 배치 정보 업데이트 (UI에 표시)
+          crawlerEvents.emit('crawlingProgress', {
+            currentBatch: batchNumber,
+            totalBatches: totalBatches,
+            message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치`
+          });
+          
           // 배치 범위 계산
           const batchEndPage = Math.max(endPage, currentPage - batchSize + 1);
           const batchRange = {

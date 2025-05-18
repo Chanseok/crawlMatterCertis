@@ -93,6 +93,10 @@ export type CrawlingProgress = {
 
     // 1단계 제품 목록 페이지 읽기 현황
     stage1PageStatuses?: PageProcessingStatusItem[];
+    
+    // 배치 처리 정보
+    currentBatch?: number;     // 현재 처리 중인 배치 번호
+    totalBatches?: number;     // 총 배치 수
 };
 
 // 크롤링 상태 요약 정보 타입
@@ -229,6 +233,8 @@ export type MethodParamsMapping = {
     // Vendor 관련 메서드
     'fetchAndUpdateVendors': void;
     'getVendors': void;
+    // 배치 UI 테스트 관련 메서드
+    'testBatchUI': { batchCount?: number; delayMs?: number };
 };
 
 // 메서드 반환값 맵핑
@@ -269,6 +275,12 @@ export type MethodReturnMapping = {
     'getVendors': {
         success: boolean;
         vendors: Vendor[];
+        error?: string;
+    };
+    // 배치 UI 테스트 메서드 반환 타입
+    'testBatchUI': {
+        success: boolean;
+        message?: string;
         error?: string;
     };
 };
@@ -334,6 +346,9 @@ export interface IElectronAPI extends IPlatformAPI {
     // Vendor 관련 API
     fetchAndUpdateVendors: () => Promise<MethodReturnMapping['fetchAndUpdateVendors']>;
     getVendors: () => Promise<MethodReturnMapping['getVendors']>;
+    
+    // 배치 UI 테스트 API
+    testBatchUI: (params: MethodParamsMapping['testBatchUI']) => Promise<MethodReturnMapping['testBatchUI']>;
 }
 
 // Window 인터페이스 확장은 글로벌로 유지

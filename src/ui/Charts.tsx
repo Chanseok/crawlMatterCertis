@@ -135,10 +135,8 @@ export function ConcurrentTasksVisualizer() {
             <span className="text-xs mt-1">p.{task.pageNumber}</span>
             
             <TaskProgressIndicator 
-              taskId={task.pageNumber}
-              remainingTime={remainingTime}
-              isActive={isActive}
-              statusEmoji={statusEmojiMap[task.status] || '🚀'} // flyUpAndShrink 애니메이션용 이모지
+              pageNumber={task.pageNumber}
+              statusEmoji={statusEmojiMap[task.status] || '🚀'} // 이모지 표시
             />
           </div>
         );

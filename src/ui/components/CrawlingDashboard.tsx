@@ -6,6 +6,7 @@ import { ExpandableSection } from './ExpandableSection';
 import StatusCheckLoadingAnimation from './StatusCheckLoadingAnimation';
 import { format } from 'date-fns';
 import { RetryStatusIndicator } from './RetryStatusIndicator';
+import { BatchUITestButton } from './BatchUITestButton';
 
 interface CrawlingDashboardProps {
   isAppStatusChecking: boolean;
@@ -504,6 +505,25 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
             </div>
           </div>
 
+          {/* 배치 진행 상태 표시 (배치 처리가 활성화된 경우에만 표시) */}
+          {progress.currentBatch !== undefined && progress.totalBatches !== undefined && progress.totalBatches > 1 && (
+            <div className="mt-2">
+              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>배치 진행 상태</span>
+                <span className="font-medium">
+                  {progress.currentBatch}/{progress.totalBatches} 배치
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-1">
+                <div
+                  className="bg-amber-400 dark:bg-amber-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.max(0.5, (progress.currentBatch / Math.max(progress.totalBatches, 1)) * 100)}%` }}
+                >
+                </div>
+              </div>
+            </div>
+          )}
+
           {progress.currentStage === 1 && (
             <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
               <span>
@@ -612,21 +632,34 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
             </p>
           </div>
 
-          <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              {progress.currentStage === 1 ? "1단계 소요 시간" : progress.currentStage === 2 ? "2단계 (누적)소요 시간" : "소요 시간"}
+          {/* 배치 처리 정보 카드 - 배치 정보가 있을 때만 표시 */}
+          {progress.currentBatch !== undefined && progress.totalBatches !== undefined && progress.totalBatches > 1 ? (
+            <div className="bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md border border-amber-100 dark:border-amber-800">
+              <p className="text-xs text-amber-800 dark:text-amber-300 whitespace-nowrap overflow-hidden text-ellipsis">
+                배치 처리 현황
+              </p>
+              <p className="text-lg sm:text-xl font-bold text-amber-700 dark:text-amber-400">
+                {progress.currentBatch} / {progress.totalBatches}
+                <span className="text-xs ml-1">배치</span>
+              </p>
             </div>
-            <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center justify-center">
-              {formatDuration(localTime.elapsedTime)}
-              {status === 'running' && (
-                <div className={`ml-2 ${flipTimer % 2 === 0 ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}>
-                  <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              )}
+          ) : (
+            <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {progress.currentStage === 1 ? "1단계 소요 시간" : progress.currentStage === 2 ? "2단계 (누적)소요 시간" : "소요 시간"}
+              </div>
+              <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center justify-center">
+                {formatDuration(localTime.elapsedTime)}
+                {status === 'running' && (
+                  <div className={`ml-2 ${flipTimer % 2 === 0 ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}>
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded-md">
             <p className="text-xs text-gray-500 dark:text-gray-400">예상 남은 시간</p>
@@ -699,6 +732,9 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
               <li>• 설정된 재시도 횟수: {config.productListRetryCount || 3}회</li>
               {progress.retryCount !== undefined && progress.retryCount > 0 && (
                 <li>• 현재 재시도 횟수: {progress.retryCount}회</li>
+              )}
+              {progress.currentBatch !== undefined && progress.totalBatches !== undefined && (
+                <li>• 배치 처리: <span className="font-medium text-blue-800 dark:text-blue-300">{progress.currentBatch}/{progress.totalBatches} 배치</span></li>
               )}
             </ul>
           </div>
@@ -906,6 +942,9 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
           </div>
         )}
       </ExpandableSection>
+      
+      {/* 배치 UI 테스트 버튼 (개발 모드에서만 표시) */}
+      <BatchUITestButton />
     </>
   );
 }

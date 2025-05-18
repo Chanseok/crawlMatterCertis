@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { configStore, updateConfigSettings } from '../stores';
 
+// 개발 모드 여부 확인 (단순화된 버전)
+const isDev = typeof window !== 'undefined' && 
+              (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
 /**
  * 크롤링 설정 컴포넌트
  * - 페이지 범위 설정
@@ -28,6 +32,11 @@ export function CrawlingSettings() {
   const [enableBatchProcessing, setEnableBatchProcessing] = useState(
     config.enableBatchProcessing !== false
   );
+  
+  // 배치 UI 테스트 관련 상태
+  const [batchTestCount, setBatchTestCount] = useState(5);
+  const [batchTestDelay, setBatchTestDelay] = useState(2000);
+  const [isBatchTestRunning, setIsBatchTestRunning] = useState(false);
   
   // 배치 처리 표시 임계값 (이 값 이상이면 배치 처리 설정 표시)
   const BATCH_THRESHOLD = 50;
@@ -117,6 +126,26 @@ export function CrawlingSettings() {
       });
     } finally {
       setVendorRefreshing(false);
+    }
+  };
+  
+  // 배치 UI 테스트 실행
+  const handleBatchUiTest = async () => {
+    setIsBatchTestRunning(true);
+    
+    try {
+      const result = await window.electron.testBatchUI({
+        batchCount: batchTestCount,
+        delayMs: batchTestDelay
+      });
+      
+      console.log('Batch UI test result:', result);
+    } catch (error) {
+      console.error('Error during batch UI test:', error);
+    } finally {
+      // 실제로는 이벤트를 통해 진행 상황을 전달받아 완료 시 상태를 변경하지만,
+      // 여기서는 테스트만 시작하고 바로 상태를 변경하지 않음
+      // 테스트가 비동기로 실행되고 별도의 이벤트로 UI를 갱신하기 때문
     }
   };
   
@@ -486,6 +515,63 @@ export function CrawlingSettings() {
                 활성화
               </label>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* 개발자 테스트 섹션 (배치 UI 테스트) */}
+      {isDev && (
+        <div className="mt-8 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-md border border-indigo-100 dark:border-indigo-800">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h3 className="text-md font-medium text-indigo-800 dark:text-indigo-300">
+                개발자 도구
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                개발 및 테스트 목적으로만 사용합니다.
+              </p>
+            </div>
+          </div>
+          
+          <div className="mt-2 mb-2">
+            <label className="block text-sm font-medium text-indigo-700 dark:text-indigo-300 mb-1">
+              배치 처리 UI 테스트
+            </label>
+            <div className="flex items-center space-x-2">
+              <input
+                type="number"
+                min="2"
+                max="20"
+                value={batchTestCount}
+                onChange={(e) => setBatchTestCount(parseInt(e.target.value))}
+                className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+                placeholder="배치 수"
+              />
+              <input
+                type="number"
+                min="1000"
+                max="10000"
+                step="500"
+                value={batchTestDelay}
+                onChange={(e) => setBatchTestDelay(parseInt(e.target.value))}
+                className="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+                placeholder="지연(ms)"
+              />
+              <button
+                onClick={handleBatchUiTest}
+                disabled={isBatchTestRunning}
+                className={`px-3 py-1 rounded-md text-sm font-medium focus:outline-none transition-all duration-200 ${
+                  isBatchTestRunning
+                    ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+                    : 'bg-indigo-500 hover:bg-indigo-600 text-white'
+                }`}
+              >
+                {isBatchTestRunning ? '테스트 실행 중...' : '배치 UI 테스트 실행'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              크롤링을 실제로 수행하지 않고 배치 처리 UI만 테스트합니다.
+            </p>
           </div>
         </div>
       )}
