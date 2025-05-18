@@ -119,18 +119,43 @@ function App() {
                              currentSummary.siteTotalPages !== undefined && 
                              currentSummary.siteTotalPages > 0;
         
-        // 상태 체크가 필요한 경우 로그 출력
+        // 상태 체크가 필요한 경우, 자동으로 상태 체크를 수행
         if (!hasStatusData) {
-          addLog('상태 체크 데이터가 없습니다. 크롤링 시작 시 자동으로 상태 체크를 수행합니다.', 'info');
+          addLog('상태 체크 데이터가 없습니다. 크롤링 시작 전 자동으로 상태 체크를 수행합니다...', 'info');
+          
+          // 상태 체크 UI 효과 - 상태 체크 중임을 표시
+          setIsStatusChecking(true);
+          
+          // 비교 패널을 확장
+          setCompareExpandedInApp(true);
+          
+          try {
+            // 상태 체크 실행
+            await checkCrawlingStatus();
+            
+            // 상태 체크 완료 후 약간의 지연으로 UI 업데이트 시간 확보
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+          } catch (statusError) {
+            addLog(`자동 상태 체크 중 오류가 발생했지만, 크롤링은 계속 진행합니다: ${statusError instanceof Error ? statusError.message : String(statusError)}`, 'warning');
+          } finally {
+            // 상태 체크 UI 효과 종료
+            setIsStatusChecking(false);
+          }
         }
         
-        // 어느 경우든 크롤링 시작 (내부에서 상태 체크 수행)
+        // 상태 체크 후 크롤링 시작 (자동 상태 체크 이후이거나 이미 데이터가 있는 경우)
+        addLog('크롤링을 시작합니다...', 'info');
+        
+        // 크롤링 시작 시에는 비교 패널을 축소
+        setCompareExpandedInApp(false);
+        
         await startCrawling();
       } catch (error) {
         addLog(`크롤링 시작 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
       }
     }
-  }, [crawlingStatus, resetAllStates]);
+  }, [crawlingStatus, resetAllStates, setIsStatusChecking, setCompareExpandedInApp]);
 
   // 데이터 내보내기 핸들러
   const handleExport = useCallback(() => {
