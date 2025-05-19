@@ -11,6 +11,7 @@ import {
 } from '../stores';
 import type { MatterProduct } from '../../../types';
 import { format } from 'date-fns';
+import { intToHexDisplay, jsonArrayToHexDisplay } from '../utils/hexDisplayUtils';
 
 // LocalDBTab 컴포넌트
 export const LocalDBTab: React.FC = () => {
@@ -443,6 +444,9 @@ export const LocalDBTab: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">No.</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">제조사</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">모델명</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">VID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">PID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Device Type</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">인증 ID</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">페이지 ID</th>
                   </tr>
@@ -450,7 +454,7 @@ export const LocalDBTab: React.FC = () => {
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {displayProducts.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-4 whitespace-nowrap text-center">
+                      <td colSpan={8} className="px-6 py-4 whitespace-nowrap text-center">
                         <div className="text-sm text-gray-500 dark:text-gray-400">제품 정보가 없습니다. 크롤링을 통해 데이터를 수집해주세요.</div>
                       </td>
                     </tr>
@@ -476,6 +480,21 @@ export const LocalDBTab: React.FC = () => {
                           >
                             {product.model || '-'}
                           </a>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">
+                            {intToHexDisplay(typeof product.vid === 'number' ? product.vid : parseInt(String(product.vid || '0'), 16))}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">
+                            {intToHexDisplay(typeof product.pid === 'number' ? product.pid : parseInt(String(product.pid || '0'), 16))}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">
+                            {jsonArrayToHexDisplay(product.primaryDeviceTypeId as string)}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200">

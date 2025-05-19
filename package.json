@@ -21,6 +21,11 @@
     "merge-device-data": "ts-node-esm ./scripts/mergeDeviceFiles.ts",
     "merge-matter-devices": "ts-node-esm ./scripts/mergeMatterDevFiles.ts",
     "test:hybrid-crawler": "ts-node-esm ./scripts/test-hybrid-crawler.ts",
+    "migrate-db": "ts-node ./scripts/migration/migrateDatabaseExec.ts",
+    "test-migration": "ts-node ./scripts/migration/testMigration.ts",
+    "migrate-to-integer": "ts-node ./scripts/migration/migrateToInteger.ts",
+    "verify-integer-schema": "ts-node ./scripts/migration/verifyIntegerSchema.ts",
+    "verify-db": "ts-node ./scripts/migration/verify-db-integrity.ts",
     "dist:mac": "npm run transpile:electron && npm run build && electron-builder --mac --arm64",
     "dist:win": "npm run transpile:electron && npm run build && electron-builder --win --x64",
     "dist:linux": "npm run transpile:electron && npm run build && electron-builder --linux --x64"

@@ -3,10 +3,10 @@
  * 하이브리드 크롤링 전략을 테스트하기 위한 스크립트
  */
 
-import { ProductDetailCollector } from '../src/electron/crawler/tasks/productDetail';
-import { CrawlerState } from '../src/electron/crawler/core/CrawlerState';
-import { BrowserManager } from '../src/electron/crawler/browser/BrowserManager';
-import type { CrawlerConfig, Product } from '../types';
+import { ProductDetailCollector } from '../src/electron/crawler/tasks/productDetail.js';
+import { CrawlerState } from '../src/electron/crawler/core/CrawlerState.js';
+import { BrowserManager } from '../src/electron/crawler/browser/BrowserManager.js';
+import type { CrawlerConfig, Product } from '../types.d.ts';
 
 async function testHybridCrawlerStrategy() {
   console.log('==== 하이브리드 크롤링 전략 테스트 시작 ====');

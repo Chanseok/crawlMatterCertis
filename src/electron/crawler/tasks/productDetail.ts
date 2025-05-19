@@ -324,78 +324,99 @@ export class ProductDetailCollector {
   }
 
   /**
-   * VID/PID 값을 표준 16진수 형식으로 정규화
+   * VID/PID 값을 정수로 변환
    */
-  private normalizeHexId(value: string | undefined): string | undefined {
-    if (!value || ['', 'n/a', '-', 'none', 'unknown'].includes(value.toLowerCase().trim())) {
+  private normalizeHexId(value: string | number | undefined): number | undefined {
+    // 값이 숫자면 그대로 반환
+    if (typeof value === 'number') {
       return value;
     }
-    const trimmedValue = value.trim();
-    const normalizedRegex = /^0x[0-9A-F]{4}$/;
-    if (normalizedRegex.test(trimmedValue)) {
-      return trimmedValue;
+    
+    // 값이 없거나 무의미한 값이면 undefined 반환
+    if (!value || (typeof value === 'string' && ['', 'n/a', '-', 'none', 'unknown'].includes(value.toLowerCase().trim()))) {
+      return undefined;
     }
-    let hexValue: string;
-    if (/^0x[0-9A-Fa-f]+$/i.test(trimmedValue)) {
-      hexValue = trimmedValue.substring(2).toUpperCase();
-    } else if (/^[0-9A-Fa-f]+$/i.test(trimmedValue)) {
-      hexValue = trimmedValue.toUpperCase();
-    } else if (/^\d+$/.test(trimmedValue)) {
-      try {
-        hexValue = parseInt(trimmedValue, 10).toString(16).toUpperCase();
-      } catch (e) {
-        return value;
+    
+    const trimmedValue = String(value).trim();
+    
+    try {
+      // 16진수 형식 확인 (0x 접두사 있음)
+      if (/^0x[0-9A-Fa-f]+$/i.test(trimmedValue)) {
+        return parseInt(trimmedValue.substring(2), 16);
+      } 
+      // 16진수 형식 확인 (접두사 없음)
+      else if (/^[0-9A-Fa-f]+$/i.test(trimmedValue)) {
+        return parseInt(trimmedValue, 16);
+      } 
+      // 10진수 숫자
+      else if (/^\d+$/.test(trimmedValue)) {
+        return parseInt(trimmedValue, 10);
+      } 
+      // 지원되지 않는 형식
+      else {
+        return undefined;
       }
-    } else {
-      return value;
+    } catch (e) {
+      console.error(`16진수 변환 실패: ${value}`, e);
+      return undefined;
     }
-    hexValue = hexValue.padStart(4, '0');
-    if (hexValue.length > 4) {
-      hexValue = hexValue.substring(hexValue.length - 4);
-    }
-    return `0x${hexValue}`;
   }
 
   /**
-   * 쉼표로 구분된 여러 primaryDeviceTypeId 값을 표준 16진수 형식으로 정규화합니다.
-   * 각 ID는 0x 접두사를 가진 4자리 16진수 형식으로 변환됩니다.
+   * primaryDeviceTypeId 값들을 정수 배열의 JSON 문자열로 변환
    * 
-   * @param value 콤마로 구분된 원본 primaryDeviceTypeId 값
-   * @returns 콤마로 구분된 정규화된 ID 문자열
+   * @param value 콤마로 구분된 primaryDeviceTypeId 값
+   * @returns 정수 배열이 담긴 JSON 문자열
    */
-  private normalizePrimaryDeviceTypeIds(value: string | undefined): string | undefined {
-    if (!value) return value;
+  private normalizePrimaryDeviceTypeIds(value: string | number | undefined): string | undefined {
+    if (!value) return '[]';
+    
+    // 숫자일 경우 바로 JSON 배열로 변환하여 반환
+    if (typeof value === 'number') {
+      return JSON.stringify([value]);
+    }
     
     // 쉼표로 구분된 각 ID 처리
-    const idList = value.split(',').map(id => id.trim());
+    const idList = String(value).split(',').map(id => id.trim()).filter(Boolean);
     
-    // 각 ID를 개별적으로 정규화
-    const normalizedIds = idList.map(id => this.normalizeHexId(id));
+    // 각 ID를 정수로 변환
+    const normalizedIds = idList.map(id => this.normalizeHexId(id)).filter(id => id !== undefined);
     
-    // 정규화된 모든 ID를 다시 결합
-    return normalizedIds.filter(Boolean).join(', ');
+    // JSON 배열 문자열로 반환
+    return JSON.stringify(normalizedIds);
   }
 
   /**
    * 키 이름을 필드 이름으로 매핑
    * 정규식 패턴 매칭을 사용하여 유연한 키 매핑 구현
    */
-  private mapKeyToField(key: string, value: string, fields: Record<string, any>): void {
+  private mapKeyToField(key: string, value: string | number, fields: Record<string, any>): void {
     const normalizedKey = key.toLowerCase().trim();
     
     // 매핑 로직을 함수로 분리
     const mapToField = (pattern: RegExp, fieldName: string): boolean => {
       if (pattern.test(normalizedKey)) {
-        // 빈 값이거나 'N/A', '-' 등의 의미없는 값은 무시
-        if (value && !['n/a', '-', 'none', 'unknown'].includes(value.toLowerCase().trim())) {
+        // 숫자인 경우 바로 처리
+        if (typeof value === 'number') {
+          // VID/PID에 대해 표준화된 16진수 형식 적용
+          if (fieldName === 'vid' || fieldName === 'pid') {
+            fields[fieldName] = value;
+          } else {
+            fields[fieldName] = value;
+          }
+          return true;
+        }
+        
+        // 문자열인 경우 기존 로직대로 처리
+        if (value && typeof value === 'string' && !['n/a', '-', 'none', 'unknown'].includes(value.toLowerCase().trim())) {
           // VID/PID에 대해 표준화된 16진수 형식 적용
           if (fieldName === 'vid' || fieldName === 'pid') {
             fields[fieldName] = this.normalizeHexId(value);
           } else {
             fields[fieldName] = value;
           }
+          return true;
         }
-        return true;
       }
       return false;
     };
@@ -425,9 +446,14 @@ export class ProductDetailCollector {
       // 매핑 실패시 원본 키를 정규화하여 사용
       const mappedField = normalizedKey.replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
       
+      // 숫자인 경우 바로 처리
+      if (typeof value === 'number') {
+        fields[mappedField] = value;
+      }
+      // 문자열인 경우 기존 로직대로 처리
       // 매핑되지 않은 필드는 원본 키 이름을 정규화하여 사용하되,
       // 빈 값이나 의미 없는 값은 무시
-      if (value && !['n/a', '-', 'none', 'unknown'].includes(value.toLowerCase().trim())) {
+      else if (value && typeof value === 'string' && !['n/a', '-', 'none', 'unknown'].includes(value.toLowerCase().trim())) {
         fields[mappedField] = value;
       }
     }
@@ -1814,6 +1840,7 @@ export class ProductDetailCollector {
   }
 
   /**
+**
    * Primary Device Type ID 정보 보강 및 정규화
    */
   private enhancePrimaryDeviceTypeIds($: cheerio.CheerioAPI, fields: Record<string, any>): void {

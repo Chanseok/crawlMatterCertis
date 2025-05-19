@@ -5,6 +5,7 @@ import { app } from 'electron';
 import type { DatabaseSummary, ProductDetail } from '../ui/types.js'; // Import Product type from your types file
 import type { MatterProduct, Product } from '../../types.js'; // Import MatterProduct type from your types file
 import log, { debugLog as electronDebugLog } from './logger.js';
+import { hexIdToInteger, hexIdListToJsonArray } from './utils/hexUtils.js';
 
 const dbPath = path.join(app.getPath('userData'), 'dev-database.sqlite');
 const db = new sqlite3.Database(dbPath);
@@ -48,8 +49,8 @@ export async function initializeDatabase(): Promise<void> {
                     certificationDate TEXT,
                     softwareVersion TEXT,
                     hardwareVersion TEXT,
-                    vid TEXT,
-                    pid TEXT,
+                    vid INTEGER,
+                    pid INTEGER,
                     familySku TEXT,
                     familyVariantSku TEXT,
                     firmwareVersion TEXT,
@@ -513,6 +514,23 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
                 ? product.certificationDate.toISOString() 
                 : product.certificationDate;
               
+              // vid와 pid를 정수로 변환
+              let vidValue: number | null = null;
+              if (product.vid) {
+                vidValue = hexIdToInteger(product.vid);
+              }
+              
+              let pidValue: number | null = null;
+              if (product.pid) {
+                pidValue = hexIdToInteger(product.pid);
+              }
+              
+              // primaryDeviceTypeId를 JSON 배열로 변환
+              let deviceTypeIdsValue = '[]';
+              if (product.primaryDeviceTypeId) {
+                deviceTypeIdsValue = hexIdListToJsonArray(product.primaryDeviceTypeId) || '[]';
+              }
+              
               // 중요: 실제로 레코드가 있는지 확인 (URL 필드 확인)
               const recordExists = existingProduct && existingProduct.url === product.url;
               
@@ -609,8 +627,8 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
                 certificationDate,
                 product.softwareVersion,
                 product.hardwareVersion,
-                product.vid,
-                product.pid,
+                vidValue,                     // 변환된 INTEGER 값 사용
+                pidValue,                     // 변환된 INTEGER 값 사용
                 product.familySku,
                 product.familyVariantSku,
                 product.firmwareVersion,
@@ -618,7 +636,7 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
                 product.tisTrpTested,
                 product.specificationVersion,
                 product.transportInterface,
-                product.primaryDeviceTypeId,
+                deviceTypeIdsValue,           // 변환된 JSON 배열 문자열 사용
                 applicationCategoriesStr
               ], function(err) {
                 if (err) {
