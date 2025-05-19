@@ -192,7 +192,7 @@ function App() {
 
   return (
     <AppLayout>
-      <div className="lg:col-span-1 space-y-6">
+      <div className="lg:col-span-3 space-y-6">
         {/* 컨트롤 패널 */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
           {/* 탭 네비게이션 */}
