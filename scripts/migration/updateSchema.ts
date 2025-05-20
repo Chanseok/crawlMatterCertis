@@ -11,6 +11,9 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 
+// SQLite 설정
+const { Database } = sqlite3;
+
 // 실행 환경에 따른 DB 경로 설정
 // 사용자 데이터 경로 - 애플리케이션과 동일한 경로 사용
 const userDataPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', 'Library', 'Application Support', 'crawlMatterCertis');
@@ -36,7 +39,7 @@ fs.copyFileSync(dbPath, backupPath);
 console.log(`데이터베이스 백업 완료: ${backupPath}`);
 
 // 데이터베이스 연결
-const db = new sqlite3.Database(dbPath);
+const db = new Database(dbPath);
 
 // 스키마 변경 시작
 db.serialize(() => {
@@ -59,7 +62,7 @@ db.serialize(() => {
         return;
       }
       
-      console.log('현재 테이블 구조:', columns.map(col => `${col.name} (${col.type})`).join(', '));
+      console.log('현재 테이블 구조:', columns.map((col: any) => `${col.name} (${col.type})`).join(', '));
       
       // 새로운 테이블 생성 (vid, pid를 INTEGER 타입으로 변경)
       db.run(`
@@ -144,7 +147,7 @@ db.serialize(() => {
                   if (err) {
                     console.error('새 테이블 정보 조회 중 오류:', err);
                   } else {
-                    console.log('새 테이블 구조:', columns.map(col => `${col.name} (${col.type})`).join(', '));
+                    console.log('새 테이블 구조:', columns.map((col: any) => `${col.name} (${col.type})`).join(', '));
                   }
                   db.close();
                 });

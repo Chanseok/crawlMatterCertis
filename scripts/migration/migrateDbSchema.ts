@@ -7,9 +7,22 @@
  * - primaryDeviceTypeId 필드: 이미 TEXT 타입
  */
 
+// Define column type interface for SQLite
+interface SQLiteColumn {
+  name: string;
+  type: string;
+  notnull: number;
+  dflt_value: string | null;
+  pk: number;
+  cid: number;
+}
+
 import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
+
+// SQLite 설정
+const { Database } = sqlite3;
 
 // 실행 환경에 따른 DB 경로 설정
 // 사용자 데이터 경로 - 애플리케이션과 동일한 경로 사용
@@ -31,7 +44,7 @@ if (!fs.existsSync(dbPath)) {
 }
 
 // 데이터베이스 연결
-const db = new sqlite3.Database(dbPath);
+const db = new Database(dbPath);
 
 // 데이터베이스 백업
 const backupPath = `${dbPath}.schema-backup-${new Date().toISOString().replace(/:/g, '-')}`;
@@ -69,7 +82,7 @@ db.serialize(() => {
         return;
       }
       
-      console.log('현재 테이블 구조:', columns.map(col => `${col.name} (${col.type})`).join(', '));
+      console.log('현재 테이블 구조:', columns.map((col: any) => `${col.name} (${col.type})`).join(', '));
       
       // 2. 새 테이블 생성
       db.run(`
@@ -157,7 +170,7 @@ db.serialize(() => {
                   if (err) {
                     console.error('새 테이블 정보 조회 중 오류:', err);
                   } else {
-                    console.log('새 테이블 구조:', newColumns.map(col => `${col.name} (${col.type})`).join(', '));
+                    console.log('새 테이블 구조:', newColumns.map((col: any) => `${col.name} (${col.type})`).join(', '));
                   }
                   
                   // 데이터베이스 연결 종료

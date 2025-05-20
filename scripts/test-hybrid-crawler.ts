@@ -33,7 +33,11 @@ async function testHybridCrawlerStrategy() {
     adaptiveConcurrency: true,
     baseRetryDelayMs: 1000,
     maxRetryDelayMs: 10000,
-    axiosTimeoutMs: 20000
+    axiosTimeoutMs: 20000,
+    // 필수 필드 추가
+    pageRangeLimit: 500,
+    productListRetryCount: 5,
+    productDetailRetryCount: 5
   };
   
   // 테스트용 제품 샘플
@@ -61,8 +65,8 @@ async function testHybridCrawlerStrategy() {
   
   try {
     console.log('브라우저 매니저 초기화 중...');
-    const browserManager = new BrowserManager();
-    await browserManager.initialize(config);
+    const browserManager = new BrowserManager(config);
+    await browserManager.initialize();
     
     console.log('ProductDetailCollector 초기화 중...');
     const collector = new ProductDetailCollector(

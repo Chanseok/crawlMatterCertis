@@ -8,6 +8,9 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 
+// SQLite 설정
+const { Database } = sqlite3;
+
 // 테스트 환경에서의 DB 경로 설정
 // 사용자 데이터 경로 - 애플리케이션과 동일한 경로 사용
 const userDataPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', 'Library', 'Application Support', 'crawlMatterCertis');
@@ -28,7 +31,7 @@ if (!fs.existsSync(dbPath)) {
 }
 
 // 데이터베이스 연결
-const db = new sqlite3.Database(dbPath);
+const db = new Database(dbPath);
 
 async function verifyDatabaseIntegrity() {
   console.log('데이터베이스 무결성 검증 시작...');
@@ -111,7 +114,7 @@ async function verifyDatabaseIntegrity() {
     
     // 6. 데이터베이스 무결성 체크
     const integrityCheck = await new Promise<string>((resolve, reject) => {
-      db.get("PRAGMA integrity_check", (err, result) => {
+      db.get("PRAGMA integrity_check", (err, result: any) => {
         if (err) reject(err);
         else resolve(result.integrity_check);
       });

@@ -8,6 +8,9 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 
+// SQLite 설정
+const { Database } = sqlite3;
+
 // 테스트 환경에서의 DB 경로 설정
 // 사용자 데이터 경로 - 애플리케이션과 동일한 경로 사용
 const userDataPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', 'Library', 'Application Support', 'crawlMatterCertis');
@@ -28,7 +31,7 @@ if (!fs.existsSync(dbPath)) {
 }
 
 // 데이터베이스 연결
-const db = new sqlite3.Database(dbPath);
+const db = new Database(dbPath);
 
 // 테이블 스키마 확인
 console.log('테이블 스키마 확인 중...');
@@ -41,13 +44,13 @@ db.all("PRAGMA table_info(product_details)", (err, columns) => {
   
   // 컬럼 정보 출력
   console.log('\n--- product_details 테이블 스키마 ---');
-  columns.forEach(col => {
+  columns.forEach((col: any) => {
     console.log(`${col.name}: ${col.type}`);
   });
   
   // vid, pid 컬럼이 TEXT 타입인지 확인
-  const vidColumn = columns.find(col => col.name === 'vid');
-  const pidColumn = columns.find(col => col.name === 'pid');
+  const vidColumn = columns.find((col: any) => col.name === 'vid') as any;
+  const pidColumn = columns.find((col: any) => col.name === 'pid') as any;
   
   if (vidColumn && vidColumn.type === 'TEXT') {
     console.log('\n✅ vid 컬럼이 TEXT 타입입니다.');
@@ -62,9 +65,9 @@ db.all("PRAGMA table_info(product_details)", (err, columns) => {
   }
   
   // vid, pid, primaryDeviceTypeId 샘플 데이터 확인
-  db.all("SELECT url, vid, pid, primaryDeviceTypeId FROM product_details LIMIT 5", (err, rows) => {
+  db.all("SELECT url, vid, pid, primaryDeviceTypeId FROM product_details LIMIT 5", (err, rows: any[]) => {
     if (err) {
-      console.error('샘플 데이터 조회 중 오류:', err);
+      console.error('데이터 조회 중 오류:', err);
       db.close();
       return;
     }
@@ -73,7 +76,7 @@ db.all("PRAGMA table_info(product_details)", (err, columns) => {
     if (rows.length === 0) {
       console.log('데이터가 없습니다.');
     } else {
-      rows.forEach(row => {
+      rows.forEach((row: any) => {
         console.log(`URL: ${row.url}`);
         console.log(`VID: ${row.vid} (타입: ${typeof row.vid})`);
         console.log(`PID: ${row.pid} (타입: ${typeof row.pid})`);
