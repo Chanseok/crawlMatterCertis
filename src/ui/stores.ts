@@ -570,11 +570,11 @@ export async function startCrawling(): Promise<void> {
     const config = configStore.get();
     addLog(`설정: 페이지 범위 ${config.pageRangeLimit}, 제품 목록 재시도 ${config.productListRetryCount}회, 제품 상세 재시도 ${config.productDetailRetryCount}회`, 'info');
     
-    // API를 통해 크롤링 시작 (최신 설정 전달)
+    // API를 통해 크롤링 시작 (최신 config를 payload로 전달, 세션 전체에서 이 config만 사용)
     console.log('[UI] 크롤링 시작 요청, 설정:', config);
     const { success, status } = await api.invokeMethod<'startCrawling', { success: boolean; status?: CrawlingStatusSummary }>('startCrawling', { 
       mode: appModeStore.get(),
-      config: config // 최신 설정 전달
+      config: config // 최신 설정 전달 (세션 내 일관성 보장)
     });
     
     // 백엔드에서 status 정보를 받아오면 상태 정보 업데이트

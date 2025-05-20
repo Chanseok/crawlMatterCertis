@@ -50,15 +50,15 @@ export class CrawlerEngine {
 
   /**
    * 크롤링 작업을 시작
+   * @param config 세션 전체에 사용할 크롤러 설정 (UI에서 전달)
    */
-  public async startCrawling(): Promise<boolean> {
+  public async startCrawling(config: CrawlerConfig): Promise<boolean> {
     if (this.isCrawling) {
       console.log('[CrawlerEngine] Crawling is already in progress.');
       return false;
     }
-
-    // Get the latest configuration AT THE START of the crawling process
-    const currentConfig = configManager.getConfig();
+    // 세션 시작 시 받은 config만 사용 (세션 도중 변경 무시)
+    const currentConfig = config;
     
     // 배치 처리 설정 가져오기
     const batchSize = currentConfig.batchSize || 30; // 기본값 30페이지
