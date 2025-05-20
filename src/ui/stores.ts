@@ -1,7 +1,7 @@
 import { atom, map } from 'nanostores';
-import { AppMode, CrawlingStatus, LogEntry, CrawlingProgress, DatabaseSummary, ProductDetail, StatusStore } from './types';
+import { AppMode, LogEntry, DatabaseSummary, ProductDetail, StatusStore } from './types';
+import type { CrawlingProgress, CrawlingStatus, CrawlerConfig } from '../../types.js';
 import { getPlatformApi, updateApiForAppMode } from './platform/api';
-import type { ConcurrentCrawlingTask, CrawlerConfig } from '../../types';
 import { getConfig, updateConfig } from './services/configService';
 
 // 앱 모드 상태 관리

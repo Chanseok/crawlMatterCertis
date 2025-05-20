@@ -3,8 +3,15 @@
  * 크롤러에서 사용되는 타입 정의
  */
 
-// Importing from the root types.d.ts file
-import type { Product, MatterProduct } from '../../../../types.d.ts';
+// types.d.ts에서 공용 타입 import
+import type {
+  Product,
+  MatterProduct,
+  CrawlingProgress,
+  CrawlingStatus,
+  CrawlerConfig,
+  PageProcessingStatusItem
+} from '../../../../types.d.ts';
 
 /**
  * 크롤링 단계 결과 타입
@@ -101,3 +108,5 @@ export interface CrawlError {
   attempt?: number;
   originalError?: any; // Can store the original error object if needed
 }
+
+// (이 파일 내에서 CrawlingProgress, CrawlingStatus, CrawlerConfig 등은 직접 정의하지 않고 반드시 import만 사용)

@@ -1,4 +1,4 @@
-import type { CrawlerConfig } from '../../../types';
+import type { CrawlerConfig } from '../../types.js';
 
 /**
  * 설정 관련 서비스

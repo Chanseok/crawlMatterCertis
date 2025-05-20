@@ -1,13 +1,11 @@
 // types.d.ts에서 공유 타입 import
-import { 
+import {
   AppMode,
   DatabaseSummary,
   MatterProduct,
   ConcurrentCrawlingTask,
   ConcurrentTaskStatus,
-  EventPayloadMapping,
-  CrawlingStatus,    // 공유 타입 import
-  CrawlingProgress   // 공유 타입 import
+  EventPayloadMapping
 } from '../../types.js';
 
 // UI 전용 타입 정의
@@ -60,15 +58,3 @@ export interface ProductDetail {
   primaryDeviceTypeId?: string;
   applicationCategories?: string[];
 }
-
-// 공유 타입 re-export
-export type { 
-  AppMode,
-  DatabaseSummary,
-  MatterProduct,
-  ConcurrentCrawlingTask,
-  ConcurrentTaskStatus,
-  EventPayloadMapping,
-  CrawlingStatus,
-  CrawlingProgress
-};
