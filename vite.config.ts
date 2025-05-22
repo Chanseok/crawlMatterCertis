@@ -7,6 +7,7 @@ export default defineConfig({
   base: './',
   build: {
     outDir: 'dist-react',
+    chunkSizeWarningLimit: 1000, // kB 단위, 예: 1000kB (1MB)로 상향
   },
   server:{
     port: 5123,

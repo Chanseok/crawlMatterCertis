@@ -6,7 +6,7 @@
  */
 
 import { MethodReturnMapping } from "../../../types";
-import { MatterProduct, DatabaseSummary  } from "../types";
+import { MatterProduct, DatabaseSummary } from "../types";
 
 // This interface defines the contract for database operations
 export interface DatabaseService {

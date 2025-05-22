@@ -14,6 +14,7 @@ import { getDatabaseSummaryFromDb, saveProductsToDb } from '../../database.js';
 import { CrawlerState } from './CrawlerState.js';
 import { ProductListCollector } from '../tasks/productList.js';
 import { ProductDetailCollector } from '../tasks/productDetail.js';
+import { CrawlerConfig } from '../../../../types.js';
 import { saveProductsToFile, saveMatterProductsToFile } from '../utils/file.js';
 import { 
   deduplicateAndSortMatterProducts, 

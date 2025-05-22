@@ -6,11 +6,7 @@
 // types.d.ts에서 공용 타입 import
 import type {
   Product,
-  MatterProduct,
-  CrawlingProgress,
-  CrawlingStatus,
-  CrawlerConfig,
-  PageProcessingStatusItem
+  MatterProduct
 } from '../../../../types.d.ts';
 
 /**

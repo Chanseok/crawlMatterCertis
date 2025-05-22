@@ -3,7 +3,14 @@
  * 크롤링 상태를 관리하는 클래스
  */
 
-import type { Product, MatterProduct, PageProcessingStatusItem, PageProcessingStatusValue, CrawlingProgress, CrawlingStatus } from '../../../../types.d.ts';
+import type { 
+  Product, 
+  MatterProduct, 
+  PageProcessingStatusItem, 
+  PageProcessingStatusValue 
+} from '../../../../types.d.ts';
+// Unused types that may be needed in the future:
+// import type { CrawlingProgress, CrawlingStatus } from '../../../../types.d.ts';
 import { crawlerEvents } from '../utils/progress.js';
 import { PageValidator, PageValidationResult } from '../utils/page-validator.js';
 

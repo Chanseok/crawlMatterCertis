@@ -8,6 +8,16 @@ import {
   EventPayloadMapping
 } from '../../types.js';
 
+// Re-export these types for use throughout the UI
+export type {
+  AppMode,
+  DatabaseSummary,
+  MatterProduct,
+  ConcurrentCrawlingTask,
+  ConcurrentTaskStatus,
+  EventPayloadMapping
+};
+
 // UI 전용 타입 정의
 // 로그 항목 타입 (UI 전용)
 export interface LogEntry {

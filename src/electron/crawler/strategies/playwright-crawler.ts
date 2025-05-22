@@ -317,15 +317,22 @@ export class PlaywrightCrawlerStrategy implements ICrawlerStrategy {
    * 페이지에서 제품 정보 추출 (DOM 분석)
    */
   private extractProductsFromPageDOM(): RawProductData[] {
+    // @ts-ignore - document is available at runtime
     const articles = Array.from(document.querySelectorAll('div.post-feed article'));
     return articles.reverse().map((article, siteIndexInPage) => {
+      // @ts-ignore - article is Element at runtime
       const link = article.querySelector('a');
+      // @ts-ignore - article is Element at runtime
       const manufacturerEl = article.querySelector('p.entry-company.notranslate');
+      // @ts-ignore - article is Element at runtime
       const modelEl = article.querySelector('h3.entry-title');
+      // @ts-ignore - article is Element at runtime
       const certificateIdEl = article.querySelector('span.entry-cert-id');
+      // @ts-ignore - article is Element at runtime
       const certificateIdPEl = article.querySelector('p.entry-certificate-id');
       let certificateId;
 
+      // @ts-ignore - certificateIdPEl is Element at runtime
       if (certificateIdPEl && certificateIdPEl.textContent) {
         const text = certificateIdPEl.textContent.trim();
         if (text.startsWith('Certificate ID: ')) {
@@ -333,6 +340,7 @@ export class PlaywrightCrawlerStrategy implements ICrawlerStrategy {
         } else {
           certificateId = text;
         }
+      // @ts-ignore - certificateIdEl is Element at runtime
       } else if (certificateIdEl && certificateIdEl.textContent) {
         certificateId = certificateIdEl.textContent.trim();
       }

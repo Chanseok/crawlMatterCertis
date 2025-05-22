@@ -227,7 +227,8 @@ app.on('ready', async () => {
             
             // 크롤링 시작 - 내부에서도 checkCrawlingStatus 호출하지만
             // 이미 위에서 호출했으므로 내부에서는 캐시된 정보를 활용할 것임
-            const success = await startCrawling();
+            const currentConfig = configManager.getConfig();
+            const success = await startCrawling(currentConfig);
             // 상태 체크 결과를 함께 반환
             return { success, status: statusSummary };
         } catch (error) {

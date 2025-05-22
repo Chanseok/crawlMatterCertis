@@ -2,8 +2,8 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import type { DatabaseSummary, ProductDetail } from '../ui/types.js'; // Import Product type from your types file
-import type { MatterProduct, Product } from '../../types.js'; // Import MatterProduct type from your types file
+import type { ProductDetail } from '../ui/types.js'; // Import UI-specific ProductDetail type
+import type { MatterProduct, Product, DatabaseSummary } from '../../types.js'; // Import global types
 import log, { debugLog as electronDebugLog } from './logger.js';
 import { hexIdToInteger, hexIdListToJsonArray } from './utils/hexUtils.js';
 

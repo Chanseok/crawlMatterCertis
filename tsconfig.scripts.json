@@ -2,8 +2,8 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2023"],
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    "module": "NodeNext", // Changed from CommonJS to NodeNext for import.meta support
+    "moduleResolution": "NodeNext", // Changed to match the module setting
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,

@@ -1,5 +1,12 @@
 import { atom, map } from 'nanostores';
-import { AppMode, LogEntry, DatabaseSummary, ProductDetail, StatusStore } from './types';
+import { 
+  AppMode, 
+  LogEntry, 
+  DatabaseSummary, 
+  ProductDetail, 
+  StatusStore, 
+  ConcurrentCrawlingTask 
+} from './types';
 import type { CrawlingProgress, CrawlingStatus, CrawlerConfig } from '../../types.js';
 import { getPlatformApi, updateApiForAppMode } from './platform/api';
 import { getConfig, updateConfig } from './services/configService';
@@ -109,7 +116,7 @@ export function updateSuccessTaskCount(currentSuccessCount: number): void {
 // concurrentTasksStore 변경 감지 및 성공 상태 추적
 concurrentTasksStore.listen(tasks => {
   try {
-    const currentSuccessCount = tasks.filter(task => task.status === 'success').length;
+    const currentSuccessCount = tasks.filter((task: ConcurrentCrawlingTask) => task.status === 'success').length;
     if (currentSuccessCount !== lastSuccessCount) {
       console.log(`[concurrentTasksStore] 성공 태스크 수 변경: ${lastSuccessCount} → ${currentSuccessCount}`);
       
@@ -299,7 +306,7 @@ export function initializeApiSubscriptions() {
         };
       });
       
-      concurrentTasksStore.set(mergedTasks as ConcurrentCrawlingTask[]);
+      concurrentTasksStore.set(mergedTasks);
       
       // UI 디버깅용 로깅
       console.log(`[UI] Tasks updated: Total=${mergedTasks.length}, Success=${mergedTasks.filter(t => t.status === 'success').length}`);
