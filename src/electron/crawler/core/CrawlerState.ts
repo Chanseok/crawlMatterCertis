@@ -7,10 +7,10 @@ import type {
   Product, 
   MatterProduct, 
   PageProcessingStatusItem, 
-  PageProcessingStatusValue 
+  PageProcessingStatusValue,
+  CrawlingProgress,
+  CrawlingStatus
 } from '../../../../types.d.ts';
-// Unused types that may be needed in the future:
-// import type { CrawlingProgress, CrawlingStatus } from '../../../../types.d.ts';
 import { crawlerEvents } from '../utils/progress.js';
 import { PageValidator, PageValidationResult } from '../utils/page-validator.js';
 
@@ -25,22 +25,26 @@ export type CrawlingStage =
   | 'completed'
   | 'failed';
 
-export interface ProgressData {
-  stage: CrawlingStage;
-  message: string;
-  currentPage?: number;
-  totalPages?: number;
-  currentItem?: number;
-  totalItems?: number;
-  parallelTasks?: number;
-  activeParallelTasks?: number;
-  startTime: number;
-  estimatedEndTime?: number;
-  elapsedTime?: number;
-  remainingTime?: number;
-  failedItems?: string[];
-  criticalError?: string;
-  percentage?: number;  // 진행률 퍼센트 (0-100)
+// ProgressData 인터페이스를 CrawlingProgress 타입으로 대체
+// 내부 stage 필드를 위한 CrawlingStage 매핑 유틸리티
+export function mapCrawlingStageToStatus(stage: CrawlingStage): CrawlingStatus {
+  switch (stage) {
+    case 'preparation':
+      return 'initializing';
+    case 'productList:init':
+    case 'productList:fetching':
+    case 'productList:processing':
+    case 'productDetail:init':
+    case 'productDetail:fetching':
+    case 'productDetail:processing':
+      return 'running';
+    case 'completed':
+      return 'completed';
+    case 'failed':
+      return 'error';
+    default:
+      return 'running';
+  }
 }
 
 // 페이지 처리 상태 타입 정의
@@ -57,7 +61,7 @@ export class CrawlerState {
   private failedPages: number[] = [];
   private failedPageErrors: Record<number, string[]> = {};
   private failedProductErrors: Record<string, string[]> = {};
-  private progressData: ProgressData;
+  private progressData: CrawlingProgress;
   private detailStageProcessedCount: number = 0;
   private detailStageNewCount: number = 0;
   private detailStageUpdatedCount: number = 0;
@@ -190,18 +194,27 @@ export class CrawlerState {
     return Array.from(productMap.values());
   }
 
+  // 내부적으로 사용할 현재 크롤링 단계
+  private currentStage: CrawlingStage = 'preparation';
+  
   constructor() {
+    // CrawlingProgress 형태로 초기화
     this.progressData = {
-      stage: 'preparation',
-      message: '크롤링 준비 중...',
+      current: 0,
+      total: 0,
+      percentage: 0,
+      status: 'initializing',
+      currentStep: '크롤링 준비 중...',
+      elapsedTime: 0,
       startTime: Date.now(),
+      message: '크롤링 준비 중...'
     };
   }
 
   /**
    * 현재 진행 상태를 반환
    */
-  public getProgressData(): ProgressData {
+  public getProgressData(): CrawlingProgress {
     return { ...this.progressData };
   }
 
@@ -209,7 +222,11 @@ export class CrawlerState {
    * 진행 상태의 단계를 설정
    */
   public setStage(stage: CrawlingStage, message?: string): void {
-    this.progressData.stage = stage;
+    // 내부 단계 상태 저장
+    this.currentStage = stage;
+    
+    // CrawlingProgress 필드 업데이트
+    this.progressData.status = mapCrawlingStageToStatus(stage);
     this.progressData.message = message ? message : this.progressData.message;
     
     // 이벤트 발행
@@ -223,7 +240,7 @@ export class CrawlerState {
 /**
  * 진행 상태 업데이트
  */
-public updateProgress(data: Partial<ProgressData>): void {
+public updateProgress(data: Partial<CrawlingProgress>): void {
   // 현재 상태 업데이트
   this.progressData = {
     ...this.progressData,
@@ -235,18 +252,18 @@ public updateProgress(data: Partial<ProgressData>): void {
     this.progressData.elapsedTime = Date.now() - this.progressData.startTime;
     
     // 남은 시간 추정 (진행률에 기반)
-    if (this.progressData.totalItems && this.progressData.currentItem) {
-      const percentComplete = this.progressData.currentItem / this.progressData.totalItems;
+    if (this.progressData.total > 0 && this.progressData.current > 0) {
+      const percentComplete = this.progressData.current / this.progressData.total;
       if (percentComplete > 0) {
         const totalEstimatedTime = this.progressData.elapsedTime / percentComplete;
         this.progressData.remainingTime = totalEstimatedTime - this.progressData.elapsedTime;
-        this.progressData.percentage = Math.round(percentComplete * 100); // 진행률 퍼센트 계산
+        this.progressData.percentage = Math.round(percentComplete * 100);
       }
     }
   }
 
   // 명시적 디버그 로깅 추가
-  console.log(`[CrawlerState] Progress updated: ${this.progressData.currentItem}/${this.progressData.totalItems} (${Math.round((this.progressData.currentItem || 0) / (this.progressData.totalItems || 1) * 100)}%)`);
+  console.log(`[CrawlerState] Progress updated: ${this.progressData.current}/${this.progressData.total} (${Math.round((this.progressData.current || 0) / (this.progressData.total || 1) * 100)}%)`);
 
   // 헬퍼 메서드를 사용하여 이벤트 발행 (일관성 유지)
   this.emitProgressUpdate();
@@ -254,10 +271,13 @@ public updateProgress(data: Partial<ProgressData>): void {
 
   /**
    * 병렬 작업 상태 업데이트
+   * CrawlingProgress에는 직접적인 병렬 작업 필드가 없어서 해당 정보는 메시지에 포함시킴
    */
   public updateParallelTasks(active: number, total: number): void {
-    this.progressData.parallelTasks = total;
-    this.progressData.activeParallelTasks = active;
+    // 메시지에 병렬 작업 상태 정보 포함
+    if (this.progressData.message) {
+      this.progressData.message = `${this.progressData.message} (동시작업: ${active}/${total})`;
+    }
     this.emitProgressUpdate();
   }
 
@@ -265,7 +285,10 @@ public updateProgress(data: Partial<ProgressData>): void {
    * 치명적인 오류 보고
    */
   public reportCriticalFailure(error: string): void {
-    this.progressData.stage = 'failed';
+    // 내부 상태 업데이트
+    this.currentStage = 'failed';
+    // CrawlingProgress 타입으로 변환하여 업데이트
+    this.progressData.status = 'error';
     this.progressData.criticalError = error;
     this.progressData.message = `크롤링 중단: ${error}`;
     console.error(this.progressData.message);
@@ -299,13 +322,10 @@ public updateProgress(data: Partial<ProgressData>): void {
     }
     this.failedProductErrors[url].push(error);
     
-    if (!this.progressData.failedItems) {
-      this.progressData.failedItems = [];
-    }
-    if (!this.progressData.failedItems.includes(url)) {
-      this.progressData.failedItems.push(url);
-      this.emitProgressUpdate();
-    }
+    // CrawlingProgress에는 failedItems 필드가 없어서 메시지에 에러 정보 추가
+    const failedCount = this.failedProducts.length;
+    this.progressData.message = `${this.progressData.message || ''} (실패: ${failedCount}건)`;
+    this.emitProgressUpdate();
   }
 
   /**
@@ -421,11 +441,22 @@ public updateProgress(data: Partial<ProgressData>): void {
     this.failedPages = [];
     this.failedPageErrors = {};
     this.failedProductErrors = {};
+    
+    // 내부 상태 초기화
+    this.currentStage = 'preparation';
+    
+    // CrawlingProgress 형식으로 초기화
     this.progressData = {
-      stage: 'preparation',
-      message: '크롤링 준비 중...',
+      current: 0,
+      total: 0,
+      percentage: 0,
+      currentStep: '크롤링 준비 중...',
+      elapsedTime: 0,
       startTime: Date.now(),
+      status: 'initializing',
+      message: '크롤링 준비 중...'
     };
+    
     this.detailStageProcessedCount = 0;
     this.detailStageNewCount = 0;
     this.detailStageUpdatedCount = 0;

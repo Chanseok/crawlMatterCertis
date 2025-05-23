@@ -4,20 +4,21 @@
  */
 
 import { crawlerEvents } from '../utils/progress.js';
-import { CrawlingStage, ProgressData } from '../core/CrawlerState.js';
+import type { CrawlingProgress, CrawlingStatus } from '../../../../types.js';
+import { CrawlingStage } from '../core/CrawlerState.js';
 
 export class ProgressReporter {
-  private updateCallback: (data: ProgressData) => void;
+  private updateCallback: (data: CrawlingProgress) => void;
   private lastStage: CrawlingStage | null = null;
   
   /**
    * @param updateCallback UI에 진행 상태를 업데이트하는 콜백 함수
    */
-  constructor(updateCallback: (data: ProgressData) => void) {
+  constructor(updateCallback: (data: CrawlingProgress) => void) {
     this.updateCallback = updateCallback;
     
     // 이벤트 리스너 설정 - 모든 진행 상황 이벤트 캡처
-    crawlerEvents.on('crawlingProgress', (data: ProgressData) => {
+    crawlerEvents.on('crawlingProgress', (data: CrawlingProgress) => {
       this.handleProgressUpdate(data);
     });
     
@@ -31,11 +32,11 @@ export class ProgressReporter {
   /**
    * 진행 상황 업데이트를 처리
    */
-  private handleProgressUpdate(data: ProgressData): void {
-    // 단계 변경 감지 및 로깅
-    if (data.stage && this.lastStage !== data.stage) {
-      console.log(`[ProgressReporter] Stage changed from ${this.lastStage || 'none'} to ${data.stage}`);
-      this.lastStage = data.stage;
+  private handleProgressUpdate(data: CrawlingProgress): void {
+    // 단계 변경 감지 및 로깅 (status 사용)
+    if (data.status && this.lastStage !== data.status) {
+      console.log(`[ProgressReporter] Status changed from ${this.lastStage || 'none'} to ${data.status}`);
+      // 여기서는 직접적인 매핑이 어려움 - status와 stage가 다른 개념이므로 로깅만 수행
     }
     
     // 진행 상황 로깅 (진행률이 변경될 때만)
@@ -78,13 +79,17 @@ export class ProgressReporter {
   /**
    * 진행률 백분율 계산
    */
-  private calculatePercentComplete(data: ProgressData): number {
+  private calculatePercentComplete(data: CrawlingProgress): number {
+    if (data.percentage) {
+      return data.percentage;
+    }
+    
     if (data.currentPage && data.totalPages) {
       return Math.floor((data.currentPage / data.totalPages) * 100);
     }
     
-    if (data.currentItem && data.totalItems) {
-      return Math.floor((data.currentItem / data.totalItems) * 100);
+    if (data.current && data.total) {
+      return Math.floor((data.current / data.total) * 100);
     }
     
     return 0;

@@ -1284,10 +1284,9 @@ export class ProductDetailCollector {
 
     this.state.setStage('productDetail:init', '2/2단계: 제품 상세 정보 수집 준비 중');
     this.state.updateProgress({
-      totalItems: products.length,
-      currentItem: 0,
-      parallelTasks: config.detailConcurrency,
-      activeParallelTasks: 0
+      total: products.length,
+      current: 0,
+      message: `병렬 작업: 0/${config.detailConcurrency}개` // 병렬 작업 정보를 메시지에 포함
     });
 
     const matterProducts: MatterProduct[] = [];
@@ -1423,12 +1422,12 @@ export class ProductDetailCollector {
     
     try {
       const progressData = this.state.getProgressData();
-      const totalItems = progressData?.totalItems ?? this.state.getDetailStageProcessedCount(); 
+      const totalItems = progressData?.total ?? this.state.getDetailStageProcessedCount(); 
 
       this.state.updateProgress({
-        currentItem: this.state.getDetailStageProcessedCount(), 
-        totalItems: totalItems,
-        stage: 'productDetail:processing', 
+        current: this.state.getDetailStageProcessedCount(), 
+        total: totalItems,
+        status: 'running', 
         message: '2단계: 제품 상세 정보 처리 완료'
       });
       
@@ -1582,9 +1581,9 @@ export class ProductDetailCollector {
     const progressUpdateInterval = 3000;
   
     this.state.updateProgress({
-      currentItem: 0,
-      totalItems: totalItems,
-      stage: 'productDetail:fetching',
+      current: 0,
+      total: totalItems,
+      status: 'running',
       message: `2/2단계: 제품 상세 정보 수집 중 (0/${totalItems})`
     });
     
@@ -1631,8 +1630,8 @@ export class ProductDetailCollector {
           const message = `2단계: 제품 상세정보 ${processedItems}/${totalItems} 처리 중 (${percentage.toFixed(1)}%)`;
   
           this.state.updateProgress({
-            currentItem: processedItems,
-            totalItems: totalItems,
+            current: processedItems,
+            total: totalItems,
             message: message,
             percentage: percentage
           });
@@ -1676,8 +1675,8 @@ export class ProductDetailCollector {
   
     const finalElapsedTime = Date.now() - startTime;
     this.state.updateProgress({
-      currentItem: this.state.getDetailStageProcessedCount(),
-      totalItems: totalItems,
+      current: this.state.getDetailStageProcessedCount(),
+      total: totalItems,
       message: `2/2단계: 제품 상세 정보 수집 완료 (${this.state.getDetailStageProcessedCount()}/${totalItems})`,
       percentage: 100
     });
