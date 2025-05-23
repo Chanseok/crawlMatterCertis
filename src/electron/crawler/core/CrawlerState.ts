@@ -66,6 +66,7 @@ export class CrawlerState {
   private detailStageNewCount: number = 0;
   private detailStageUpdatedCount: number = 0;
   private detailStageTotalProductCount: number = 0; // Added for Stage 2 total
+  private processedProductUrls: Set<string> = new Set(); // 중복 처리 방지
   
   // 페이지당 기대되는 제품 수
   private _expectedProductsPerPage: number = 12;
@@ -536,6 +537,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     this.detailStageNewCount = 0;
     this.detailStageUpdatedCount = 0;
     this.detailStageTotalProductCount = 0; // Reset for Stage 2 total
+    this.processedProductUrls.clear(); // Reset duplicate tracking
     
     // 스마트 병합을 위한 상태 초기화
     this.pageProductsCache.clear();
@@ -580,8 +582,15 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
    * 2025-05-24 수정: 카운터 오버플로우 감지 및 비상 조치 개선
    * - 오버플로우 감지 조건 강화: 전체 제품 수를 기반으로 오버플로우 감지
    * - 현재 UI 상태도 함께 업데이트하여 실시간 정확성 보장
+   * - 중복 처리 방지 메커니즘 추가
    */
-  public recordDetailItemProcessed(isNewItem: boolean): void {
+  public recordDetailItemProcessed(isNewItem: boolean, productUrl?: string): void {
+    // 중복 처리 방지를 위한 검증
+    if (productUrl && this.processedProductUrls.has(productUrl)) {
+      console.warn(`[CrawlerState] Duplicate processing detected for: ${productUrl.substring(0, 50)}...`);
+      return;
+    }
+
     // 기대된 최대 제품 수를 초과하는지 확인
     const expectedMaxProducts = this.detailStageTotalProductCount > 0 ? 
                                this.detailStageTotalProductCount :
@@ -603,6 +612,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
       this.detailStageProcessedCount = 0;
       this.detailStageNewCount = 0;
       this.detailStageUpdatedCount = 0;
+      this.processedProductUrls.clear();
       console.warn(`[CrawlerState] Emergency reset performed for detail stage counters.`);
     }
     
@@ -611,6 +621,11 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
       this.detailStageNewCount++;
     } else {
       this.detailStageUpdatedCount++;
+    }
+
+    // 처리된 제품 URL 기록 (중복 방지)
+    if (productUrl) {
+      this.processedProductUrls.add(productUrl);
     }
     
     // UI 상태도 업데이트: 카운트와 UI가 일치하도록 보장
@@ -647,7 +662,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     
     // 향상된 디버그 로깅 (호출 스택 추적 포함)
     const stack = new Error().stack?.split('\n').slice(2, 5).join('\n') || 'Stack not available';
-    console.log(`[CrawlerState] Detail item processed: total=${this.detailStageProcessedCount}/${totalItems}, new=${this.detailStageNewCount}, updated=${this.detailStageUpdatedCount}, isNew=${isNewItem}`);
+    console.log(`[CrawlerState] Detail item processed: total=${this.detailStageProcessedCount}/${totalItems}, new=${this.detailStageNewCount}, updated=${this.detailStageUpdatedCount}, isNew=${isNewItem}, url=${productUrl?.substring(0, 50)}...`);
     console.log(`[CrawlerState] Called from: ${stack}`);
   }
 
@@ -942,5 +957,17 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     
     console.log(`[CrawlerState] 오류 분석 결과: 타입=${result.errorType}, 치명적=${result.isCritical}, 재시도가능=${result.isRetryable}`);
     return result;
+  }
+
+  /**
+   * 상세 정보 수집 단계 초기화
+   * 중복 방지 셋도 함께 초기화
+   */
+  public initializeDetailStage(): void {
+    this.detailStageProcessedCount = 0;
+    this.detailStageNewCount = 0;
+    this.detailStageUpdatedCount = 0;
+    this.processedProductUrls.clear();
+    console.log('[CrawlerState] Detail stage initialized with clean state');
   }
 }

@@ -1307,10 +1307,13 @@ export class ProductDetailCollector {
     this.state.setDetailStageProductCount(products.length);
     console.log(`[ProductDetailCollector] Set detail stage product count to ${products.length}`);
 
-    // 2. 시작 단계 설정 및 UI 업데이트를 위한 기본 진행 상태 설정
+    // 2. Initialize detail stage with proper duplicate tracking
+    this.state.initializeDetailStage();
+
+    // 3. 시작 단계 설정 및 UI 업데이트를 위한 기본 진행 상태 설정
     this.state.setStage('productDetail:init', '2/2단계: 제품 상세 정보 수집 준비 중');
     
-    // 3. 명확한 초기 진행 상태 설정 - 확실히 총 항목 수를 설정하여 UI에 정확히 표시되도록 함
+    // 4. 명확한 초기 진행 상태 설정 - 확실히 총 항목 수를 설정하여 UI에 정확히 표시되도록 함
     this.state.updateProgress({
       current: 0,                   // 현재 처리된 항목 수 (0으로 초기화)
       total: products.length,       // 총 처리할 항목 수 (제품 목록 크기)
@@ -1399,20 +1402,28 @@ export class ProductDetailCollector {
       const finalFailedCount = failedProducts.length;
       const actualProcessedCount = this.state.getDetailStageProcessedCount();
       const successProducts = actualProcessedCount - finalFailedCount;
-      const successRate = totalProducts > 0 ? successProducts / totalProducts : 1;
       
       console.log(`[ProductDetailCollector] Collection complete:`);
       console.log(`[ProductDetailCollector] - Total products: ${totalProducts}`);
       console.log(`[ProductDetailCollector] - Actually processed: ${actualProcessedCount}`);
       console.log(`[ProductDetailCollector] - Successful: ${successProducts}`);
       console.log(`[ProductDetailCollector] - Failed: ${finalFailedCount}`);
-      console.log(`[ProductDetailCollector] - Success rate: ${(successRate * 100).toFixed(1)}%`);
       console.log(`[ProductDetailCollector] - New items: ${this.state.getDetailStageNewCount()}`);
       console.log(`[ProductDetailCollector] - Updated items: ${this.state.getDetailStageUpdatedCount()}`);
 
-      // 실제 처리된 항목 수가 총 항목 수와 일치하는지 확인
-      const isFullyComplete = actualProcessedCount >= totalProducts;
-      const completionStatus = isFullyComplete ? 'success' : 'partial';
+      // 최종 완료 상태 검증 using enhanced validation
+      const validationResult = this.validateFinalCompletionStatus(
+        totalProducts,
+        actualProcessedCount,
+        successProducts,
+        finalFailedCount
+      );
+      
+      const isFullyComplete = validationResult.isComplete;
+      const completionStatus = validationResult.status;
+      
+      // Log the validation result
+      console.log(`[ProductDetailCollector] Final validation: ${validationResult.message}`);
 
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'detail-complete',
@@ -1426,7 +1437,7 @@ export class ProductDetailCollector {
           failedItems: finalFailedCount,
           newItems: this.state.getDetailStageNewCount(),
           updatedItems: this.state.getDetailStageUpdatedCount(),
-          successRate: parseFloat((successRate * 100).toFixed(1)),
+          successRate: parseFloat(((totalProducts > 0 ? successProducts / totalProducts : 1) * 100).toFixed(1)),
           isFullyComplete: isFullyComplete,
           endTime: new Date().toISOString()
         })
@@ -1485,6 +1496,7 @@ export class ProductDetailCollector {
     attempt: number = 1
   ): Promise<DetailCrawlResult | null> {
     const config = this.config;
+    const startTime = Date.now(); // 시작 시간 기록
     
     if (signal.aborted) {
       updateProductTaskStatus(product.url, 'stopped');
@@ -1553,19 +1565,30 @@ export class ProductDetailCollector {
       if (detailProduct) {
         updateProductTaskStatus(product.url, 'success');
         
-        // 새로운 항목인지 확인 (URL이 matterProducts에 이미 있는지 체크)
-        const existingProduct = matterProducts.find(p => p.url === product.url);
-        isNewItem = !existingProduct;
+        // 새로운 항목인지 정확히 판단
+        const existingProductIndex = matterProducts.findIndex(p => p.url === product.url);
+        const isNewItem = existingProductIndex === -1;
+
+        // MatterProducts 배열에 추가/업데이트
+        if (isNewItem) {
+          matterProducts.push(detailProduct);
+        } else {
+          matterProducts[existingProductIndex] = detailProduct;
+        }
         
-        // CrawlerState에 처리 완료 기록 (정확한 새로운 항목 여부와 함께)
-        this.state.recordDetailItemProcessed(isNewItem);
+        // CrawlerState에 정확한 정보로 기록 (중복 방지 포함)
+        this.state.recordDetailItemProcessed(isNewItem, product.url);
+        
+        // 성공 로그
+        const processingTime = Date.now() - startTime;
+        console.log(`[ProductDetailCollector] Successfully processed product: ${product.url.substring(0, 50)}... (${processingTime}ms, isNew: ${isNewItem})`);
         
         // 현재 진행 상태를 로그로 출력 - 디버깅 목적
         const currentProcessed = this.state.getDetailStageProcessedCount();
         const currentNew = this.state.getDetailStageNewCount();
         const currentUpdated = this.state.getDetailStageUpdatedCount();
         const currentTotal = this.state.getDetailStageTotalProductCount();
-        console.log(`[ProductDetailCollector] Product processed: ${product.url}, isNewItem: ${isNewItem}, current counts: processed=${currentProcessed}, new=${currentNew}, updated=${currentUpdated}, total=${currentTotal}`);
+        console.log(`[ProductDetailCollector] Current counts: processed=${currentProcessed}, new=${currentNew}, updated=${currentUpdated}, total=${currentTotal}`);
         
         // 진행률 업데이트 이벤트를 발생시켜 UI 업데이트 (업데이트 충돌 문제 해결)
         const totalItems = currentTotal > 0 ? currentTotal : this.state.getProgressData().totalItems || 0;
@@ -2018,5 +2041,47 @@ export class ProductDetailCollector {
         }
       }
     });
+  }
+
+  /**
+   * 최종 완료 상태 검증 개선
+   */
+  private validateFinalCompletionStatus(
+    totalProducts: number,
+    processedCount: number,
+    successCount: number,
+    failedCount: number
+  ): { isComplete: boolean; status: 'success' | 'partial' | 'failed'; message: string } {
+    
+    // 실제 처리된 항목 수 확인
+    const actualProcessedCount = this.state.getDetailStageProcessedCount();
+    const actualNewCount = this.state.getDetailStageNewCount();
+    const actualUpdatedCount = this.state.getDetailStageUpdatedCount();
+
+    console.log(`[ProductDetailCollector] Final validation:`);
+    console.log(`  - Expected total: ${totalProducts}`);
+    console.log(`  - Actually processed: ${actualProcessedCount}`);
+    console.log(`  - New items: ${actualNewCount}`);
+    console.log(`  - Updated items: ${actualUpdatedCount}`);
+    console.log(`  - Failed: ${failedCount}`);
+
+    const isComplete = actualProcessedCount >= totalProducts;
+    const successRate = totalProducts > 0 ? (actualProcessedCount - failedCount) / totalProducts : 1;
+
+    let status: 'success' | 'partial' | 'failed';
+    let message: string;
+
+    if (isComplete && successRate >= 0.95) {
+      status = 'success';
+      message = `제품 상세정보 수집 완료: ${actualProcessedCount}/${totalProducts} (신규: ${actualNewCount}, 업데이트: ${actualUpdatedCount})`;
+    } else if (successRate >= 0.8) {
+      status = 'partial';
+      message = `제품 상세정보 부분 완료: ${actualProcessedCount}/${totalProducts} (성공률: ${(successRate * 100).toFixed(1)}%)`;
+    } else {
+      status = 'failed';
+      message = `제품 상세정보 수집 실패: ${actualProcessedCount}/${totalProducts} (성공률: ${(successRate * 100).toFixed(1)}%)`;
+    }
+
+    return { isComplete, status, message };
   }
 }
