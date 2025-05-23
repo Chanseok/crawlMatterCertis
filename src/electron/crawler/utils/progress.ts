@@ -212,6 +212,10 @@ export function updateProductListProgress(
 
 /**
  * 2/2단계: 제품 상세 정보 수집 상태 업데이트
+ * 
+ * 2025-05-24 수정: UI 표시 문제 해결
+ * - 문제: UI에 표시되는 총 제품 수와 처리된 제품 수의 불일치
+ * - 해결: 명시적으로 totalItems 값을 항상 전달하고, 일관된 값 사용 보장
  */
 export function updateProductDetailProgress(
     processedItems: number,
@@ -221,9 +225,20 @@ export function updateProductDetailProgress(
     newItems: number = 0,
     updatedItems: number = 0
 ): void {
+    // 안전 검사: 음수 값이나 비정상적인 값을 방지
+    if (processedItems < 0) processedItems = 0;
+    if (totalItems < 0) totalItems = 0;
+    
     const now = Date.now();
     const elapsedTime = now - startTime;
-    const percentage = (processedItems / Math.max(totalItems, 1)) * 100;
+    
+    // 0으로 나누기 방지를 위한 안전 검사
+    const safeTotal = Math.max(totalItems, 1);
+    const percentage = (processedItems / safeTotal) * 100;
+    
+    // 비정상적인 비율 방지
+    const safePercentage = Math.min(Math.max(percentage, 0), 100);
+    
     let remainingTime: number | undefined = undefined;
 
     // 10% 이상 진행된 경우에만 남은 시간 예측
@@ -234,21 +249,24 @@ export function updateProductDetailProgress(
 
     const message = isCompleted 
         ? `2단계 완료: ${totalItems}개 제품 상세정보 수집 완료 (신규: ${newItems}, 업데이트: ${updatedItems})`
-        : `2단계: 제품 상세정보 ${processedItems}/${totalItems} 처리 중 (${percentage.toFixed(1)}%)`;
+        : `2단계: 제품 상세정보 ${processedItems}/${totalItems} 처리 중 (${safePercentage.toFixed(1)}%)`;
 
+    // 이벤트 발행 전에 로그로 확인
+    console.log(`[Progress] Emitting detail progress: ${processedItems}/${totalItems}, ${safePercentage.toFixed(1)}%, new: ${newItems}, updated: ${updatedItems}`);
+    
     crawlerEvents.emit('crawlingProgress', {
         status: isCompleted ? 'completed' : 'running',
-        currentPage: processedItems, // 실제 처리된 항목 수로 변경
-        totalPages: totalItems,
-        processedItems,
-        totalItems,
-        percentage,
+        currentPage: processedItems, // 실제 처리된 항목 수
+        totalPages: totalItems,      // 총 항목 수 (일관성 유지)
+        processedItems,              // 처리된 항목 수
+        totalItems,                  // 총 항목 수 (일관성 유지)
+        percentage: safePercentage,  // 계산된 안전한 퍼센트 값
         currentStep: CRAWLING_PHASES.PRODUCT_DETAIL,
         currentStage: CRAWLING_STAGE.PRODUCT_DETAIL, // 단계 정보
         remainingTime: isCompleted ? 0 : remainingTime,
         elapsedTime,
         startTime,
-        estimatedEndTime: remainingTime ? now + remainingTime : 0,
+        estimatedEndTime: remainingTime && !isCompleted ? now + remainingTime : (isCompleted ? now : 0),
         newItems,
         updatedItems,
         message: message // 명확한 메시지

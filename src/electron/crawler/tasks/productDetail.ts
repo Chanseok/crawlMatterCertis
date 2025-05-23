@@ -100,6 +100,10 @@ export class ProductDetailCollector {
   private updateProgress(): void {
     // 중복 카운팅 방지를 위해 this.state.recordDetailItemProcessed 호출 제거
     // 실제 카운팅은 processProductDetailCrawl에서 처리됨
+    
+    // 중요: 이 메서드는 상태 업데이트만을 위한 것이며 카운터 증가는 담당하지 않음
+    // 상세 페이지 처리 카운팅은 오직 processProductDetailCrawl 메서드에서만 수행됨
+    console.log('[ProductDetailCollector] updateProgress called - 카운터 증가 없이 상태만 업데이트');
   }
 
   /**
@@ -1298,11 +1302,24 @@ export class ProductDetailCollector {
 
     const config = this.config;
 
+    // Stage 2 초기화: UI에 올바른 총 제품 수를 표시하기 위한 상태 설정
+    // 1. CrawlerState에 총 제품 수를 명시적으로 설정
+    this.state.setDetailStageProductCount(products.length);
+    console.log(`[ProductDetailCollector] Set detail stage product count to ${products.length}`);
+
+    // 2. 시작 단계 설정 및 UI 업데이트를 위한 기본 진행 상태 설정
     this.state.setStage('productDetail:init', '2/2단계: 제품 상세 정보 수집 준비 중');
+    
+    // 3. 명확한 초기 진행 상태 설정 - 확실히 총 항목 수를 설정하여 UI에 정확히 표시되도록 함
     this.state.updateProgress({
-      total: products.length,
-      current: 0,
-      message: `병렬 작업: 0/${config.detailConcurrency}개` // 병렬 작업 정보를 메시지에 포함
+      current: 0,                   // 현재 처리된 항목 수 (0으로 초기화)
+      total: products.length,       // 총 처리할 항목 수 (제품 목록 크기)
+      totalItems: products.length,  // 총 항목 수 (명시적으로 설정)
+      processedItems: 0,            // 처리된 항목 수 (0으로 초기화) 
+      percentage: 0,                // 진행율 (0%로 초기화)
+      newItems: 0,                  // 새 항목 수 (0으로 초기화)
+      updatedItems: 0,              // 업데이트된 항목 수 (0으로 초기화)
+      message: `2단계: 제품 상세 정보 수집 시작 (0/${products.length})`
     });
 
     const matterProducts: MatterProduct[] = [];
@@ -1543,6 +1560,30 @@ export class ProductDetailCollector {
         // CrawlerState에 처리 완료 기록 (정확한 새로운 항목 여부와 함께)
         this.state.recordDetailItemProcessed(isNewItem);
         
+        // 현재 진행 상태를 로그로 출력 - 디버깅 목적
+        const currentProcessed = this.state.getDetailStageProcessedCount();
+        const currentNew = this.state.getDetailStageNewCount();
+        const currentUpdated = this.state.getDetailStageUpdatedCount();
+        const currentTotal = this.state.getDetailStageTotalProductCount();
+        console.log(`[ProductDetailCollector] Product processed: ${product.url}, isNewItem: ${isNewItem}, current counts: processed=${currentProcessed}, new=${currentNew}, updated=${currentUpdated}, total=${currentTotal}`);
+        
+        // 진행률 업데이트 이벤트를 발생시켜 UI 업데이트 (업데이트 충돌 문제 해결)
+        const totalItems = currentTotal > 0 ? currentTotal : this.state.getProgressData().totalItems || 0;
+        
+        crawlerEvents.emit('crawlingProgress', {
+          status: 'running',
+          currentPage: currentProcessed,       // 현재 처리된 항목 수
+          totalPages: totalItems,              // 총 항목 수
+          processedItems: currentProcessed,    // 처리된 항목 수
+          totalItems: totalItems,              // 총 항목 수
+          percentage: Math.min((currentProcessed / Math.max(totalItems, 1)) * 100, 100), // 진행율
+          currentStep: '제품 상세 정보 수집',     // 현재 단계 설명
+          currentStage: 2,                    // 현재 단계 번호
+          newItems: currentNew,               // 새로운 항목 수
+          updatedItems: currentUpdated,       // 업데이트된 항목 수
+          message: `2단계: 제품 상세정보 ${currentProcessed}/${totalItems} 처리 중 (${Math.min((currentProcessed / Math.max(totalItems, 1)) * 100, 100).toFixed(1)}%)`
+        });
+        
         crawlerEvents.emit('crawlingTaskStatus', {
           taskId: `product-${product.url}`,
           status: 'success',
@@ -1631,32 +1672,41 @@ export class ProductDetailCollector {
     let lastProgressUpdate = 0;
     const progressUpdateInterval = 3000;
 
+    // 단계 2 실행 시작 시 진행 상태 명확하게 초기화
+    // CrawlerState 총 항목 수와 UI 표시를 일치시키기 위한 중요한 설정
     this.state.updateProgress({
-      current: 0,
-      total: totalItems,
-      status: 'running',
-      message: `2/2단계: 제품 상세 정보 수집 중 (0/${totalItems})`
+      current: 0,                   // 현재까지 처리된 항목
+      total: totalItems,            // 총 처리할 항목 수
+      totalItems: totalItems,       // 총 항목 수 (명시적 설정)
+      processedItems: 0,            // 처리된 항목 수
+      percentage: 0,                // 진행율
+      status: 'running',            // 상태
+      newItems: 0,                  // 새 항목 수
+      updatedItems: 0,              // 업데이트된 항목 수
+      message: `2/2단계: 제품 상세 정보 수집 시작 (0/${totalItems})`
     });
     
+    // 초기 진행 이벤트 발행 - UI 업데이트를 위한 중요한 단계
+    // 이 이벤트를 통해 UI가 처음부터 정확한 "0/totalItems" 값을 표시함
     crawlerEvents.emit('crawlingProgress', {
       status: 'running',
-      currentPage: 0,
-      totalPages: totalItems,
-      processedItems: 0,
-      totalItems: totalItems,
-      percentage: 0,
-      currentStep: '제품 상세 정보 수집',
-      currentStage: 2,
-      remainingTime: undefined,
-      elapsedTime: 0,
-      startTime: startTime,
-      estimatedEndTime: 0,
-      newItems: 0,
-      updatedItems: 0,
+      currentPage: 0,               // 현재 페이지/항목 위치
+      totalPages: totalItems,       // 총 페이지/항목 수
+      processedItems: 0,            // 처리된 항목 수
+      totalItems: totalItems,       // 총 항목 수 (UI에 표시될 총 제품 수)
+      percentage: 0,                // 진행율
+      currentStep: '제품 상세 정보 수집',  // 현재 단계 설명
+      currentStage: 2,              // 현재 단계 번호
+      remainingTime: undefined,     // 남은 시간 (아직 계산 불가)
+      elapsedTime: 0,               // 경과 시간
+      startTime: startTime,         // 시작 시간
+      estimatedEndTime: 0,          // 예상 종료 시간 (아직 계산 불가)
+      newItems: 0,                  // 새 항목 수
+      updatedItems: 0,              // 업데이트된 항목 수
       message: `2단계: 제품 상세정보 0/${totalItems} 처리 중 (0.0%)`
     });
 
-    console.log(`[ProductDetailCollector] Starting detail collection for ${totalItems} products`);
+    console.log(`[ProductDetailCollector] Starting detail collection for ${totalItems} products with proper UI initialization`);
     
     await promisePool(
       products,
@@ -1729,31 +1779,45 @@ export class ProductDetailCollector {
     // 최종 진행률 업데이트 - 실제 처리된 항목 수 기준
     const finalElapsedTime = Date.now() - startTime;
     const actualProcessedItems = this.state.getDetailStageProcessedCount();
+    const newItems = this.state.getDetailStageNewCount();
+    const updatedItems = this.state.getDetailStageUpdatedCount();
     
+    // 로그로 최종 상태 확인
+    console.log(`[ProductDetailCollector] Final collection status: processed=${actualProcessedItems}/${totalItems}, new=${newItems}, updated=${updatedItems}`);
+    
+    // 상태 객체에 최종 상태 업데이트
     this.state.updateProgress({
       current: actualProcessedItems, // CrawlerState의 실제 카운터 사용
       total: totalItems,
+      totalItems: totalItems,
+      processedItems: actualProcessedItems,
+      newItems: newItems,
+      updatedItems: updatedItems,
       message: `2/2단계: 제품 상세 정보 수집 완료 (${actualProcessedItems}/${totalItems})`,
       percentage: 100
     });
     this.state.updateParallelTasks(0, config.detailConcurrency ?? 1);
     
+    // 진행 상태 변경 이벤트 먼저 발생시키기 (UI 상태 동기화를 위해)
+    crawlerEvents.emit('crawlingStageChanged', 'productDetail:completed', `2단계 완료: ${actualProcessedItems}/${totalItems}개 제품 상세정보 수집 완료`);
+    
+    // 진행 상태 업데이트 이벤트 발생시키기
     crawlerEvents.emit('crawlingProgress', {
       status: 'completed',
-      currentPage: actualProcessedItems, // 실제 처리된 항목 수 사용
-      totalPages: totalItems,
-      processedItems: actualProcessedItems,
-      totalItems: totalItems,
-      percentage: 100,
-      currentStep: '제품 상세 정보 수집',
-      currentStage: 2,
-      remainingTime: 0,
-      elapsedTime: finalElapsedTime,
-      startTime: startTime,
-      estimatedEndTime: Date.now(),
-      newItems: this.state.getDetailStageNewCount(),
-      updatedItems: this.state.getDetailStageUpdatedCount(),
-      message: `2단계 완료: ${totalItems}개 제품 상세정보 수집 완료 (신규: ${this.state.getDetailStageNewCount()}, 업데이트: ${this.state.getDetailStageUpdatedCount()})` 
+      currentPage: actualProcessedItems,     // 실제 처리된 항목 수 사용
+      totalPages: totalItems,                // 총 항목 수
+      processedItems: actualProcessedItems,  // 처리된 항목 수
+      totalItems: totalItems,                // 총 항목 수
+      percentage: 100,                       // 완료 상태
+      currentStep: '제품 상세 정보 수집 완료', // 완료 상태
+      currentStage: 2,                      // 현재 단계
+      remainingTime: 0,                     // 남은 시간
+      elapsedTime: finalElapsedTime,        // 총 소요 시간
+      startTime: startTime,                 // 시작 시간
+      estimatedEndTime: Date.now(),         // 종료 시간
+      newItems: newItems,                   // 신규 항목 수
+      updatedItems: updatedItems,           // 업데이트 항목 수
+      message: `2단계 완료: ${actualProcessedItems}/${totalItems}개 제품 상세정보 수집 완료 (신규: ${newItems}, 업데이트: ${updatedItems})`
     });
   }
 

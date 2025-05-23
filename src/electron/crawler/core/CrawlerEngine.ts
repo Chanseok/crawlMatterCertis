@@ -77,6 +77,12 @@ export class CrawlerEngine {
     this.state.reset();
     console.log('[CrawlerEngine] CrawlerState has been reset for new crawling session');
     
+    // 명시적으로 상태 확인 (디버깅용)
+    console.log('[CrawlerEngine] State after reset: ' +
+                `detailStageProcessedCount=${this.state.getDetailStageProcessedCount()}, ` +
+                `detailStageNewCount=${this.state.getDetailStageNewCount()}, ` +
+                `detailStageUpdatedCount=${this.state.getDetailStageUpdatedCount()}`);
+    
     this.isCrawling = true;
     this.abortController = new AbortController();
     
@@ -509,6 +515,31 @@ export class CrawlerEngine {
 
       // 배치 처리를 사용하지 않은 경우에만 여기서 2단계 실행
       if (!enableBatchProcessing || totalPagesToCrawl <= batchSize) {
+        // [NEW CODE START] Correctly setup CrawlerState for Stage 2 product detail collection
+        // This ensures the UI displays the correct total number of products to be processed from Stage 1.
+        console.log(`[CrawlerEngine] Preparing CrawlerState for Stage 2 (non-batch or small batch). Total products from Stage 1: ${products.length}`);
+
+        // Set the specific counter for total products in the detail stage.
+        // This helps CrawlerState and UI to correctly track progress against the total items from Stage 1.
+        this.state.setDetailStageProductCount(products.length);
+        console.log(`[CrawlerEngine] Called this.state.setDetailStageProductCount(${products.length}) for Stage 2.`);
+
+        // Update the main progress state for the beginning of Stage 2.
+        // This resets processed counts and sets the overall total for this stage.
+        this.state.updateProgress({
+            currentStage: CRAWLING_STAGE.PRODUCT_DETAIL, // Mark current stage as Product Detail
+            totalItems: products.length,                 // Total items to process in Stage 2
+            processedItems: 0,                           // Reset processed items for Stage 2
+            newItems: 0,                                 // Reset new items count
+            updatedItems: 0,                             // Reset updated items count
+            percentage: 0,                               // Reset percentage completion
+            currentStep: '제품 상세 정보 수집 초기화 중...',   // Initial status message for Stage 2
+            currentPage: 0,                              // Reset current page (if applicable to Stage 2)
+            totalPages: 0,                               // Reset total pages (if applicable to Stage 2)
+        });
+        console.log(`[CrawlerEngine] Called this.state.updateProgress for start of Stage 2: totalItems=${products.length}, processedItems=0.`);
+        // [NEW CODE END]
+
         // 2/2단계: 제품 상세 정보 수집 시작 알림
         const detailStartTime = Date.now();
         updateProductDetailProgress(0, products.length, detailStartTime);

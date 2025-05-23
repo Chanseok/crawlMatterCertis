@@ -65,6 +65,7 @@ export class CrawlerState {
   private detailStageProcessedCount: number = 0;
   private detailStageNewCount: number = 0;
   private detailStageUpdatedCount: number = 0;
+  private detailStageTotalProductCount: number = 0; // Added for Stage 2 total
   
   // 페이지당 기대되는 제품 수
   private _expectedProductsPerPage: number = 12;
@@ -534,6 +535,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     this.detailStageProcessedCount = 0;
     this.detailStageNewCount = 0;
     this.detailStageUpdatedCount = 0;
+    this.detailStageTotalProductCount = 0; // Reset for Stage 2 total
     
     // 스마트 병합을 위한 상태 초기화
     this.pageProductsCache.clear();
@@ -541,13 +543,56 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
   }
 
   /**
+   * 상세 정보 수집 단계의 총 제품 수를 설정합니다.
+   * 이 값은 1단계에서 수집된 총 제품 수로 설정되어야 합니다.
+   * @param count 총 제품 수
+   */
+  public setDetailStageProductCount(count: number): void {
+    if (count < 0) {
+      console.warn(`[CrawlerState] Invalid negative count ${count} passed to setDetailStageProductCount, ignoring.`);
+      return;
+    }
+    
+    this.detailStageTotalProductCount = count;
+    console.log(`[CrawlerState] Detail stage total product count set to: ${count}`);
+    
+    // Stage 2에 있는 경우, UI를 위해 progressData.totalItems 및 total도 업데이트
+    if (this.currentStage.startsWith('productDetail') || this.currentStage === 'completed') {
+      this.updateProgress({ 
+        total: count,
+        totalItems: count 
+      });
+      console.log(`[CrawlerState] Updated progressData.total and totalItems to ${count} for UI display`);
+    }
+  }
+
+  /**
+   * 상세 정보 수집 단계의 총 제품 수를 가져옵니다.
+   */
+  public getDetailStageTotalProductCount(): number {
+    return this.detailStageTotalProductCount;
+  }
+
+  /**
    * 상세 정보 수집 단계에서 처리된 항목 기록
    * 이 메서드는 processProductDetailCrawl에서 한 번만 호출되어야 함
+   * 
+   * 2025-05-24 수정: 카운터 오버플로우 감지 및 비상 조치 개선
+   * - 오버플로우 감지 조건 강화: 전체 제품 수를 기반으로 오버플로우 감지
+   * - 현재 UI 상태도 함께 업데이트하여 실시간 정확성 보장
    */
   public recordDetailItemProcessed(isNewItem: boolean): void {
-    // 세션 간 상태가 제대로 초기화되었는지 확인
-    if (this.detailStageProcessedCount >= 60) {
-      console.warn(`[CrawlerState] WARNING: Counter overflow detected! Current value: ${this.detailStageProcessedCount}`);
+    // 기대된 최대 제품 수를 초과하는지 확인
+    const expectedMaxProducts = this.detailStageTotalProductCount > 0 ? 
+                               this.detailStageTotalProductCount :
+                               this.progressData.totalItems || 60; // 기본값 60
+    
+    // 오버플로우 감지 조건 개선: 기대된 제품 수를 크게 초과할 경우
+    const overflowThreshold = Math.max(expectedMaxProducts * 1.1, expectedMaxProducts + 5);
+    
+    if (this.detailStageProcessedCount >= overflowThreshold) {
+      console.warn(`[CrawlerState] WARNING: Counter overflow detected! Current value: ${this.detailStageProcessedCount} exceeds safe threshold: ${overflowThreshold}`);
+      console.warn(`[CrawlerState] Expected total products: ${expectedMaxProducts}, Actual processed: ${this.detailStageProcessedCount}`);
       console.warn(`[CrawlerState] This may indicate that state.reset() was not properly called between sessions.`);
       
       // 호출 스택 기록하여 디버깅에 도움
@@ -568,9 +613,41 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
       this.detailStageUpdatedCount++;
     }
     
+    // UI 상태도 업데이트: 카운트와 UI가 일치하도록 보장
+    const totalItems = this.detailStageTotalProductCount || this.progressData.totalItems || 0;
+    const percentage = totalItems > 0 ? (this.detailStageProcessedCount / totalItems * 100) : 0;
+    const safePercentage = Math.min(Math.max(percentage, 0), 100);
+    
+    // 정확한 상태 업데이트를 위한 전체 필드 설정
+    this.updateProgress({
+      current: this.detailStageProcessedCount,
+      total: totalItems,
+      processedItems: this.detailStageProcessedCount,
+      totalItems: totalItems,
+      newItems: this.detailStageNewCount,
+      updatedItems: this.detailStageUpdatedCount,
+      percentage: safePercentage,
+      message: `2단계: 제품 상세정보 ${this.detailStageProcessedCount}/${totalItems} 처리 중 (${safePercentage.toFixed(1)}%)`
+    });
+    
+    // UI 일관성을 위해 크롤링 이벤트 직접 발송
+    crawlerEvents.emit('crawlingProgress', {
+      status: 'running',
+      currentPage: this.detailStageProcessedCount,
+      totalPages: totalItems,
+      processedItems: this.detailStageProcessedCount,
+      totalItems: totalItems,
+      percentage: safePercentage,
+      currentStep: '제품 상세 정보 수집',
+      currentStage: 2,
+      newItems: this.detailStageNewCount,
+      updatedItems: this.detailStageUpdatedCount,
+      message: `2단계: 제품 상세정보 ${this.detailStageProcessedCount}/${totalItems} 처리 중 (${safePercentage.toFixed(1)}%)`
+    });
+    
     // 향상된 디버그 로깅 (호출 스택 추적 포함)
     const stack = new Error().stack?.split('\n').slice(2, 5).join('\n') || 'Stack not available';
-    console.log(`[CrawlerState] Detail item processed: total=${this.detailStageProcessedCount}, new=${this.detailStageNewCount}, updated=${this.detailStageUpdatedCount}, isNew=${isNewItem}`);
+    console.log(`[CrawlerState] Detail item processed: total=${this.detailStageProcessedCount}/${totalItems}, new=${this.detailStageNewCount}, updated=${this.detailStageUpdatedCount}, isNew=${isNewItem}`);
     console.log(`[CrawlerState] Called from: ${stack}`);
   }
 
