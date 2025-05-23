@@ -37,6 +37,7 @@ export class CrawlerEngine {
   private isCrawling: boolean = false;
   private abortController: AbortController | null = null;
   private browserManager: BrowserManager | null = null;
+  private sessionConfig: CrawlerConfig | null = null; // 현재 크롤링 세션의 설정을 저장
 
   constructor() {
     this.state = new CrawlerState();
@@ -60,7 +61,8 @@ export class CrawlerEngine {
     }
     // 세션 시작 시 받은 config만 사용 (세션 도중 변경 무시)
     // 이 config를 크롤링 세션 전체에서 공유하여 불필요한 configManager.getConfig() 호출 방지
-    const sessionConfig = config;
+    this.sessionConfig = config; // 세션 설정을 클래스 멤버에 저장
+    const sessionConfig = this.sessionConfig; // 지역 변수로도 사용
     
     // 배치 처리 설정 가져오기
     const batchSize = sessionConfig.batchSize || 30; // 기본값 30페이지
@@ -111,7 +113,8 @@ export class CrawlerEngine {
       const { startPage, endPage } = await PageIndexManager.calculateCrawlingRange(
         totalPagesFromCache, 
         lastPageProductCount || 0,
-        userPageLimit
+        userPageLimit,
+        sessionConfig // 세션 설정을 명시적으로 전달
       );
       
       // 크롤링할 페이지가 없는 경우 종료
@@ -567,9 +570,9 @@ export class CrawlerEngine {
    * 크롤링 상태 체크 요약 정보 반환
    */
   public async checkCrawlingStatus(): Promise<CrawlingSummary> {
-    // 세션 전체에 사용할 단일 설정 객체를 가져옴
-    const sessionConfig = configManager.getConfig(); 
-    console.log('[CrawlerEngine] checkCrawlingStatus called with latest config:', JSON.stringify(sessionConfig));
+    // 현재 세션의 설정이 있으면 사용하고, 없으면 최신 설정 가져옴
+    const sessionConfig = this.sessionConfig || configManager.getConfig();
+    console.log('[CrawlerEngine] checkCrawlingStatus called with config:', JSON.stringify(sessionConfig));
     
     let tempBrowserManager: BrowserManager | null = null;
     let createdTempBrowserManager = false;
@@ -776,9 +779,9 @@ export class CrawlerEngine {
     }
 
     // 설정에 따라 자동으로 DB에 저장 - 메서드 전체에서 일관된 설정 사용
-    // 이미 세션 시작 시 받은 설정을 사용하므로 여기서 새로 가져올 필요가 없음
+    // 세션 시작 시 저장한 설정을 사용하므로 여기서 새로 가져올 필요가 없음
     // 세션 내에서 설정 변경을 무시하는 것이 목적임
-    const sessionConfig = configManager.getConfig();
+    const sessionConfig = this.sessionConfig || configManager.getConfig();
     console.log(`[CrawlerEngine] Current autoAddToLocalDB setting: ${sessionConfig.autoAddToLocalDB}`);
     
     if (sessionConfig.autoAddToLocalDB) {
