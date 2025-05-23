@@ -97,13 +97,13 @@ export class ProductDetailCollector {
    * 주의: 이 함수는 직접적으로 CrawlerState에 항목 처리를 기록하지 않습니다.
    * 항목 처리 기록은 processProductDetailCrawl에서 정확한 isNewItem 값으로 한 번만 호출됩니다.
    */
-  private updateProgress(): void {
+  private updateProgressLegacy(): void {
     // 중복 카운팅 방지를 위해 this.state.recordDetailItemProcessed 호출 제거
     // 실제 카운팅은 processProductDetailCrawl에서 처리됨
     
     // 중요: 이 메서드는 상태 업데이트만을 위한 것이며 카운터 증가는 담당하지 않음
     // 상세 페이지 처리 카운팅은 오직 processProductDetailCrawl 메서드에서만 수행됨
-    console.log('[ProductDetailCollector] updateProgress called - 카운터 증가 없이 상태만 업데이트');
+    console.log('[ProductDetailCollector] updateProgressLegacy called - 카운터 증가 없이 상태만 업데이트');
   }
 
   /**
@@ -1754,12 +1754,14 @@ export class ProductDetailCollector {
           
           const message = `2단계: 제품 상세정보 ${currentProcessedItems}/${totalItems} 처리 중 (${percentage.toFixed(1)}%)`;
 
-          // CrawlerState 상태와 동기화
+          // CrawlerState 상태와 동기화 - newItems와 updatedItems 보존
           this.state.updateProgress({
             current: currentProcessedItems,
             total: totalItems,
             message: message,
-            percentage: percentage
+            percentage: percentage,
+            newItems: this.state.getDetailStageNewCount(),
+            updatedItems: this.state.getDetailStageUpdatedCount()
           });
           
           const detailConcurrency = config.detailConcurrency ?? 1;
