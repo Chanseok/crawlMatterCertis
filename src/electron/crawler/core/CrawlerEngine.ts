@@ -59,22 +59,23 @@ export class CrawlerEngine {
       return false;
     }
     // 세션 시작 시 받은 config만 사용 (세션 도중 변경 무시)
-    const currentConfig = config;
+    // 이 config를 크롤링 세션 전체에서 공유하여 불필요한 configManager.getConfig() 호출 방지
+    const sessionConfig = config;
     
     // 배치 처리 설정 가져오기
-    const batchSize = currentConfig.batchSize || 30; // 기본값 30페이지
-    const batchDelayMs = currentConfig.batchDelayMs || 2000; // 기본값 2초
-    const enableBatchProcessing = currentConfig.enableBatchProcessing !== false; // 기본값 true
-    const batchRetryLimit = currentConfig.batchRetryLimit || 3; // 기본값 3회
+    const batchSize = sessionConfig.batchSize || 30; // 기본값 30페이지
+    const batchDelayMs = sessionConfig.batchDelayMs || 2000; // 기본값 2초
+    const enableBatchProcessing = sessionConfig.enableBatchProcessing !== false; // 기본값 true
+    const batchRetryLimit = sessionConfig.batchRetryLimit || 3; // 기본값 3회
     
     // 크롤링 상태 초기화
     initializeCrawlingState();
     this.isCrawling = true;
     this.abortController = new AbortController();
     
-    // Use the latest config for BrowserManager
-    // Ensure browserManager is always (re)created with the latest config for a new crawling session
-    this.browserManager = new BrowserManager(currentConfig);
+    // Use the session config for BrowserManager to maintain consistency
+    // Ensure browserManager is always (re)created with the session config for a new crawling session
+    this.browserManager = new BrowserManager(sessionConfig);
 
     try {
       console.log('[CrawlerEngine] Starting crawling process...');
@@ -97,11 +98,11 @@ export class CrawlerEngine {
         return false;
       }
 
-      // 사용자 설정 가져오기 (CRAWL-RANGE-001) - from the already fetched currentConfig
-      const userPageLimit = currentConfig.pageRangeLimit;
+      // 사용자 설정 가져오기 (CRAWL-RANGE-001) - from the session config
+      const userPageLimit = sessionConfig.pageRangeLimit;
       
-      // 제품 목록 수집기 생성 (1단계) - Pass the latest currentConfig
-      const productListCollector = new ProductListCollector(this.state, this.abortController, currentConfig, this.browserManager!);
+      // 제품 목록 수집기 생성 (1단계) - Pass the session config for consistency
+      const productListCollector = new ProductListCollector(this.state, this.abortController, sessionConfig, this.browserManager!);
       
       // totalPages와 lastPageProductCount 정보 가져오기
       const { totalPages: totalPagesFromCache, lastPageProductCount } = await productListCollector.fetchTotalPagesCached(true);
@@ -139,7 +140,7 @@ export class CrawlerEngine {
           stage1StartTime,
           stage1PageStatuses, 
           currentOverallRetryCountForStage, 
-          currentConfig.productListRetryCount,
+          sessionConfig.productListRetryCount,
           isStageComplete
         );
       };
@@ -211,7 +212,7 @@ export class CrawlerEngine {
               const batchCollector = new ProductListCollector(
                 this.state,
                 this.abortController,
-                currentConfig,
+                sessionConfig,
                 this.browserManager!
               );
               
@@ -292,7 +293,7 @@ export class CrawlerEngine {
             const batchDetailCollector = new ProductDetailCollector(
               this.state,
               this.abortController,
-              currentConfig,
+              sessionConfig,
               this.browserManager!
             );
             
@@ -316,7 +317,7 @@ export class CrawlerEngine {
               });
               
               // 배치 결과를 DB에 저장
-              if (currentConfig.autoAddToLocalDB && batchMatterProducts.length > 0) {
+              if (sessionConfig.autoAddToLocalDB && batchMatterProducts.length > 0) {
                 try {
                   console.log(`[CrawlerEngine] Saving batch ${batchNumber} products to DB (${batchMatterProducts.length} products)`);
                   
@@ -357,7 +358,7 @@ export class CrawlerEngine {
                 
                 // DB 저장 스킵 이벤트
                 crawlerEvents.emit('dbSaveSkipped', {
-                  message: `배치 ${batchNumber} DB 저장 건너뜀 (${currentConfig.autoAddToLocalDB ? '제품 없음' : '자동 저장 비활성화'})`,
+                  message: `배치 ${batchNumber} DB 저장 건너뜀 (${sessionConfig.autoAddToLocalDB ? '제품 없음' : '자동 저장 비활성화'})`,
                   count: batchMatterProducts.length
                 });
               }
@@ -489,7 +490,7 @@ export class CrawlerEngine {
         debugLog(`[CrawlerEngine] Found ${products.length} products to process. Starting detail collection...`);
         
         // 제품 상세 정보 수집기 생성 (2단계)
-        const productDetailCollector = new ProductDetailCollector(this.state, this.abortController, currentConfig, this.browserManager); // Pass latest currentConfig and browserManager
+        const productDetailCollector = new ProductDetailCollector(this.state, this.abortController, sessionConfig, this.browserManager); // Pass session config for consistency
         
         // 제품 상세 정보 수집 실행
         const matterProducts = await productDetailCollector.collect(products);
@@ -519,7 +520,7 @@ export class CrawlerEngine {
           success: true,
           count: products.length,
           message: '모든 배치가 처리되었습니다. 배치별 상세 정보가 이미 수집 및 저장되었습니다.',
-          autoSavedToDb: currentConfig.autoAddToLocalDB
+          autoSavedToDb: sessionConfig.autoAddToLocalDB
         });
       }
 
@@ -566,8 +567,9 @@ export class CrawlerEngine {
    * 크롤링 상태 체크 요약 정보 반환
    */
   public async checkCrawlingStatus(): Promise<CrawlingSummary> {
-    const currentConfig = configManager.getConfig(); 
-    console.log('[CrawlerEngine] checkCrawlingStatus called with latest config:', JSON.stringify(currentConfig));
+    // 세션 전체에 사용할 단일 설정 객체를 가져옴
+    const sessionConfig = configManager.getConfig(); 
+    console.log('[CrawlerEngine] checkCrawlingStatus called with latest config:', JSON.stringify(sessionConfig));
     
     let tempBrowserManager: BrowserManager | null = null;
     let createdTempBrowserManager = false;
@@ -582,7 +584,7 @@ export class CrawlerEngine {
       if (this.browserManager && await this.browserManager.isValid()) {
         tempBrowserManager = this.browserManager;
       } else {
-        tempBrowserManager = new BrowserManager(currentConfig);
+        tempBrowserManager = new BrowserManager(sessionConfig);
         await tempBrowserManager.initialize();
         createdTempBrowserManager = true;
       }
@@ -592,7 +594,7 @@ export class CrawlerEngine {
       }
 
       const tempController = new AbortController();
-      const collector = new ProductListCollector(this.state, tempController, currentConfig, tempBrowserManager);
+      const collector = new ProductListCollector(this.state, tempController, sessionConfig, tempBrowserManager);
       
       try {
         const pageData = await collector.fetchTotalPagesCached(true); 
@@ -621,17 +623,18 @@ export class CrawlerEngine {
       }
 
       const siteProductCount = totalPages > 0 
-        ? ((totalPages - 1) * currentConfig.productsPerPage) + lastPageProductCount 
+        ? ((totalPages - 1) * sessionConfig.productsPerPage) + lastPageProductCount 
         : 0;
       
-      const userPageLimit = currentConfig.pageRangeLimit;
+      const userPageLimit = sessionConfig.pageRangeLimit;
 
       let crawlingRange = { startPage: 0, endPage: 0 };
       if (totalPages > 0) {
           crawlingRange = await PageIndexManager.calculateCrawlingRange(
               totalPages,
               lastPageProductCount,
-              userPageLimit
+              userPageLimit,
+              sessionConfig // 설정 객체 전달
           );
       }
     
@@ -653,9 +656,9 @@ export class CrawlerEngine {
             }
 
             if (includesLastSitePage) {
-                estimatedProductCount = ((selectedPageCount - 1) * currentConfig.productsPerPage) + lastPageProductCount;
+                estimatedProductCount = ((selectedPageCount - 1) * sessionConfig.productsPerPage) + lastPageProductCount;
             } else {
-                estimatedProductCount = selectedPageCount * currentConfig.productsPerPage;
+                estimatedProductCount = selectedPageCount * sessionConfig.productsPerPage;
             }
         }
       }
@@ -772,12 +775,13 @@ export class CrawlerEngine {
       crawlerEvents.emit('crawlingFailedProducts', failedReport);
     }
 
-    // 설정에 따라 자동으로 DB에 저장
-    console.log('[CrawlerEngine] Fetching latest config from ConfigManager for DB save decision');
-    const currentConfig = configManager.getConfig();
-    console.log(`[CrawlerEngine] Current autoAddToLocalDB setting from ConfigManager: ${currentConfig.autoAddToLocalDB}`);
+    // 설정에 따라 자동으로 DB에 저장 - 메서드 전체에서 일관된 설정 사용
+    // 이미 세션 시작 시 받은 설정을 사용하므로 여기서 새로 가져올 필요가 없음
+    // 세션 내에서 설정 변경을 무시하는 것이 목적임
+    const sessionConfig = configManager.getConfig();
+    console.log(`[CrawlerEngine] Current autoAddToLocalDB setting: ${sessionConfig.autoAddToLocalDB}`);
     
-    if (currentConfig.autoAddToLocalDB) {
+    if (sessionConfig.autoAddToLocalDB) {
       try {
         // 자동 저장 옵션이 켜져 있으면 DB에 저장
         console.log('[CrawlerEngine] Automatically saving collected products to DB per user settings...');
@@ -833,7 +837,7 @@ export class CrawlerEngine {
       count: matterProducts.length,
       products: matterProducts,
       failedReport,
-      autoSavedToDb: currentConfig.autoAddToLocalDB
+      autoSavedToDb: sessionConfig.autoAddToLocalDB
     });
   }
 

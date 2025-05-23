@@ -41,6 +41,15 @@ export class ProductDetailCollector {
     this.config = config;
     this.browserManager = browserManager;
   }
+  
+  /**
+   * 설정 정보를 갱신합니다.
+   * @param newConfig 새 설정 객체
+   */
+  refreshConfig(newConfig: CrawlerConfig): void {
+    // config는 readonly이므로 Object.assign으로 속성들을 복사
+    Object.assign(this.config, newConfig);
+  }
 
   /**
    * 크롤링에 필요한 향상된 HTTP 헤더를 생성합니다.

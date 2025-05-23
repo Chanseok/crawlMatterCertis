@@ -93,6 +93,25 @@ export class ProductListCollector {
     this.productDataProcessor = new ProductDataProcessor();
     this.progressManager = new ProgressManager(state);
   }
+  
+  /**
+   * 설정 정보를 갱신합니다.
+   * @param newConfig 새 설정 객체
+   */
+  refreshConfig(newConfig: CrawlerConfig): void {
+    // config는 readonly이므로 Object.assign으로 속성들을 복사
+    Object.assign(this.config, newConfig);
+    
+    // 캐싱된 설정값 갱신
+    this.pageTimeoutMs = newConfig.pageTimeoutMs || 60000;
+    this.productsPerPage = newConfig.productsPerPage || 12;
+    this.matterFilterUrl = newConfig.matterFilterUrl || '';
+    
+    // 유틸리티 클래스 설정 갱신
+    if (this.pageCrawler && typeof this.pageCrawler.refreshConfig === 'function') {
+      this.pageCrawler.refreshConfig(newConfig);
+    }
+  }
 
   public setProgressCallback(callback: EnhancedProgressCallback): void {
     this.enhancedProgressCallback = callback;
@@ -628,7 +647,7 @@ export class ProductListCollector {
       
       isComplete = revalidationResult.isComplete;
       
-      // 오류가 발생했지만 캐시된 데이터가a 완전하면 상태 업데이트
+      // 오류가 발생했지만 캐시된 데이터가 완전하면 상태 업데이트
       if (isComplete) {
         console.log(`[ProductListCollector] 페이지 ${pageNumber}: 오류 발생했으나 캐시된 데이터가 완전하여 성공으로 처리`);
         this._updatePageStatusInternal(pageNumber, 'success', attempt);

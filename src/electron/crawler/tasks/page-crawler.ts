@@ -50,6 +50,26 @@ export class PageCrawler {
       this.browserManager
     );
   }
+  
+  /**
+   * 설정 정보를 갱신합니다.
+   * @param newConfig 새 설정 객체
+   */
+  refreshConfig(newConfig: CrawlerConfig): void {
+    // config는 readonly이므로 Object.assign으로 속성들을 복사
+    Object.assign(this.config, newConfig);
+    
+    // 크롤러 타입이 변경되었으면 전략 객체 재생성
+    const newCrawlerType = newConfig.crawlerType || 'axios';
+    if (newCrawlerType !== this.crawlerType) {
+      this.crawlerType = newCrawlerType;
+      this.crawlerStrategy = CrawlerStrategyFactory.createStrategy(
+        this.crawlerType,
+        this.config,
+        this.browserManager
+      );
+    }
+  }
 
   /**
    * 크롤링 전략 변경

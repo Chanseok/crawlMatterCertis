@@ -5,6 +5,7 @@
 
 import { getDatabaseSummaryFromDb } from "../../database.js";
 import { configManager } from '../../ConfigManager.js'; // Added import for configManager
+import type { CrawlerConfig } from '../../../../types.js';
 
 /**
  * 사이트 페이지 번호와 로컬 데이터베이스 인덱싱 간의 변환을 관리하는 유틸리티 클래스
@@ -25,10 +26,12 @@ export class PageIndexManager {
    * 마지막 페이지의 제품 수를 기준으로 옵셋 계산
    * 
    * @param lastPageProductCount 마지막 페이지의 제품 수
+   * @param providedConfig 설정 객체 (선택적)
    * @returns 옵셋 값 (마지막 페이지가 꽉 차 있으면 0)
    */
-  public static calculateOffset(lastPageProductCount: number): number {
-    const config = configManager.getConfig(); // Use configManager
+  public static calculateOffset(lastPageProductCount: number, providedConfig?: CrawlerConfig): number {
+    // 제공된 config가 있으면 사용하고, 없으면 configManager에서 가져옴
+    const config = providedConfig || configManager.getConfig();
     const productsPerPage = config.productsPerPage || 12;
     
     // 마지막 페이지가 꽉 차 있으면 옵셋 없음
@@ -46,14 +49,17 @@ export class PageIndexManager {
    * @param sitePageNumber 내부 인덱싱용 사이트 페이지 번호 (0이 최신 페이지)
    * @param siteIndexInPage 페이지 내 제품 인덱스 (0부터 시작)
    * @param offset 옵셋 값 (calculateOffset으로 계산)
+   * @param providedConfig 설정 객체 (선택적)
    * @returns 로컬 데이터베이스용 pageId와 indexInPage
    */
   public static mapToLocalIndexing(
     sitePageNumber: number, 
     siteIndexInPage: number, 
-    offset: number
+    offset: number,
+    providedConfig?: CrawlerConfig
   ): { pageId: number, indexInPage: number } {
-    const config = configManager.getConfig(); // Use configManager
+    // 제공된 config가 있으면 사용하고, 없으면 configManager에서 가져옴
+    const config = providedConfig || configManager.getConfig();
     const productsPerPage = config.productsPerPage || 12;
     
     // 절대 위치 계산: 12*sitePageNumber + siteIndexInPage - offset
@@ -74,19 +80,22 @@ export class PageIndexManager {
    * @param totalSitePages 사이트의 총 페이지 수
    * @param lastPageProductCount 마지막 페이지의 제품 수
    * @param userPageLimit 사용자가 설정한 페이지 수 제한 (선택적)
+   * @param providedConfig 설정 객체 (선택적)
    */
   public static async calculateCrawlingRange(
     totalSitePages: number,
     lastPageProductCount: number,
-    userPageLimit: number = 0
+    userPageLimit: number = 0,
+    providedConfig?: CrawlerConfig
   ): Promise<{ startPage: number, endPage: number }> {
     // DB 요약 정보를 가져옴
     const dbSummary = await getDatabaseSummaryFromDb();
-    const config = configManager.getConfig(); // Use configManager
+    // 제공된 config가 있으면 사용하고, 없으면 configManager에서 가져옴
+    const config = providedConfig || configManager.getConfig();
     const productsPerPage = config.productsPerPage || 12;
     
-    // Offset 계산 - 마지막 페이지의 제품 수를 기반으로
-    const offset = PageIndexManager.calculateOffset(lastPageProductCount);
+    // Offset 계산 - 마지막 페이지의 제품 수를 기반으로 (config 전달)
+    const offset = PageIndexManager.calculateOffset(lastPageProductCount, config);
     
     // 이미 수집된 페이지 수 계산
     const collectedPages = Math.ceil(dbSummary.productCount / productsPerPage);
