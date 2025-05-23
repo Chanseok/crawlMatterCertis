@@ -1,7 +1,16 @@
 // Types for Matter Certification Collection Application
 // 이 파일을 모듈로 만들기 위해 export 키워드를 추가합니다.
 
-// Statistics 타입 정의 업데이트
+/**
+ * 시스템 자원 사용 통계를 나타내는 타입
+ * 
+ * @typedef {Object} Statistics
+ * @property {number} timestamp - 통계 데이터가 생성된 시간(밀리초 단위 Unix timestamp)
+ * @property {number} cpuUsage - CPU 사용량(백분율, 0-100)
+ * @property {number} memoryUsage - 메모리 사용량(바이트)
+ * @property {number} [ramUsage] - 이전 버전 호환성을 위한 RAM 사용량(백분율)
+ * @property {number} [storageUsage] - 이전 버전 호환성을 위한 스토리지 사용량(바이트)
+ */
 export type Statistics = {
     timestamp: number;
     cpuUsage: number;
@@ -10,7 +19,33 @@ export type Statistics = {
     storageUsage?: number; // 이전 호환성을 위해 선택적으로 유지
 };
 
-// Matter 제품 정보 타입
+/**
+ * Matter 인증 제품의 상세 정보를 나타내는 타입
+ * 
+ * @typedef {Object} MatterProduct
+ * @property {string} url - 제품 상세 페이지의 고유 URL (식별자로 사용)
+ * @property {number} [pageId] - 제품이 위치한 목록 페이지 번호
+ * @property {number} [indexInPage] - 페이지 내에서의 제품 인덱스
+ * @property {string} [id] - 제품 고유 식별자
+ * @property {string} [manufacturer] - 제조사 이름
+ * @property {string} [model] - 모델명
+ * @property {string} [deviceType] - 장치 유형
+ * @property {string} [certificateId] - Matter 인증 ID
+ * @property {string|Date} [certificationDate] - 인증 날짜
+ * @property {string} [softwareVersion] - 소프트웨어 버전
+ * @property {string} [hardwareVersion] - 하드웨어 버전
+ * @property {string} [vid] - 벤더 ID
+ * @property {string} [pid] - 제품 ID
+ * @property {string} [familySku] - 제품군 SKU
+ * @property {string} [familyVariantSku] - 제품군 변형 SKU
+ * @property {string} [firmwareVersion] - 펌웨어 버전
+ * @property {string} [familyId] - 제품군 ID
+ * @property {string} [tisTrpTested] - Thread/TRP 테스트 여부
+ * @property {string} [specificationVersion] - Matter 스펙 버전
+ * @property {string} [transportInterface] - 지원하는 전송 인터페이스
+ * @property {string} [primaryDeviceTypeId] - 주 장치 유형 ID
+ * @property {string[]} [applicationCategories] - 적용 카테고리 목록
+ */
 export type MatterProduct = {
     url: string;
     pageId?: number;
@@ -37,6 +72,18 @@ export type MatterProduct = {
     // isNewProduct 필드 삭제됨
 };
 
+/**
+ * Matter 인증 제품의 기본 정보(목록용)를 나타내는 타입
+ * 주로 제품 목록 페이지에서 수집되는 기본 정보를 포함
+ * 
+ * @typedef {Object} Product
+ * @property {string} url - 제품 상세 페이지의 고유 URL (식별자로 사용)
+ * @property {string} [manufacturer] - 제조사 이름
+ * @property {string} [model] - 모델명
+ * @property {string} [certificateId] - Matter 인증 ID
+ * @property {number} [pageId] - 제품이 위치한 목록 페이지 번호
+ * @property {number} [indexInPage] - 페이지 내에서의 제품 인덱스
+ */
 export type Product = {
     url: string;
     manufacturer?: string;
@@ -46,7 +93,19 @@ export type Product = {
     indexInPage?: number;
 };
 
-// 크롤링 상태 타입 (통합)
+/**
+ * 크롤링 작업의 전체 상태를 나타내는 열거형 타입
+ * 
+ * @typedef {string} CrawlingStatus
+ * @property {'idle'} idle - 대기 상태, 작업이 시작되지 않음
+ * @property {'running'} running - 실행 중 상태
+ * @property {'paused'} paused - 일시 정지 상태
+ * @property {'completed'} completed - 작업 완료 상태
+ * @property {'error'} error - 오류 발생 상태
+ * @property {'initializing'} initializing - 초기화 중 상태
+ * @property {'stopped'} stopped - 사용자 요청 또는 오류로 중지됨
+ * @property {'completed_stage_1'} completed_stage_1 - 1단계(목록 수집) 완료 상태
+ */
 export type CrawlingStatus = 
     | 'idle' 
     | 'running' 
@@ -57,55 +116,122 @@ export type CrawlingStatus =
     | 'stopped' 
     | 'completed_stage_1';
 
-// 1단계 각 페이지 처리 상태
+/**
+ * 개별 페이지 처리 상태 값을 나타내는 열거형 타입
+ * 
+ * @typedef {string} PageProcessingStatusValue
+ * @property {'waiting'} waiting - 페이지가 처리 대기 중
+ * @property {'attempting'} attempting - 페이지 처리 시도 중
+ * @property {'success'} success - 페이지 처리 성공
+ * @property {'failed'} failed - 페이지 처리 실패
+ * @property {'incomplete'} incomplete - 페이지가 부분적으로 처리됨(예: 일부 제품만 처리됨)
+ */
 export type PageProcessingStatusValue = 'waiting' | 'attempting' | 'success' | 'failed' | 'incomplete';
 
+/**
+ * 개별 페이지의 처리 상태 정보를 나타내는 타입
+ * 
+ * @typedef {Object} PageProcessingStatusItem
+ * @property {number} pageNumber - 페이지 번호
+ * @property {PageProcessingStatusValue} status - 페이지 처리 상태
+ * @property {number} [attempt] - 현재 시도 횟수 (해당 페이지에 대해)
+ */
 export type PageProcessingStatusItem = {
     pageNumber: number;
     status: PageProcessingStatusValue;
     attempt?: number; // 현재 시도 횟수 (해당 페이지에 대해)
 };
 
-// 크롤링 진행 상태 타입 (통합)
+/**
+ * 크롤링 작업의 진행 상태를 나타내는 종합적인 타입
+ * UI에 표시되는 진행 정보와 내부 상태 관리에 사용됨
+ * 
+ * @typedef {Object} CrawlingProgress
+ * @property {number} current - 전체 진행률의 현재 값 (예: 총 처리 항목 수)
+ * @property {number} total - 전체 진행률의 총 값 (예: 총 수집 대상 항목 수)
+ * @property {number} percentage - 진행률 백분율 (0-100)
+ * @property {string} currentStep - 현재 진행 중인 단계에 대한 설명
+ * @property {number} [remainingTime] - 예상 남은 시간 (밀리초)
+ * @property {number} elapsedTime - 경과 시간 (밀리초)
+ * @property {CrawlingStatus} [status] - 현재 크롤링 상태
+ * @property {number} [currentPage] - 1단계: 현재 처리/완료된 페이지 수, 2단계: 현재 처리/완료된 제품 수
+ * @property {number} [totalPages] - 1단계: 수집 대상 총 페이지 수, 2단계: 수집 대상 총 제품 수
+ * @property {number} [processedItems] - 전체 단계에서 총 처리된 아이템 수 (페이지 또는 제품)
+ * @property {number} [totalItems] - 전체 단계에서 총 아이템 수 (페이지 또는 제품)
+ * @property {number} [startTime] - 크롤링 시작 시간 (밀리초 단위 timestamp)
+ * @property {number} [estimatedEndTime] - 예상 완료 시간 (밀리초 단위 timestamp)
+ * @property {number} [newItems] - 새로 추가된 항목 수
+ * @property {number} [updatedItems] - 업데이트된 항목 수
+ * @property {number} [currentStage] - 현재 크롤링 단계 (1=목록 수집, 2=상세정보 수집)
+ * @property {string} [message] - 현재 상태에 대한 메시지
+ * @property {string} [criticalError] - 치명적 오류 메시지
+ * @property {number} [retryCount] - 현재 스테이지의 총 재시도 횟수
+ * @property {number} [maxRetries] - 현재 스테이지의 최대 재시도 횟수
+ * @property {string} [retryItem] - 현재 재시도 중인 항목 식별자
+ * @property {PageProcessingStatusItem[]} [stage1PageStatuses] - 1단계 제품 목록 페이지 읽기 현황
+ * @property {number} [currentBatch] - 현재 처리 중인 배치 번호
+ * @property {number} [totalBatches] - 총 배치 수
+ * @property {number} [batchRetryCount] - 현재 배치의 재시도 횟수
+ * @property {number} [batchRetryLimit] - 배치 최대 재시도 횟수
+ */
 export type CrawlingProgress = {
-    current: number; // 전체 진행률의 현재 값 (예: 총 처리 항목 수)
-    total: number;   // 전체 진행률의 총 값 (예: 총 수집 대상 항목 수)
+    current: number; 
+    total: number;   
     percentage: number;
     currentStep: string;
     remainingTime?: number;
     elapsedTime: number;
     status?: CrawlingStatus;
-    currentPage?: number;      // 1단계: 현재 처리/완료된 페이지 수, 2단계: 현재 처리/완료된 제품 수
-    totalPages?: number;       // 1단계: 수집 대상 총 페이지 수, 2단계: 수집 대상 총 제품 수
-    processedItems?: number; // 전체 단계에서 총 처리된 아이템 수 (페이지 또는 제품)
-    totalItems?: number;     // 전체 단계에서 총 아이템 수 (페이지 또는 제품)
+    currentPage?: number;      
+    totalPages?: number;       
+    processedItems?: number; 
+    totalItems?: number;     
     startTime?: number;
     estimatedEndTime?: number;
     newItems?: number;
     updatedItems?: number;
-    currentStage?: number; // 1=목록 수집, 2=상세정보 수집
+    currentStage?: number; 
     message?: string; 
     criticalError?: string; 
     
-    retryCount?: number;      // 현재 스테이지의 총 재시도 횟수
-    maxRetries?: number;      // 현재 스테이지의 최대 재시도 횟수
+    retryCount?: number;      
+    maxRetries?: number;      
     retryItem?: string; 
 
     // 1단계 제품 목록 페이지 읽기 현황
     stage1PageStatuses?: PageProcessingStatusItem[];
     
     // 배치 처리 정보
-    currentBatch?: number;     // 현재 처리 중인 배치 번호
-    totalBatches?: number;     // 총 배치 수
-    batchRetryCount?: number;  // 현재 배치의 재시도 횟수
-    batchRetryLimit?: number;  // 배치 최대 재시도 횟수 
+    currentBatch?: number;     
+    totalBatches?: number;     
+    batchRetryCount?: number;  
+    batchRetryLimit?: number;  
 };
 
-// 크롤링 상태 요약 정보 타입
+/**
+ * 크롤링 상태 체크 결과를 요약하는 타입
+ * 서버와 로컬 데이터 비교 분석 결과를 포함
+ * 
+ * @typedef {Object} CrawlingStatusSummary
+ * @property {Date|null} dbLastUpdated - 로컬 DB의 마지막 업데이트 시간
+ * @property {number} dbProductCount - 로컬 DB에 저장된 제품 수
+ * @property {number} [siteTotalPages] - 사이트에서 가져온 총 페이지 수
+ * @property {number} siteProductCount - 사이트에서 확인된 총 제품 수
+ * @property {number} diff - 로컬 DB와 사이트 간의 제품 수 차이 (양수: 사이트에 더 많음, 음수: DB에 더 많음)
+ * @property {boolean} needCrawling - 크롤링이 필요한지 여부
+ * @property {{startPage: number, endPage: number}} crawlingRange - 크롤링이 필요한 페이지 범위
+ * @property {number} [lastPageProductCount] - 마지막 페이지의 제품 수
+ * @property {number} [selectedPageCount] - 사용자가 선택한 페이지 수
+ * @property {number} [estimatedProductCount] - 예상 수집 제품 수
+ * @property {number} [estimatedTotalTime] - 예상 총 소요 시간(밀리초)
+ * @property {number} [userPageLimit] - 사용자가 설정한 페이지 제한
+ * @property {string} [error] - 상태 체크 중 발생한 오류 메시지
+ * @property {number} [actualTargetPageCountForStage1] - 1단계 실제 크롤링 대상 페이지 수
+ */
 export type CrawlingStatusSummary = {
     dbLastUpdated: Date | null;
     dbProductCount: number;
-    siteTotalPages?: number; // 사이트에서 가져온 총 페이지 수
+    siteTotalPages?: number;
     siteProductCount: number;
     diff: number;
     needCrawling: boolean;
@@ -116,7 +242,7 @@ export type CrawlingStatusSummary = {
     estimatedTotalTime?: number; 
     userPageLimit?: number; 
     error?: string; 
-    actualTargetPageCountForStage1?: number; // 1단계 실제 크롤링 대상 페이지 수
+    actualTargetPageCountForStage1?: number;
 };
 
 // 데이터베이스 요약 정보 타입
@@ -136,19 +262,43 @@ export type StaticData = {
     totalMemoryGB: number;
 };
 
-// 크롤러 설정 타입
+/**
+ * 크롤러의 동작을 제어하는 설정 인터페이스
+ * 
+ * @typedef {Object} CrawlerConfig
+ * @property {number} pageRangeLimit - 한 번에 크롤링할 최대 페이지 수 (권장: 1-50)
+ * @property {number} productListRetryCount - 제품 목록 수집 실패 시 최대 재시도 횟수 (권장: 1-5)
+ * @property {number} productDetailRetryCount - 제품 상세 정보 수집 실패 시 최대 재시도 횟수 (권장: 1-3)
+ * @property {boolean} [headlessBrowser] - 헤드리스 모드로 브라우저 실행 여부 (true: 화면 표시 없음, false: 브라우저 표시)
+ * @property {'playwright'|'axios'} [crawlerType] - 크롤러 전략 유형 ('playwright': 브라우저 기반, 'axios': HTTP 요청 기반)
+ * @property {number} [maxConcurrentTasks] - 동시에 실행할 최대 크롤링 작업 수 (권장: 1-10)
+ * @property {number} [requestDelay] - 요청 간 지연 시간(밀리초) (권장: 100-2000)
+ * @property {string} [customUserAgent] - 사용자 정의 User-Agent 문자열
+ * @property {number} [requestTimeout] - 요청 제한 시간(밀리초)
+ * @property {boolean} [validateSSL] - SSL 인증서 유효성 검사 여부
+ * @property {boolean} [enableBatchProcessing] - 배치 처리 활성화 여부
+ * @property {number} [batchSize] - 배치당 처리할 항목 수
+ * @property {number} [maxBatchRetries] - 배치 실패 시 최대 재시도 횟수
+ */
 export interface CrawlerConfig {
     // 기본 설정
     pageRangeLimit: number;
     productListRetryCount: number;
     productDetailRetryCount: number;
-    headlessBrowser?: boolean; // Added headlessBrowser property
-    crawlerType?: 'playwright' | 'axios'; // 크롤러 전략 유형 ('playwright' 또는 'axios')
+    headlessBrowser?: boolean;
+    crawlerType?: 'playwright' | 'axios';
     
     // UI 관련 추가 설정
     maxConcurrentTasks?: number;
     requestDelay?: number;
     customUserAgent?: string;
+    
+    // 확장 속성 (새 필드 추가)
+    requestTimeout?: number;
+    validateSSL?: boolean;
+    enableBatchProcessing?: boolean;
+    batchSize?: number;
+    maxBatchRetries?: number;
     productsPerPage: number;
     
     // 배치 처리 관련 설정

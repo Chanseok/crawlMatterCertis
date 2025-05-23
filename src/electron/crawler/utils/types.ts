@@ -20,9 +20,11 @@ export interface CrawlResult {
 }
 
 export interface DetailCrawlResult {
-    url: string;
-    product: MatterProduct | null;
-    error?: string;
+  url: string;
+  product: MatterProduct | null;
+  isNewItem: boolean;
+  success: boolean;
+  error?: string;
 }
 
 /**

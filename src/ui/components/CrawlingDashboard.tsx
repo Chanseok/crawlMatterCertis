@@ -778,6 +778,26 @@ export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppSt
           </div>
         </div>
 
+        <div className="mt-4 inline-block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+          <div className="text-lg font-bold">
+            {Math.round(progress.processedItems || 0)} / {
+              progress.totalItems ||
+              statusSummary?.siteProductCount ||
+              (((progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || 
+                statusSummary?.crawlingRange ? 
+                (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
+                targetPageCount) * (config.productsPerPage || 12))
+          } 제품 수집 완료
+          </div>
+          
+          {/* 2단계에서 새로운 항목과 업데이트 항목을 구분하여 표시 */}
+          {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
+            <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              신규: {progress.newItems || 0}개, 업데이트: {progress.updatedItems || 0}개
+            </div>
+          )}
+        </div>
+
         {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
           <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-md">
             <div className="text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">수집 결과</div>
@@ -953,6 +973,13 @@ export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppSt
                       targetPageCount) * (config.productsPerPage || 12))
                   } 제품 수집 완료
                 </div>
+                
+                {/* 2단계에서 새로운 항목과 업데이트 항목을 구분하여 표시 */}
+                {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    신규: {progress.newItems || 0}개, 업데이트: {progress.updatedItems || 0}개
+                  </div>
+                )}
               </div>
             </div>
           </div>

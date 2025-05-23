@@ -1,6 +1,19 @@
 /**
  * productDetail.ts
  * 제품 상세 정보 수집을 담당하는 클래스
+ * 
+ * 2025-05-24 수정 1차: UI와 터미널 로그 간의 카운트 불일치 문제 수정
+ * - 문제: 터미널에서는 60/60 제품이 수집되었다고 표시되나 UI에서는 58/60으로 표시되는 문제
+ * - 원인: this.updateProgress() 메서드와 processProductDetailCrawl() 메서드에서 
+ *        동일한 제품에 대해 recordDetailItemProcessed()가 두 번 호출되어 중복 카운팅됨
+ * - 해결: updateProgress() 메서드에서 recordDetailItemProcessed() 호출 제거
+ *        processProductDetailCrawl() 에서만 정확한 isNewItem 값으로 한 번만 호출하도록 수정
+ *
+ * 2025-05-24 수정 2차: 연속 크롤링 시 카운터 누적 문제 수정
+ * - 문제: 연속으로 크롤링을 실행했을 때 이전 세션의 카운터가 누적되어 UI에 62/60과 같이 표시되는 문제
+ * - 원인: 새로운 크롤링 세션 시작 시 CrawlerState가 완전히 초기화되지 않음
+ * - 해결: CrawlerEngine.startCrawling()에서 this.state.reset() 호출하여 모든 카운터 초기화
+ *        비정상적인 카운터 값 감지 시 경고 로그 출력 및 비상 초기화 로직 추가
  */
 
 import { type Page } from 'playwright-chromium';
@@ -80,10 +93,13 @@ export class ProductDetailCollector {
 
   /**
    * 진행 상황 업데이트 함수
-   * @param isNew 새로운 항목인지 여부
+   * 
+   * 주의: 이 함수는 직접적으로 CrawlerState에 항목 처리를 기록하지 않습니다.
+   * 항목 처리 기록은 processProductDetailCrawl에서 정확한 isNewItem 값으로 한 번만 호출됩니다.
    */
-  private updateProgress(isNew: boolean = true): void {
-    this.state.recordDetailItemProcessed(isNew);
+  private updateProgress(): void {
+    // 중복 카운팅 방지를 위해 this.state.recordDetailItemProcessed 호출 제거
+    // 실제 카운팅은 processProductDetailCrawl에서 처리됨
   }
 
   /**
@@ -1364,34 +1380,37 @@ export class ProductDetailCollector {
 
       const totalProducts = products.length;
       const finalFailedCount = failedProducts.length;
-      const finalFailureRate = totalProducts > 0 ? finalFailedCount / totalProducts : 0;
-      const initialFailRate = totalProducts > 0 ? initialFailedProducts.length / totalProducts : 0;
-
-      console.log(`[ProductDetailCollector] Initial failure rate: ${(initialFailRate * 100).toFixed(1)}% (${initialFailedProducts.length}/${totalProducts})`);
-      console.log(`[ProductDetailCollector] Final failure rate after retries: ${(finalFailureRate * 100).toFixed(1)}% (${finalFailedCount}/${totalProducts})`);
-
-      failedProducts.forEach(url => {
-        const errors = failedProductErrors[url] || ['Unknown error'];
-        this.state.addFailedProduct(url, errors.join('; '));
-      });
-
-      const successProducts = totalProducts - finalFailedCount;
+      const actualProcessedCount = this.state.getDetailStageProcessedCount();
+      const successProducts = actualProcessedCount - finalFailedCount;
       const successRate = totalProducts > 0 ? successProducts / totalProducts : 1;
-      console.log(`[ProductDetailCollector] Collection success rate: ${(successRate * 100).toFixed(1)}% (${successProducts}/${totalProducts})`);
+      
+      console.log(`[ProductDetailCollector] Collection complete:`);
+      console.log(`[ProductDetailCollector] - Total products: ${totalProducts}`);
+      console.log(`[ProductDetailCollector] - Actually processed: ${actualProcessedCount}`);
+      console.log(`[ProductDetailCollector] - Successful: ${successProducts}`);
+      console.log(`[ProductDetailCollector] - Failed: ${finalFailedCount}`);
+      console.log(`[ProductDetailCollector] - Success rate: ${(successRate * 100).toFixed(1)}%`);
+      console.log(`[ProductDetailCollector] - New items: ${this.state.getDetailStageNewCount()}`);
+      console.log(`[ProductDetailCollector] - Updated items: ${this.state.getDetailStageUpdatedCount()}`);
+
+      // 실제 처리된 항목 수가 총 항목 수와 일치하는지 확인
+      const isFullyComplete = actualProcessedCount >= totalProducts;
+      const completionStatus = isFullyComplete ? 'success' : 'partial';
 
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'detail-complete',
-        status: 'success',
+        status: completionStatus,
         message: JSON.stringify({
           stage: 2,
           type: 'complete',
           totalItems: products.length,
-          processedItems: this.state.getDetailStageProcessedCount(),
+          processedItems: actualProcessedCount,
           successItems: successProducts,
           failedItems: finalFailedCount,
           newItems: this.state.getDetailStageNewCount(),
           updatedItems: this.state.getDetailStageUpdatedCount(),
           successRate: parseFloat((successRate * 100).toFixed(1)),
+          isFullyComplete: isFullyComplete,
           endTime: new Date().toISOString()
         })
       });
@@ -1471,15 +1490,18 @@ export class ProductDetailCollector {
 
     updateProductTaskStatus(product.url, 'running');
 
+    // isNewItem 변수를 메서드 시작 부분에서 미리 정의
+    let isNewItem = false;
+    let detailProduct: MatterProduct | null = null;
+
     try {
       // 지수 백오프와 재시도 로직을 사용하여 크롤링
       const baseRetryDelay = config.baseRetryDelayMs ?? 1000;
       const maxRetryDelay = config.maxRetryDelayMs ?? 15000;
-      const retryMax = config.retryMax ?? 2; // 기존 설정 사용
+      const retryMax = config.retryMax ?? 2;
       
-      const detailProduct = await retryWithBackoff(
+      detailProduct = await retryWithBackoff(
         async () => {
-          // Promise.race를 사용하여 타임아웃 처리
           return await Promise.race([
             this.crawlProductDetail(product, signal),
             new Promise<never>((_, reject) =>
@@ -1511,28 +1533,42 @@ export class ProductDetailCollector {
         }
       );
 
-      updateProductTaskStatus(product.url, 'success');
-      
-      crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: `product-${product.url}`,
-        status: 'success',
-        message: JSON.stringify({
-          stage: 2,
-          type: 'product',
+      if (detailProduct) {
+        updateProductTaskStatus(product.url, 'success');
+        
+        // 새로운 항목인지 확인 (URL이 matterProducts에 이미 있는지 체크)
+        const existingProduct = matterProducts.find(p => p.url === product.url);
+        isNewItem = !existingProduct;
+        
+        // CrawlerState에 처리 완료 기록 (정확한 새로운 항목 여부와 함께)
+        this.state.recordDetailItemProcessed(isNewItem);
+        
+        crawlerEvents.emit('crawlingTaskStatus', {
+          taskId: `product-${product.url}`,
+          status: 'success',
+          message: JSON.stringify({
+            stage: 2,
+            type: 'product',
+            url: product.url,
+            manufacturer: detailProduct.manufacturer || 'Unknown',
+            model: detailProduct.model || 'Unknown',
+            isNewItem: isNewItem,
+            endTime: new Date().toISOString()
+          })
+        });
+
+        matterProducts.push(detailProduct);
+        
+        // 성공적인 결과 반환 - DetailCrawlResult 타입에 맞게 수정
+        return {
           url: product.url,
-          manufacturer: detailProduct.manufacturer || 'Unknown',
-          model: detailProduct.model || 'Unknown',
-          endTime: new Date().toISOString()
-        })
-      });
-      
-      this.updateProgress(true);
-
-      matterProducts.push(detailProduct);
-
-      return { url: product.url, product: detailProduct };
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
+          product: detailProduct,
+          isNewItem: isNewItem,
+          success: true
+        };
+      }
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       const status = signal.aborted ? 'stopped' : 'error';
       updateProductTaskStatus(product.url, status, errorMsg);
 
@@ -1559,12 +1595,28 @@ export class ProductDetailCollector {
       const attemptPrefix = attempt > 1 ? `Attempt ${attempt}: ` : '';
       failedProductErrors[product.url].push(`${attemptPrefix}${errorMsg}`);
 
-      return { url: product.url, product: null, error: errorMsg };
+      // 실패한 경우에도 DetailCrawlResult 타입에 맞게 반환
+      return { 
+        url: product.url, 
+        product: null, 
+        error: errorMsg,
+        success: false,
+        isNewItem: false
+      };
     }
+
+    // 예상치 못한 경우 (detailProduct가 null인 경우)
+    return null;
   }
 
   /**
    * 제품 상세 정보 병렬 크롤링 실행
+   * 
+   * 수정사항: 진행 상황 카운팅 동기화 문제 해결
+   * - 로컬 processedItems 변수 제거하고 CrawlerState의 카운터만 사용
+   * - 중복 카운팅 방지를 위해 updateProgress() 호출 제거 및 메서드 기능 변경
+   * - 정확한 신규/업데이트 항목 카운팅을 위해 recordDetailItemProcessed는 processProductDetailCrawl에서만 호출
+   * - 모든 진행률 업데이트는 this.state.getDetailStageProcessedCount() 기준으로 통일
    */
   private async executeParallelProductDetailCrawling(
     products: Product[],
@@ -1574,12 +1626,11 @@ export class ProductDetailCollector {
   ): Promise<void> {
     const config = this.config;
     
-    let processedItems = 0;
     const totalItems = products.length;
     const startTime = Date.now();
     let lastProgressUpdate = 0;
     const progressUpdateInterval = 3000;
-  
+
     this.state.updateProgress({
       current: 0,
       total: totalItems,
@@ -1604,47 +1655,49 @@ export class ProductDetailCollector {
       updatedItems: 0,
       message: `2단계: 제품 상세정보 0/${totalItems} 처리 중 (0.0%)`
     });
-  
-    console.log(`[ProductDetailCollector] Starting detail collection for ${totalItems} products`);    await promisePool(
+
+    console.log(`[ProductDetailCollector] Starting detail collection for ${totalItems} products`);
+    
+    await promisePool(
       products,
       async (product, signal) => {
         const result = await this.processProductDetailCrawl(
           product, matterProducts, failedProducts, failedProductErrors, signal
         );
-  
-        processedItems++;
-  
+
         const now = Date.now();
         if (now - lastProgressUpdate > progressUpdateInterval) {
           lastProgressUpdate = now;
           
-          const percentage = (processedItems / totalItems) * 100;
+          const currentProcessedItems = this.state.getDetailStageProcessedCount();
+          const percentage = (currentProcessedItems / totalItems) * 100;
           const elapsedTime = now - startTime;
           let remainingTime: number | undefined = undefined;
           
-          if (processedItems > totalItems * 0.1) {
-            const avgTimePerItem = elapsedTime / processedItems;
-            remainingTime = Math.round((totalItems - processedItems) * avgTimePerItem);
+          if (currentProcessedItems > totalItems * 0.1) {
+            const avgTimePerItem = elapsedTime / currentProcessedItems;
+            remainingTime = Math.round((totalItems - currentProcessedItems) * avgTimePerItem);
           }
           
-          const message = `2단계: 제품 상세정보 ${processedItems}/${totalItems} 처리 중 (${percentage.toFixed(1)}%)`;
-  
+          const message = `2단계: 제품 상세정보 ${currentProcessedItems}/${totalItems} 처리 중 (${percentage.toFixed(1)}%)`;
+
+          // CrawlerState 상태와 동기화
           this.state.updateProgress({
-            current: processedItems,
+            current: currentProcessedItems,
             total: totalItems,
             message: message,
             percentage: percentage
           });
           
           const detailConcurrency = config.detailConcurrency ?? 1;
-          const activeTasksCount = Math.min(detailConcurrency, totalItems - processedItems + 1);
+          const activeTasksCount = Math.min(detailConcurrency, totalItems - currentProcessedItems + 1);
           this.state.updateParallelTasks(activeTasksCount, detailConcurrency);
           
           crawlerEvents.emit('crawlingProgress', {
             status: 'running',
-            currentPage: processedItems,
+            currentPage: currentProcessedItems,
             totalPages: totalItems,
-            processedItems: processedItems,
+            processedItems: currentProcessedItems,
             totalItems: totalItems,
             percentage: percentage,
             currentStep: '제품 상세 정보 수집',
@@ -1658,7 +1711,7 @@ export class ProductDetailCollector {
             message: message
           });
         }
-  
+        
         return result;
       },
       config.detailConcurrency ?? 1,
@@ -1672,21 +1725,24 @@ export class ProductDetailCollector {
         successWindowSize: 10 // 최근 10개 요청의 성공/실패 기록을 기반으로 동시성 조절
       }
     );
-  
+
+    // 최종 진행률 업데이트 - 실제 처리된 항목 수 기준
     const finalElapsedTime = Date.now() - startTime;
+    const actualProcessedItems = this.state.getDetailStageProcessedCount();
+    
     this.state.updateProgress({
-      current: this.state.getDetailStageProcessedCount(),
+      current: actualProcessedItems, // CrawlerState의 실제 카운터 사용
       total: totalItems,
-      message: `2/2단계: 제품 상세 정보 수집 완료 (${this.state.getDetailStageProcessedCount()}/${totalItems})`,
+      message: `2/2단계: 제품 상세 정보 수집 완료 (${actualProcessedItems}/${totalItems})`,
       percentage: 100
     });
     this.state.updateParallelTasks(0, config.detailConcurrency ?? 1);
     
     crawlerEvents.emit('crawlingProgress', {
       status: 'completed',
-      currentPage: processedItems,
+      currentPage: actualProcessedItems, // 실제 처리된 항목 수 사용
       totalPages: totalItems,
-      processedItems: processedItems,
+      processedItems: actualProcessedItems,
       totalItems: totalItems,
       percentage: 100,
       currentStep: '제품 상세 정보 수집',
@@ -1794,6 +1850,7 @@ export class ProductDetailCollector {
         },
         config.retryConcurrency ?? 1,
         this.abortController
+
       );
 
       if (failedProducts.length === 0) {
@@ -1848,7 +1905,6 @@ export class ProductDetailCollector {
   }
 
   /**
-**
    * Primary Device Type ID 정보 보강 및 정규화
    */
   private enhancePrimaryDeviceTypeIds($: cheerio.CheerioAPI, fields: Record<string, any>): void {

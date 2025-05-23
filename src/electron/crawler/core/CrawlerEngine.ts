@@ -72,6 +72,11 @@ export class CrawlerEngine {
     
     // 크롤링 상태 초기화
     initializeCrawlingState();
+    
+    // 크롤러 상태(CrawlerState) 완전 초기화 - 카운터가 이전 세션에서 누적되지 않도록 함
+    this.state.reset();
+    console.log('[CrawlerEngine] CrawlerState has been reset for new crawling session');
+    
     this.isCrawling = true;
     this.abortController = new AbortController();
     

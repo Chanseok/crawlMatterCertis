@@ -282,21 +282,46 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
   }
 
   /**
-   * 치명적인 오류 보고
+   * 치명적인 오류를 보고하고 크롤링 상태를 실패로 변경
+   * 
+   * 이 메서드는 크롤링을 계속할 수 없는 심각한 오류가 발생했을 때 호출됩니다.
+   * 예를 들어 네트워크 연결 끊김, 인증 실패, 사이트 구조 변경 등의 상황에서 사용됩니다.
+   * 오류는 로그에 기록되고 UI에 표시될 수 있도록 상태가 업데이트됩니다.
+   * 
+   * @param {string} error - 오류 메시지 (사용자에게 표시될 수 있음)
+   * @returns {void}
    */
   public reportCriticalFailure(error: string): void {
-    // 내부 상태 업데이트
-    this.currentStage = 'failed';
-    // CrawlingProgress 타입으로 변환하여 업데이트
-    this.progressData.status = 'error';
-    this.progressData.criticalError = error;
-    this.progressData.message = `크롤링 중단: ${error}`;
-    console.error(this.progressData.message);
-    this.emitProgressUpdate();
+    try {
+      // 내부 상태 업데이트
+      this.currentStage = 'failed';
+      
+      // CrawlingProgress 타입으로 변환하여 업데이트
+      this.progressData.status = 'error';
+      this.progressData.criticalError = error;
+      this.progressData.message = `크롤링 중단: ${error}`;
+      
+      // 상세 로그 기록
+      console.error(`[CrawlerState] 치명적 오류 발생: ${error}`);
+      console.error(`[CrawlerState] 현재 상태: 단계=${this.currentStage}, 처리된 항목=${this.progressData.current}/${this.progressData.total}`);
+      
+      // 상태 업데이트 이벤트 발생
+      this.emitProgressUpdate();
+    } catch (err) {
+      // 메타 오류 처리 (오류 보고 중 발생한 오류)
+      console.error(`[CrawlerState] 오류 보고 중 예외 발생: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**
-   * 실패한 페이지 추가
+   * 실패한 페이지를 추가하고 오류 정보를 기록
+   * 
+   * 페이지 처리 실패 시 호출되어 실패한 페이지 목록과 오류 정보를 업데이트합니다.
+   * 오류 유형에 따라 재시도 전략을 결정하는 데 필요한 정보를 수집합니다.
+   * 
+   * @param {number} pageNumber - 실패한 페이지 번호
+   * @param {string} error - 오류 메시지
+   * @returns {void}
    */
   public addFailedPage(pageNumber: number, error: string): void {
     if (!this.failedPages.includes(pageNumber)) {
@@ -307,10 +332,32 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
       this.failedPageErrors[pageNumber] = [];
     }
     this.failedPageErrors[pageNumber].push(error);
+    
+    // 오류 메시지 분석
+    const errorAnalysis = this.analyzeError(error);
+    
+    // 페이지 처리 상태 업데이트
+    this.updatePageProcessingStatus(pageNumber, 'failed');
+    
+    // 치명적 오류인 경우 추가 처리
+    if (errorAnalysis.isCritical) {
+      console.warn(`[CrawlerState] 페이지 ${pageNumber}에서 치명적 오류 발생: ${errorAnalysis.message}`);
+      this.progressData.message = `페이지 ${pageNumber}: ${errorAnalysis.message}`;
+      this.emitProgressUpdate();
+    } 
+    
+    console.log(`[CrawlerState] 페이지 ${pageNumber} 실패 기록: ${error.substring(0, 100)}${error.length > 100 ? '...' : ''}`);
   }
 
   /**
-   * 실패한 제품 추가
+   * 실패한 제품을 추가하고 오류 정보를 기록
+   * 
+   * 제품 상세 정보 처리 실패 시 호출되어 실패한 제품 목록과 오류 정보를 업데이트합니다.
+   * 오류 정보는 로그와 UI에 표시되며, 추후 재시도 전략을 결정하는 데 사용됩니다.
+   * 
+   * @param {string} url - 실패한 제품의 URL (식별자로 사용)
+   * @param {string} error - 오류 메시지
+   * @returns {void}
    */
   public addFailedProduct(url: string, error: string): void {
     if (!this.failedProducts.includes(url)) {
@@ -322,9 +369,26 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     }
     this.failedProductErrors[url].push(error);
     
-    // CrawlingProgress에는 failedItems 필드가 없어서 메시지에 에러 정보 추가
+    // 오류 메시지 분석
+    const errorAnalysis = this.analyzeError(error);
+    
+    // 실패 정보 업데이트 및 UI에 표시
     const failedCount = this.failedProducts.length;
-    this.progressData.message = `${this.progressData.message || ''} (실패: ${failedCount}건)`;
+    const totalCount = this.progressData.totalItems || 0;
+    const failureRate = totalCount > 0 ? (failedCount / totalCount * 100).toFixed(1) : '0.0';
+    
+    // 짧은 URL 표시를 위한 처리
+    const shortUrl = url.length > 30 ? `${url.substring(0, 27)}...` : url;
+    
+    // 치명적 오류인 경우 추가 처리
+    if (errorAnalysis.isCritical) {
+      console.warn(`[CrawlerState] 제품 ${shortUrl}에서 치명적 오류 발생: ${errorAnalysis.message}`);
+      this.progressData.message = `처리 중 오류: ${errorAnalysis.message} (실패: ${failedCount}건, ${failureRate}%)`;
+    } else {
+      this.progressData.message = `제품 상세정보 수집 중... (실패: ${failedCount}건, ${failureRate}%)`;
+    }
+    
+    console.log(`[CrawlerState] 제품 실패 기록 [${failedCount}/${totalCount}]: ${shortUrl} - ${error.substring(0, 100)}${error.length > 100 ? '...' : ''}`);
     this.emitProgressUpdate();
   }
 
@@ -411,14 +475,24 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
   /**
    * 치명적 오류가 있는지 확인 (실패율 기반)
    */
+  /**
+   * 현재 상태가 치명적 오류 상태인지 실패율을 기반으로 판단
+   * 
+   * 다음과 같은 조건을 모두 검사합니다:
+   * 1. 실패한 페이지 수가 전체의 30% 이상인지 확인
+   * 2. 실패한 제품 수가 전체의 30% 이상인지 확인
+   * 
+   * @returns {boolean} true: 치명적 오류 상태, false: 정상 또는 허용 가능한 오류 상태
+   */
   public hasCriticalFailures(): boolean {
     const totalItems = this.getTotalItems();
+    const CRITICAL_FAILURE_THRESHOLD = 0.3; // 30% 이상 실패 시 치명적 오류로 간주
     
     // 실패율이 30% 이상이면 치명적 오류로 간주
     if (this.failedPages.length > 0) {
-      return this.failedPages.length / totalItems > 0.3;
+      return this.failedPages.length / totalItems > CRITICAL_FAILURE_THRESHOLD;
     } else if (this.failedProducts.length > 0 && totalItems > 0) {
-      return this.failedProducts.length / totalItems > 0.3;
+      return this.failedProducts.length / totalItems > CRITICAL_FAILURE_THRESHOLD;
     }
     
     return false;
@@ -468,14 +542,36 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
 
   /**
    * 상세 정보 수집 단계에서 처리된 항목 기록
+   * 이 메서드는 processProductDetailCrawl에서 한 번만 호출되어야 함
    */
   public recordDetailItemProcessed(isNewItem: boolean): void {
+    // 세션 간 상태가 제대로 초기화되었는지 확인
+    if (this.detailStageProcessedCount >= 60) {
+      console.warn(`[CrawlerState] WARNING: Counter overflow detected! Current value: ${this.detailStageProcessedCount}`);
+      console.warn(`[CrawlerState] This may indicate that state.reset() was not properly called between sessions.`);
+      
+      // 호출 스택 기록하여 디버깅에 도움
+      const fullStack = new Error().stack || 'Stack not available';
+      console.warn(`[CrawlerState] Full stack: ${fullStack}`);
+      
+      // 비상 초기화 (문제 해결을 위한 조치)
+      this.detailStageProcessedCount = 0;
+      this.detailStageNewCount = 0;
+      this.detailStageUpdatedCount = 0;
+      console.warn(`[CrawlerState] Emergency reset performed for detail stage counters.`);
+    }
+    
     this.detailStageProcessedCount++;
     if (isNewItem) {
       this.detailStageNewCount++;
     } else {
       this.detailStageUpdatedCount++;
     }
+    
+    // 향상된 디버그 로깅 (호출 스택 추적 포함)
+    const stack = new Error().stack?.split('\n').slice(2, 5).join('\n') || 'Stack not available';
+    console.log(`[CrawlerState] Detail item processed: total=${this.detailStageProcessedCount}, new=${this.detailStageNewCount}, updated=${this.detailStageUpdatedCount}, isNew=${isNewItem}`);
+    console.log(`[CrawlerState] Called from: ${stack}`);
   }
 
   /**
@@ -524,24 +620,48 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
   }
 
   /**
-   * 마지막으로 설정된 기대 제품 수 조회 (페이지당)
+   * 마지막으로 설정된 페이지당 기대 제품 수를 조회
+   * 
+   * 이 값은 페이지 수집 완료 여부를 판단하는 데 사용됩니다.
+   * 예상되는 제품 수보다 적은 수가 수집되면 페이지가 불완전하게 수집됐을 가능성이 있습니다.
+   * 
+   * @returns {number} 페이지당 기대되는 제품 수 (기본값: 12)
    */
   public get expectedProductsPerPage(): number {
     return this._expectedProductsPerPage || 12; // 기본값 12
   }
 
   /**
-   * 페이지당 기대 제품 수 설정
-   * @param count 페이지당 기대 제품 수
+   * 페이지당 기대 제품 수를 설정
+   * 
+   * 이 값은 페이지 검증과 진행률 계산에 사용됩니다.
+   * 사이트 분석 결과나 사용자 설정에 따라 업데이트될 수 있습니다.
+   * 
+   * @param {number} count - 페이지당 기대 제품 수 (양수여야 함)
+   * @throws {Error} 0 이하의 값이 입력되면 무시됨
+   * @returns {void}
    */
   public setExpectedProductsPerPage(count: number): void {
     if (count > 0) {
       this._expectedProductsPerPage = count;
+    } else {
+      console.warn(`[CrawlerState] 유효하지 않은 페이지당 제품 수: ${count}. 무시됩니다.`);
     }
   }
 
   /**
-   * 치명적 오류 상태를 정리 (성공적인 수집 후 호출)
+   * 치명적 오류 상태를 정리하고 크롤링을 계속 진행할 수 있도록 함
+   * 
+   * 이 메서드는 일시적인 오류 후 성공적인 수집이 이루어졌거나,
+   * 사용자의 명시적 요청으로 오류 상태를 초기화할 때 호출됩니다.
+   * 
+   * 다음과 같은 동작을 수행합니다:
+   * 1. progressData에서 criticalError 필드 제거
+   * 2. 상태를 현재 단계에 맞게 업데이트
+   * 3. 현재 단계가 'failed'인 경우 'preparation'으로 초기화
+   * 4. 진행 상태 업데이트 이벤트 발생
+   * 
+   * @returns {void}
    */
   public clearCriticalFailures(): void {
     // 치명적 오류 플래그 리셋
@@ -566,12 +686,184 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
 
   /**
    * 현재 상태가 실제로 치명적인지 제품 수집 결과를 고려하여 판단
+   * 
+   * 일부 제품이 성공적으로 수집되었다면, 오류가 발생했더라도
+   * 치명적인 실패로 간주하지 않고 부분 성공으로 처리합니다.
+   * 
+   * @param {number} collectedProductCount - 실제로 수집된 제품 수
+   * @returns {boolean} true: 치명적 실패 상태, false: 부분 성공 또는 성공 상태
    */
   public isTrulyFailed(collectedProductCount: number): boolean {
     const hasCritical = this.hasCriticalFailures();
     const hasProducts = collectedProductCount > 0;
     
     // 제품이 수집되었다면 치명적이지 않음
+    // (부분 성공으로 간주하고 계속 진행)
     return hasCritical && !hasProducts;
+  }
+  
+  /**
+   * 현재까지 발생한 오류들의 요약 정보를 반환
+   * 
+   * 이 메서드는 현재까지 발생한 모든 오류를 분석하여 요약 정보를 제공합니다.
+   * 주로 UI에 표시하거나 로깅, 보고서 생성에 활용할 수 있습니다.
+   * 
+   * @returns {Object} 오류 요약 정보
+   * @property {number} totalErrors - 전체 오류 수
+   * @property {number} pageErrors - 페이지 처리 시 발생한 오류 수
+   * @property {number} productErrors - 제품 처리 시 발생한 오류 수
+   * @property {number} criticalErrors - 치명적 오류 수
+   * @property {number} retryableErrors - 재시도 가능한 오류 수
+   * @property {Object} errorTypes - 오류 유형별 발생 횟수
+   * @property {Object} mostFrequentErrors - 가장 자주 발생한 오류 메시지와 횟수
+   */
+  public getErrorSummary(): {
+    totalErrors: number;
+    pageErrors: number;
+    productErrors: number;
+    criticalErrors: number;
+    retryableErrors: number;
+    errorTypes: Record<string, number>;
+    mostFrequentErrors: Array<{message: string, count: number}>;
+  } {
+    // 모든 오류 메시지 수집
+    const allPageErrors: string[] = [];
+    for (const pageErrors of Object.values(this.failedPageErrors)) {
+      allPageErrors.push(...pageErrors);
+    }
+    
+    const allProductErrors: string[] = [];
+    for (const productErrors of Object.values(this.failedProductErrors)) {
+      allProductErrors.push(...productErrors);
+    }
+    
+    // 오류 분석
+    const allErrors = [...allPageErrors, ...allProductErrors];
+    const errorTypes: Record<string, number> = {};
+    let criticalCount = 0;
+    let retryableCount = 0;
+    
+    // 오류 유형 분석
+    allErrors.forEach(err => {
+      const analysis = this.analyzeError(err);
+      errorTypes[analysis.errorType] = (errorTypes[analysis.errorType] || 0) + 1;
+      
+      if (analysis.isCritical) criticalCount++;
+      if (analysis.isRetryable) retryableCount++;
+    });
+    
+    // 가장 자주 발생하는 오류 찾기
+    const errorFrequency: Record<string, number> = {};
+    allErrors.forEach(err => {
+      // 오류 메시지 정규화 (비슷한 오류를 그룹화)
+      const normalizedError = err
+        .replace(/\d+/g, 'N') // 숫자를 N으로 대체
+        .replace(/https?:\/\/[^\s)]+/g, 'URL') // URL 정규화
+        .substring(0, 100); // 길이 제한
+      
+      errorFrequency[normalizedError] = (errorFrequency[normalizedError] || 0) + 1;
+    });
+    
+    // 빈도순 정렬
+    const mostFrequent = Object.entries(errorFrequency)
+      .map(([message, count]) => ({ message, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5); // 상위 5개만
+    
+    return {
+      totalErrors: allErrors.length,
+      pageErrors: allPageErrors.length,
+      productErrors: allProductErrors.length,
+      criticalErrors: criticalCount,
+      retryableErrors: retryableCount,
+      errorTypes,
+      mostFrequentErrors: mostFrequent
+    };
+  }
+  
+  /**
+   * 주어진 오류가 치명적인지 아닌지 판단
+   * 
+   * 네트워크 오류, 일시적 오류, 재시도 가능한 오류 등을 구분하여
+   * 크롤러가 적절한 대응 전략을 선택할 수 있도록 돕습니다.
+   * 
+   * @param {Error|string} error - 분석할 오류 객체 또는 메시지
+   * @returns {Object} 오류 분석 결과
+   * @property {boolean} isCritical - 치명적 오류 여부
+   * @property {boolean} isRetryable - 재시도 가능한 오류 여부
+   * @property {string} errorType - 오류 유형 분류
+   * @property {string} message - 사용자 친화적인 오류 메시지
+   */
+  public analyzeError(error: Error | string): { 
+    isCritical: boolean; 
+    isRetryable: boolean; 
+    errorType: string; 
+    message: string; 
+  } {
+    const errorMessage = error instanceof Error ? error.message : error;
+    const errorStack = error instanceof Error ? error.stack : '';
+    
+    // 기본 결과
+    const result = {
+      isCritical: false,
+      isRetryable: true,
+      errorType: 'unknown',
+      message: errorMessage,
+    };
+    
+    // 네트워크 관련 오류 확인
+    if (
+      errorMessage.includes('ECONNRESET') ||
+      errorMessage.includes('ETIMEDOUT') ||
+      errorMessage.includes('ECONNREFUSED') ||
+      errorMessage.includes('network error') ||
+      errorMessage.includes('Network Error') ||
+      errorMessage.includes('timeout')
+    ) {
+      result.errorType = 'network';
+      result.isRetryable = true;
+      result.isCritical = false;
+      result.message = '네트워크 연결 오류: 재시도 중...';
+    }
+    // 서버 오류 확인
+    else if (
+      errorMessage.includes('500') ||
+      errorMessage.includes('503') ||
+      errorMessage.includes('server error') ||
+      errorMessage.includes('Server Error')
+    ) {
+      result.errorType = 'server';
+      result.isRetryable = true;
+      result.isCritical = false;
+      result.message = '서버 일시적 오류: 재시도 중...';
+    }
+    // 접근 권한 오류
+    else if (
+      errorMessage.includes('403') ||
+      errorMessage.includes('Authentication') ||
+      errorMessage.includes('권한') ||
+      errorMessage.includes('접근이 거부') ||
+      errorMessage.includes('blocked')
+    ) {
+      result.errorType = 'access';
+      result.isRetryable = false;
+      result.isCritical = true;
+      result.message = '접근 권한 오류: 크롤링이 차단되었습니다.';
+    }
+    // 구문 분석 오류
+    else if (
+      errorMessage.includes('parse') ||
+      errorMessage.includes('JSON') ||
+      errorMessage.includes('syntax') ||
+      errorMessage.includes('expected')
+    ) {
+      result.errorType = 'parsing';
+      result.isRetryable = false;
+      result.isCritical = true;
+      result.message = '데이터 구문 분석 오류: 사이트 구조가 변경되었을 수 있습니다.';
+    }
+    
+    console.log(`[CrawlerState] 오류 분석 결과: 타입=${result.errorType}, 치명적=${result.isCritical}, 재시도가능=${result.isRetryable}`);
+    return result;
   }
 }
