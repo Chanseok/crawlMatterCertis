@@ -4,7 +4,7 @@
  */
 
 import { crawlerEvents } from '../utils/progress.js';
-import type { CrawlingProgress, CrawlingStatus } from '../../../../types.js';
+import type { CrawlingProgress } from '../../../../types.js';
 import { CrawlingStage } from '../core/CrawlerState.js';
 
 export class ProgressReporter {

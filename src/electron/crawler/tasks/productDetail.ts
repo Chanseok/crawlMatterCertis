@@ -91,20 +91,6 @@ export class ProductDetailCollector {
     };
   }
 
-  /**
-   * 진행 상황 업데이트 함수
-   * 
-   * 주의: 이 함수는 직접적으로 CrawlerState에 항목 처리를 기록하지 않습니다.
-   * 항목 처리 기록은 processProductDetailCrawl에서 정확한 isNewItem 값으로 한 번만 호출됩니다.
-   */
-  private updateProgressLegacy(): void {
-    // 중복 카운팅 방지를 위해 this.state.recordDetailItemProcessed 호출 제거
-    // 실제 카운팅은 processProductDetailCrawl에서 처리됨
-    
-    // 중요: 이 메서드는 상태 업데이트만을 위한 것이며 카운터 증가는 담당하지 않음
-    // 상세 페이지 처리 카운팅은 오직 processProductDetailCrawl 메서드에서만 수행됨
-    console.log('[ProductDetailCollector] updateProgressLegacy called - 카운터 증가 없이 상태만 업데이트');
-  }
 
   /**
    * 제품 상세 정보를 크롤링하는 함수
@@ -1300,7 +1286,7 @@ export class ProductDetailCollector {
       return [];
     }
 
-    const config = this.config;
+    
 
     // Stage 2 초기화: UI에 올바른 총 제품 수를 표시하기 위한 상태 설정
     // 1. CrawlerState에 총 제품 수를 명시적으로 설정
@@ -1387,7 +1373,7 @@ export class ProductDetailCollector {
         return matterProducts;
       }
 
-      const initialFailedProducts = [...failedProducts];
+      
       if (failedProducts.length > 0) {
         console.log(`[ProductDetailCollector] Retrying ${failedProducts.length} failed products.`);
         await this.retryFailedProductDetails(
@@ -1414,8 +1400,6 @@ export class ProductDetailCollector {
       // 최종 완료 상태 검증 using enhanced validation
       const validationResult = this.validateFinalCompletionStatus(
         totalProducts,
-        actualProcessedCount,
-        successProducts,
         finalFailedCount
       );
       
@@ -1519,8 +1503,8 @@ export class ProductDetailCollector {
 
     updateProductTaskStatus(product.url, 'running');
 
-    // isNewItem 변수를 메서드 시작 부분에서 미리 정의
-    let isNewItem = false;
+    
+    
     let detailProduct: MatterProduct | null = null;
 
     try {
@@ -2050,8 +2034,8 @@ export class ProductDetailCollector {
    */
   private validateFinalCompletionStatus(
     totalProducts: number,
-    processedCount: number,
-    successCount: number,
+
+    
     failedCount: number
   ): { isComplete: boolean; status: 'success' | 'partial' | 'failed'; message: string } {
     

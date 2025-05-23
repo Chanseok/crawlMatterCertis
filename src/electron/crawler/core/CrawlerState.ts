@@ -893,7 +893,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     message: string; 
   } {
     const errorMessage = error instanceof Error ? error.message : error;
-    const errorStack = error instanceof Error ? error.stack : '';
+    
     
     // 기본 결과
     const result = {
