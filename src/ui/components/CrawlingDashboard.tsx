@@ -1,7 +1,7 @@
+import React, { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
 import { useStore } from '@nanostores/react';
 import { crawlingProgressStore, crawlingStatusStore, configStore, crawlingStatusSummaryStore, 
   lastCrawlingStatusSummaryStore, CrawlingStatusSummary, concurrentTasksStore, updateCrawlingProgress, statusStore } from '../stores';
-import { useEffect, useState, useRef, Dispatch, SetStateAction } from 'react';
 import { ExpandableSection } from './ExpandableSection';
 import StatusCheckLoadingAnimation from './StatusCheckLoadingAnimation';
 import { format } from 'date-fns';
@@ -25,7 +25,7 @@ interface AnimatedValues {
 /**
  * 크롤링 진행 상황을 시각적으로 보여주는 대시보드 컴포넌트
  */
-export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
+export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
   const progress = useStore(crawlingProgressStore);
   const status = useStore(crawlingStatusStore);
   const config = useStore(configStore);
@@ -54,18 +54,30 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
   // 3. 설정된 pageRangeLimit 사용
   // 4. API 응답의 totalPages 사용
   // 5. 기본값 1 사용
-  const targetPageCount = 
+  const targetPageCount = useMemo(() => 
     (progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || // 1단계일때 실제 크롤링 대상 페이지 사용
     statusData.targetPageCount || 
     (crawlingRange ? (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 0) ||
     config.pageRangeLimit || 
     progress.totalPages || 
     statusSummary?.siteTotalPages || 
-    1;
+    1, 
+  [
+    progress.currentStage, 
+    statusSummary?.actualTargetPageCountForStage1, 
+    statusData.targetPageCount, 
+    crawlingRange, 
+    statusSummary?.crawlingRange,
+    config.pageRangeLimit,
+    progress.totalPages,
+    statusSummary?.siteTotalPages
+  ]);
 
-  const toggleCompareSection = () => setAppCompareExpanded(!appCompareExpanded);
+  const toggleCompareSection = useCallback(() => {
+    setAppCompareExpanded(!appCompareExpanded);
+  }, [appCompareExpanded, setAppCompareExpanded]);
 
-  const isValueChanged = (key: keyof CrawlingStatusSummary): boolean => {
+  const isValueChanged = useCallback((key: keyof CrawlingStatusSummary): boolean => {
     if (!statusSummary || !lastStatusSummary) return false;
 
     if (key === 'dbLastUpdated') {
@@ -75,17 +87,13 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
     }
 
     return JSON.stringify(statusSummary[key]) !== JSON.stringify(lastStatusSummary[key]);
-  };
+  }, [statusSummary, lastStatusSummary]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
 
     if (status === 'running') {
       timer = setInterval(() => {
-        if (status !== 'running') {
-          if (timer) clearInterval(timer);
-          return;
-        }
         setLocalTime(prev => {
           let newRemainingTime = prev.remainingTime;
 
@@ -117,10 +125,7 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
           };
         });
 
-        setFlipTimer(prev => {
-          const newValue = prev + 1;
-          return newValue;
-        });
+        setFlipTimer(prev => prev + 1);
       }, 1000);
     } else {
       setLocalTime(prev => ({
@@ -129,10 +134,24 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
       }));
     }
 
+    // 컴포넌트 언마운트나 상태 변경 시 타이머 정리
     return () => {
-      if (timer) clearInterval(timer);
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
     };
-  }, [status, progress.currentPage, progress.currentStage, progress.processedItems, progress.totalItems, targetPageCount, config.productsPerPage, statusSummary, progress.elapsedTime]);
+  }, [
+    status, 
+    progress.currentStage,
+    progress.currentPage, 
+    progress.processedItems, 
+    progress.totalItems,
+    progress.elapsedTime,
+    targetPageCount,
+    config.productsPerPage,
+    statusSummary?.siteProductCount
+  ]);
 
   useEffect(() => {
     if (status !== 'running') {
@@ -156,21 +175,33 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
 
       if (completionTimerRef.current) {
         clearTimeout(completionTimerRef.current);
+        completionTimerRef.current = null;
       }
 
-      completionTimerRef.current = setTimeout(() => {
+      completionTimerRef.current = window.setTimeout(() => {
         setShowCompletion(false);
-      }, isCompleteSuccess ? 10000 : 5000);
+        completionTimerRef.current = null;
+      }, isCompleteSuccess ? 10000 : 5000) as unknown as number;
     } else {
       setShowCompletion(false);
     }
 
+    // 컴포넌트 언마운트나 의존성 변경 시 타이머 정리
     return () => {
       if (completionTimerRef.current) {
         clearTimeout(completionTimerRef.current);
+        completionTimerRef.current = null;
       }
     };
-  }, [status, progress.currentStage, progress.processedItems, progress.totalItems, targetPageCount, config.productsPerPage, statusSummary]);
+  }, [
+    status, 
+    progress.currentStage, 
+    progress.processedItems, 
+    progress.totalItems, 
+    targetPageCount, 
+    config.productsPerPage, 
+    statusSummary?.siteProductCount
+  ]);
 
   const [animatedDigits, setAnimatedDigits] = useState({
     currentPage: false,
@@ -182,27 +213,40 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
     remainingTime: false
   });
 
-  const [prevStage, setPrevStage] = useState<number | null>(null);
+  const prevStageRef = useRef<number | null>(null);
 
   useEffect(() => {
+    const prevStage = prevStageRef.current;
+    
     if (prevStage !== null && prevStage !== progress.currentStage) {
+      // 단계 전환 시 필요한 로직 추가 가능
     }
 
     if (progress.currentStage !== undefined) {
-      setPrevStage(progress.currentStage);
+      prevStageRef.current = progress.currentStage;
     }
-  }, [progress.currentStage, prevStage]);
+  }, [progress.currentStage]);
 
   const prevProgress = useRef(progress);
   useEffect(() => {
+    const timers: number[] = [];
+    
     if (prevProgress.current) {
       if (progress.currentPage !== prevProgress.current.currentPage) {
         setAnimatedDigits(prev => ({ ...prev, currentPage: true }));
-        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, currentPage: false })), 300);
+        const timer = window.setTimeout(
+          () => setAnimatedDigits(prev => ({ ...prev, currentPage: false })), 
+          300
+        );
+        timers.push(timer);
       }
       if (progress.processedItems !== prevProgress.current.processedItems) {
         setAnimatedDigits(prev => ({ ...prev, processedItems: true }));
-        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, processedItems: false })), 300);
+        const timer = window.setTimeout(
+          () => setAnimatedDigits(prev => ({ ...prev, processedItems: false })), 
+          300
+        );
+        timers.push(timer);
       }
       // Safely check retryCount with undefined check
       if ((progress.retryCount !== undefined && prevProgress.current.retryCount !== undefined && 
@@ -210,32 +254,65 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
           (progress.retryCount !== undefined && prevProgress.current.retryCount === undefined) ||
           (progress.retryCount === undefined && prevProgress.current.retryCount !== undefined)) {
         setAnimatedDigits(prev => ({ ...prev, retryCount: true }));
-        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, retryCount: false })), 300);
+        const timer = window.setTimeout(
+          () => setAnimatedDigits(prev => ({ ...prev, retryCount: false })), 
+          300
+        );
+        timers.push(timer);
       }
       if (progress.newItems !== prevProgress.current.newItems) {
         setAnimatedDigits(prev => ({ ...prev, newItems: true }));
-        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, newItems: false })), 300);
+        const timer = window.setTimeout(
+          () => setAnimatedDigits(prev => ({ ...prev, newItems: false })), 
+          300
+        );
+        timers.push(timer);
       }
       if (progress.updatedItems !== prevProgress.current.updatedItems) {
         setAnimatedDigits(prev => ({ ...prev, updatedItems: true }));
-        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, updatedItems: false })), 300);
+        const timer = window.setTimeout(
+          () => setAnimatedDigits(prev => ({ ...prev, updatedItems: false })), 
+          300
+        );
+        timers.push(timer);
       }
       if (progress.elapsedTime !== prevProgress.current.elapsedTime) {
         setAnimatedDigits(prev => ({ ...prev, elapsedTime: true }));
-        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, elapsedTime: false })), 300);
+        const timer = window.setTimeout(
+          () => setAnimatedDigits(prev => ({ ...prev, elapsedTime: false })), 
+          300
+        );
+        timers.push(timer);
       }
       if (progress.remainingTime !== prevProgress.current.remainingTime) {
         setAnimatedDigits(prev => ({ ...prev, remainingTime: true }));
-        setTimeout(() => setAnimatedDigits(prev => ({ ...prev, remainingTime: false })), 300);
+        const timer = window.setTimeout(
+          () => setAnimatedDigits(prev => ({ ...prev, remainingTime: false })), 
+          300
+        );
+        timers.push(timer);
       }
     }
-    prevProgress.current = progress;
-  }, [progress]);
+    prevProgress.current = { ...progress };
+    
+    // 모든 타이머 정리
+    return () => {
+      timers.forEach(timer => clearTimeout(timer));
+    };
+  }, [
+    progress.currentPage,
+    progress.processedItems,
+    progress.retryCount,
+    progress.newItems,
+    progress.updatedItems,
+    progress.elapsedTime,
+    progress.remainingTime
+  ]);
 
   const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 더 정확한 진행률 계산
-  const calculatedPercentage = (() => {
+  const calculatedPercentage = useMemo(() => {
     // 크롤링 단계에 따라 적절한 진행률 계산
     if (progress.currentStage === 1) {
       // 1단계: 성공한 페이지 수 / 총 페이지 수 비율
@@ -265,7 +342,7 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
       // 다른 단계들은 API에서 받은 진행률 그대로 사용
       return progress.percentage || 0;
     }
-  })();
+  }, [progress.currentStage, progress.stage1PageStatuses, progress.currentPage, progress.percentage, targetPageCount, concurrentTasksStore.get()]);
 
   // 성공 상태의 페이지 수를 모니터링하기 위한 추가 effect
   const [successPagesCount, setSuccessPagesCount] = useState(0);
@@ -288,11 +365,21 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
         }
       }
     }
-  }, [concurrentTasksStore.get(), successPagesCount, progress.currentPage, progress.currentStage]);
+  }, [
+    // concurrentTasksStore.get() 자체는 참조가 변하므로 필요 속성만 개별적으로 추적
+    // 이 effect는 성공한 작업 수가 변경될 때만 실행되어야 함
+    successPagesCount, 
+    progress.currentPage, 
+    progress.currentStage,
+    concurrentTasksStore.get().length, 
+    // 성공 상태 배열의 길이만 추적
+    concurrentTasksStore.get().filter(task => task.status === 'success').length
+  ]);
 
   useEffect(() => {
     if (animationRef.current) {
       clearInterval(animationRef.current);
+      animationRef.current = null;
     }
     
     // 진행 중인 작업 단계에 따라 현재 페이지 값 결정
@@ -318,36 +405,53 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
     const steps = 8;
     let step = 0;
 
-    animationRef.current = setInterval(() => {
+    animationRef.current = window.setInterval(() => {
       step++;
       if (step >= steps) {
         setAnimatedValues(targetValues);
-        clearInterval(animationRef.current!);
+        if (animationRef.current) {
+          clearInterval(animationRef.current);
+          animationRef.current = null;
+        }
         return;
       }
 
-      const progress = 1 - Math.pow(1 - step / steps, 2);
+      const progressEase = 1 - Math.pow(1 - step / steps, 2); // easing function for smoother animation
 
       const newValues = {
-        percentage: startValues.percentage + (targetValues.percentage - startValues.percentage) * progress,
-        currentPage: startValues.currentPage + (targetValues.currentPage - startValues.currentPage) * progress,
-        processedItems: startValues.processedItems + Math.round((targetValues.processedItems - startValues.processedItems) * progress),
-        newItems: startValues.newItems + Math.round((targetValues.newItems - startValues.newItems) * progress),
-        updatedItems: startValues.updatedItems + Math.round((targetValues.updatedItems - startValues.updatedItems) * progress),
-        retryCount: startValues.retryCount + Math.round((targetValues.retryCount - startValues.retryCount) * progress)
+        percentage: startValues.percentage + (targetValues.percentage - startValues.percentage) * progressEase,
+        currentPage: startValues.currentPage + (targetValues.currentPage - startValues.currentPage) * progressEase,
+        processedItems: startValues.processedItems + Math.round((targetValues.processedItems - startValues.processedItems) * progressEase),
+        newItems: startValues.newItems + Math.round((targetValues.newItems - startValues.newItems) * progressEase),
+        updatedItems: startValues.updatedItems + Math.round((targetValues.updatedItems - startValues.updatedItems) * progressEase),
+        retryCount: startValues.retryCount + Math.round((targetValues.retryCount - startValues.retryCount) * progressEase)
       };
 
       setAnimatedValues(newValues);
     }, 40);
 
+    // 컴포넌트 언마운트 또는 의존성 변경 시 애니메이션 정리
     return () => {
       if (animationRef.current) {
         clearInterval(animationRef.current);
+        animationRef.current = null;
       }
     };
-  }, [progress.percentage, progress.currentPage, progress.processedItems, progress.newItems, progress.updatedItems, progress.retryCount, calculatedPercentage]);
+  }, [
+    progress.percentage, 
+    progress.currentPage, 
+    progress.processedItems, 
+    progress.newItems, 
+    progress.updatedItems, 
+    progress.retryCount,
+    progress.currentStage,
+    progress.stage1PageStatuses,
+    calculatedPercentage,
+    successPagesCount,
+    animatedValues
+  ]);
 
-  const formatDuration = (milliseconds: number | undefined | null): string => {
+  const formatDuration = useCallback((milliseconds: number | undefined | null): string => {
     if (milliseconds === undefined || milliseconds === null || isNaN(milliseconds) || milliseconds <= 0) return '00:00:00';
 
     const totalSeconds = Math.floor(milliseconds / 1000);
@@ -358,11 +462,11 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
     const pad = (num: number) => String(num).padStart(2, '0');
 
     return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-  };
+  }, []);
 
   // 이전 상태 체크 여부와 현재 상태를 구분하는 더 명확한 변수들
-  const isBeforeStatusCheck = status === 'idle' && !statusData.lastCheckedAt;
-  const isAfterStatusCheck = status === 'idle' && !!statusData.lastCheckedAt;
+  const isBeforeStatusCheck = useMemo(() => status === 'idle' && !statusData.lastCheckedAt, [status, statusData.lastCheckedAt]);
+  const isAfterStatusCheck = useMemo(() => status === 'idle' && !!statusData.lastCheckedAt, [status, statusData.lastCheckedAt]);
   
   let collectionStatusText = "제품 상세 수집 현황";
   let retryStatusText = "제품 상세 재시도";
@@ -387,7 +491,7 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
     remainingTimeDisplay = formatDuration(localTime.remainingTime);
   }
 
-  function getStatusBadgeColor() {
+  const getStatusBadgeColor = useCallback(() => {
     switch (status) {
       case 'idle':
         return 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
@@ -406,9 +510,9 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
       default:
         return 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
     }
-  }
+  }, [status]);
 
-  function getStageBadge() {
+  const getStageBadge = useCallback(() => {
     let stageText = '대기중';
     let stageColor = 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
 
@@ -445,14 +549,14 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
         {stageText}
       </span>
     );
-  }
+  }, [isBeforeStatusCheck, isAfterStatusCheck, status, progress.currentStage]);
 
-  function getRetryInfo() {
+  const getRetryInfo = useCallback(() => {
     // RetryStatusIndicator 컴포넌트가 내부적으로 필요한 상태(재시도 중인지 여부)를 처리함
     return <RetryStatusIndicator className="mt-2" />;
-  }
+  }, []);
 
-  function getEstimatedEndTime() {
+  const getEstimatedEndTime = useCallback(() => {
     if (status === 'running' && localTime.remainingTime > 0 && !isNaN(localTime.remainingTime)) {
       const endTime = new Date(Date.now() + localTime.remainingTime);
       return (
@@ -462,7 +566,7 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
       );
     }
     return null;
-  }
+  }, [status, localTime.remainingTime]);
 
   return (
     <>
@@ -955,4 +1059,4 @@ export function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, set
       {/* BatchUITestButton removed - moved to Settings tab */}
     </>
   );
-}
+});
