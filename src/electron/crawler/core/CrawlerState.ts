@@ -539,4 +539,39 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
       this._expectedProductsPerPage = count;
     }
   }
+
+  /**
+   * 치명적 오류 상태를 정리 (성공적인 수집 후 호출)
+   */
+  public clearCriticalFailures(): void {
+    // 치명적 오류 플래그 리셋
+    if (this.progressData.status === 'error') {
+      // 오류 상태 초기화
+      delete this.progressData.criticalError;
+      
+      // 현재 단계에 맞는 상태로 업데이트
+      this.progressData.status = mapCrawlingStageToStatus(this.currentStage);
+      
+      // 현재 단계가 실패 상태인 경우 준비 상태로 복원
+      if (this.currentStage === 'failed') {
+        this.currentStage = 'preparation';
+        this.progressData.status = 'initializing';
+        this.progressData.message = '크롤링 준비 중...';
+      }
+      
+      console.log('[CrawlerState] Critical failures have been cleared');
+      this.emitProgressUpdate();
+    }
+  }
+
+  /**
+   * 현재 상태가 실제로 치명적인지 제품 수집 결과를 고려하여 판단
+   */
+  public isTrulyFailed(collectedProductCount: number): boolean {
+    const hasCritical = this.hasCriticalFailures();
+    const hasProducts = collectedProductCount > 0;
+    
+    // 제품이 수집되었다면 치명적이지 않음
+    return hasCritical && !hasProducts;
+  }
 }

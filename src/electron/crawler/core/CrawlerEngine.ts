@@ -443,13 +443,20 @@ export class CrawlerEngine {
       // 제품 목록 결과 저장
       this.handleListCrawlingResults(products);
 
-      // 치명적 오류 확인 및 처리
-      if (this.state.hasCriticalFailures()) {
-        const message = '제품 목록 수집 중 심각한 오류가 발생했습니다. 크롤링 중단.';
+      // 치명적 오류 확인 - 하지만 성공적인 수집이 있었다면 오류를 무시
+      const hasCriticalFailures = this.state.hasCriticalFailures();
+      const hasSuccessfulCollection = products.length > 0;
+
+      if (hasCriticalFailures && !hasSuccessfulCollection) {
+        const message = '제품 목록 수집 중 심각한 오류가 발생했고 수집된 제품이 없습니다. 크롤링 중단.';
         console.error(`[CrawlerEngine] ${message}`);
         this.state.reportCriticalFailure(message);
         this.isCrawling = false;
         return false;
+      } else if (hasCriticalFailures && hasSuccessfulCollection) {
+        console.warn(`[CrawlerEngine] 일부 오류가 있었지만 ${products.length}개 제품 수집에 성공했습니다. 계속 진행합니다.`);
+        // 치명적 오류 상태를 정리하고 계속 진행
+        this.state.clearCriticalFailures();
       }
 
       if (products.length === 0) {
@@ -460,28 +467,39 @@ export class CrawlerEngine {
 
       // 성공률 확인
       const failedPages = this.state.getFailedPages();
-      // Use totalPagesFromCache for success rate calculation if it's the basis of the collection range
       const successRate = totalPagesFromCache > 0 ? (totalPagesFromCache - failedPages.length) / totalPagesFromCache : 1;
       const successRatePercent = (successRate * 100).toFixed(1);
       
-      // 1단계에서 실패 페이지가 있으면 중단 (원래 동작으로 복원)
+      // 실패 페이지가 있어도 충분한 제품이 수집되었다면 경고만 하고 계속 진행
       if (failedPages.length > 0) {
-        const message = `[경고] 제품 목록 수집 성공률: ${successRatePercent}% (${totalPagesFromCache - failedPages.length}/${totalPagesFromCache}). 실패한 페이지가 있어 크롤링을 중단합니다.`;
+        const message = `[경고] 제품 목록 수집 성공률: ${successRatePercent}% (${totalPagesFromCache - failedPages.length}/${totalPagesFromCache}).`;
         console.warn(`[CrawlerEngine] ${message}`);
         
-        // 경고 이벤트 발생 및 크롤링 중단
-        crawlerEvents.emit('crawlingWarning', {
-          message,
-          successRate: parseFloat(successRatePercent),
-          failedPages: failedPages.length,
-          totalPages: totalPagesFromCache, // Use totalPagesFromCache
-          continueProcess: false // 중단 설정
-        });
-        
-        // 크롤링 중단 상태로 설정
-        this.state.setStage('failed', '제품 목록 수집 중 오류가 발생하여 크롤링이 중단되었습니다.');
-        this.isCrawling = false;
-        return false; // 함수 종료
+        // 제품이 충분히 수집되었다면 계속 진행
+        if (products.length > 0) {
+          console.log(`[CrawlerEngine] ${products.length}개 제품이 수집되어 계속 진행합니다.`);
+          
+          crawlerEvents.emit('crawlingWarning', {
+            message: message + ' 수집된 제품으로 계속 진행합니다.',
+            successRate: parseFloat(successRatePercent),
+            failedPages: failedPages.length,
+            totalPages: totalPagesFromCache,
+            continueProcess: true // 계속 진행
+          });
+        } else {
+          // 제품이 없는 경우에만 중단
+          crawlerEvents.emit('crawlingWarning', {
+            message: message + ' 수집된 제품이 없어 크롤링을 중단합니다.',
+            successRate: parseFloat(successRatePercent),
+            failedPages: failedPages.length,
+            totalPages: totalPagesFromCache,
+            continueProcess: false
+          });
+          
+          this.state.setStage('failed', '제품 목록 수집 중 오류가 발생하여 크롤링이 중단되었습니다.');
+          this.isCrawling = false;
+          return false;
+        }
       }
 
       // 배치 처리를 사용하지 않은 경우에만 여기서 2단계 실행
