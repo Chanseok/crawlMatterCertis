@@ -59,14 +59,11 @@ export function useProgressSync() {
     isIdle: viewModel.isIdle,
     isError: viewModel.isError,
     
-    // 현재 단계 정보
-    currentStageInfo: viewModel.currentStageInfo,
-    
-    // 원본 데이터 (필요한 경우)
-    rawProgress: viewModel.rawProgress,
-    
-    // 디버깅용
-    debugInfo: viewModel.debugInfo
+    // Legacy compatibility - these properties are no longer available in the new ViewModel
+    // but kept for backward compatibility with components that might still use them
+    currentStageInfo: null,
+    rawProgress: null,
+    debugInfo: null
   };
 }
 

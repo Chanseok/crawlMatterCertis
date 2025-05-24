@@ -68,11 +68,25 @@ export class CrawlingProgressViewModel {
     total: number;
     displayText: string;
   } {
-    const processed = this.isCompleted 
-      ? (this._rawProgress.totalPages || this._rawProgress.total || 0)
-      : (this._rawProgress.currentPage || this._rawProgress.current || 0);
+    // 단계별로 정확한 데이터 소스 사용
+    const currentStage = this._rawProgress.currentStage || 1;
     
-    const total = this._rawProgress.totalPages || this._rawProgress.total || 0;
+    let processed: number;
+    let total: number;
+    
+    if (currentStage === 2) {
+      // 2단계: 제품 상세 수집 - processedItems/totalItems 사용
+      processed = this.isCompleted 
+        ? (this._rawProgress.totalItems || this._rawProgress.processedItems || 0)
+        : (this._rawProgress.processedItems || 0);
+      total = this._rawProgress.totalItems || 0;
+    } else {
+      // 1단계: 페이지 수집 - currentPage/totalPages 사용
+      processed = this.isCompleted 
+        ? (this._rawProgress.totalPages || this._rawProgress.currentPage || 0)
+        : (this._rawProgress.currentPage || 0);
+      total = this._rawProgress.totalPages || 0;
+    }
     
     return {
       processed,
@@ -83,11 +97,16 @@ export class CrawlingProgressViewModel {
 
   // === 시간 관련 Computed Properties ===
   get remainingTimeDisplay(): string {
+    // 완료 상태이면 즉시 '0초' 반환
     if (this.isCompleted) return '0초';
     if (this.isIdle) return '--';
     
     const remaining = this._rawProgress.remainingTime || 0;
-    if (remaining <= 0) return '0초';
+    
+    // 진행률이 100%에 가깝거나 잘못된 시간이면 '0초'로 표시
+    if (remaining <= 0 || this._rawProgress.percentage >= 99.9) {
+      return '0초';
+    }
     
     return this.formatDuration(remaining);
   }
@@ -99,10 +118,28 @@ export class CrawlingProgressViewModel {
 
   // === 상태 감지 Computed Properties ===
   get isCompleted(): boolean {
-    return this._rawProgress.status === 'completed' ||
-           this._rawProgress.stage === 'complete' ||
-           this._rawProgress.percentage >= 100 ||
-           (typeof this._rawProgress.currentStep === 'string' && this._rawProgress.currentStep.includes('완료'));
+    // 더 정확한 완료 상태 감지 로직
+    const status = this._rawProgress.status;
+    const stage = this._rawProgress.stage;
+    const percentage = this._rawProgress.percentage || 0;
+    const currentStep = this._rawProgress.currentStep || '';
+    
+    // 1. 명시적 완료 상태 확인 (올바른 CrawlingStage 타입 사용)
+    if (status === 'completed' || stage === 'complete') {
+      return true;
+    }
+    
+    // 2. 진행률이 100%이고 오류 상태가 아닌 경우
+    if (percentage >= 100 && status !== 'error' && stage !== 'error') {
+      return true;
+    }
+    
+    // 3. currentStep에 '완료' 키워드가 포함되고 오류가 아닌 경우
+    if (currentStep.includes('완료') && !currentStep.includes('오류') && !currentStep.includes('실패')) {
+      return true;
+    }
+    
+    return false;
   }
 
   get isIdle(): boolean {
@@ -111,8 +148,15 @@ export class CrawlingProgressViewModel {
   }
 
   get isError(): boolean {
-    return this._rawProgress.status === 'error' ||
-           this._rawProgress.stage === 'error';
+    const status = this._rawProgress.status;
+    const stage = this._rawProgress.stage;
+    const currentStep = this._rawProgress.currentStep || '';
+    
+    // 명시적 오류 상태 확인 (올바른 CrawlingStage 타입 사용)
+    return status === 'error' || 
+           stage === 'error' ||
+           currentStep.includes('오류') ||
+           currentStep.includes('실패');
   }
 
   get currentStageInfo(): {

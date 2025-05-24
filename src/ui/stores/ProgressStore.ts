@@ -1,15 +1,16 @@
-import { CrawlingProgressViewModel } from '../viewModels/CrawlingProgressViewModel.js';
+import { CrawlingProgressViewModel } from '../viewModels/UnifiedCrawlingProgressViewModel.js';
 import type { CrawlingProgress } from '../../../types.js';
 
 /**
- * 전역 진행 상태 Store
- * 애플리케이션 전체에서 하나의 ViewModel 인스턴스를 공유
+ * Clean Architecture 기반 통합 Progress Store
+ * 단일 ViewModel 인스턴스 전역 관리
  */
 class ProgressStore {
   private _viewModel: CrawlingProgressViewModel;
 
   constructor() {
     this._viewModel = new CrawlingProgressViewModel();
+    console.log('[ProgressStore] Unified ViewModel initialized');
     
     // 개발 환경에서 디버깅 용도
     if (typeof window !== 'undefined') {
@@ -18,27 +19,38 @@ class ProgressStore {
   }
 
   /**
-   * ViewModel 인스턴스 반환
+   * 단일 ViewModel 인스턴스 반환
    */
   get viewModel(): CrawlingProgressViewModel {
     return this._viewModel;
   }
 
   /**
-   * 진행 상태 업데이트
+   * 진행 상태 업데이트 (통합 메서드)
    */
   updateProgress(progress: Partial<CrawlingProgress>): void {
-    this._viewModel.updateProgress(progress);
+    this._viewModel.updateFromRawProgress(progress);
   }
 
   /**
-   * 현재 진행 상태의 디버그 정보 반환
+   * 디버깅용 상태 조회
    */
   getDebugInfo(): object {
-    return this._viewModel.debugInfo;
+    return {
+      store: 'ProgressStore',
+      viewModel: this._viewModel.debugState
+    };
   }
 }
 
 // 싱글톤 인스턴스 생성 및 내보내기
 export const progressStore = new ProgressStore();
+
+/**
+ * React Hook: ViewModel 접근
+ */
+export function useProgressViewModel(): CrawlingProgressViewModel {
+  return progressStore.viewModel;
+}
+
 export type { ProgressStore };

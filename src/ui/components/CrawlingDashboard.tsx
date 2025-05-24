@@ -9,7 +9,14 @@ import { format } from 'date-fns';
 import { RetryStatusIndicator } from './RetryStatusIndicator';
 import { StageTransitionIndicator } from './StageTransitionIndicator';
 import { ValidationResultsPanel } from './ValidationResultsPanel';
-import { useProgressSync } from '../hooks/useProgressSync.js';
+
+// New Unified Components
+import { CollectionStatusDisplay } from './displays/CollectionStatusDisplay';
+import { ProgressBarDisplay } from './displays/ProgressBarDisplay';
+import { StatusDisplay } from './displays/StatusDisplay';
+import { TimeDisplay } from './displays/TimeDisplay';
+import { useProgressSync } from '../hooks/useUnifiedProgressSync';
+import { useProgressViewModel } from '../stores/ProgressStore';
 
 interface CrawlingDashboardProps {
   isAppStatusChecking: boolean;
@@ -30,10 +37,13 @@ interface AnimatedValues {
  * 크롤링 진행 상황을 시각적으로 보여주는 대시보드 컴포넌트
  */
 function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
-  // 새로운 ViewModel 패턴을 통한 진행 상태 관리
-  const progressViewModel = useProgressSync();
+  // 새로운 ViewModel 패턴을 통한 통합 진행 상태 관리
+  const progressViewModel = useProgressViewModel();
+  
+  // 통합 데이터 동기화 (모든 IPC 이벤트 처리)
+  useProgressSync();
 
-  // 기존 스토어들 (점진적 마이그레이션을 위해 유지)
+  // 필요한 Legacy 스토어들 (점진적 마이그레이션 중)
   const progress = useStore(crawlingProgressStore);
   const status = useStore(crawlingStatusStore);
   const config = useStore(configStore);
@@ -459,18 +469,7 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
     animatedValues
   ]);
 
-  const formatDuration = useCallback((milliseconds: number | undefined | null): string => {
-    if (milliseconds === undefined || milliseconds === null || isNaN(milliseconds) || milliseconds <= 0) return '00:00:00';
 
-    const totalSeconds = Math.floor(milliseconds / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    const pad = (num: number) => String(num).padStart(2, '0');
-
-    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-  }, []);
 
   // 이전 상태 체크 여부와 현재 상태를 구분하는 더 명확한 변수들
   const isBeforeStatusCheck = useMemo(() => status === 'idle' && !statusData.lastCheckedAt, [status, statusData.lastCheckedAt]);
@@ -500,26 +499,7 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
   //   remainingTimeDisplay = formatDuration(localTime.remainingTime);
   // }
 
-  const getStatusBadgeColor = useCallback(() => {
-    switch (status) {
-      case 'idle':
-        return 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
-      case 'running':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 animate-pulse';
-      case 'paused':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
-      case 'completed':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
-      case 'error':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
-      case 'stopped':
-        return 'bg-red-200 text-red-900 dark:bg-red-800 dark:text-red-200';
-      case 'initializing':
-        return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300';
-      default:
-        return 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
-    }
-  }, [status]);
+
 
   const getStageBadge = useCallback(() => {
     let stageText = '대기중';
@@ -589,16 +569,8 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-4">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold text-gray-800 dark:text-white">크롤링 상태</h2>
-          <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusBadgeColor()}`}>
-            {isBeforeStatusCheck && '상태확인 전'}
-            {isAfterStatusCheck && '상태확인 완료'}
-            {status === 'running' && '실행중'}
-            {status === 'paused' && '일시정지'}
-            {status === 'completed' && '완료'}
-            {status === 'error' && '오류'}
-            {status === 'stopped' && '중단됨'}
-            {status === 'initializing' && '초기화중'}
-          </span>
+          {/* 새로운 통합 상태 표시 컴포넌트 */}
+          <StatusDisplay />
         </div>
 
         <div className="mb-4 flex justify-between items-center">
@@ -609,20 +581,10 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
         <div className="mb-2">
           <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
             <span>{progress.currentStep || '대기 중...'}</span>
-            <span className="font-medium transition-all duration-300">
-              {progressViewModel.progressBarLabel}
-            </span>
           </div>
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mt-1">
-            <div
-              className={`h-3 rounded-full transition-all duration-300 relative overflow-hidden ${progressViewModel.progressBarColor}`}
-              style={{ width: `${Math.max(0.5, progressViewModel.progressBarPercentage)}%` }}
-            >
-              <div className="absolute inset-0 overflow-hidden">
-                <div className="animate-pulse-light bg-white/30 h-full w-1/4 skew-x-12 transform -translate-x-full animate-progress-wave"></div>
-              </div>
-            </div>
-          </div>
+          
+          {/* 새로운 통합 진행률 표시 컴포넌트 */}
+          <ProgressBarDisplay />
 
           {/* 단계 전환 인디케이터 */}
           <StageTransitionIndicator 
@@ -775,42 +737,14 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
               </p>
             </div>
           ) : (
-            <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {progress.currentStage === 1 ? "1단계 소요 시간" : progress.currentStage === 2 ? "2단계 (누적)소요 시간" : "소요 시간"}
-              </div>
-              <div className="text-xl font-bold mt-1 text-gray-700 dark:text-gray-300 font-digital flex items-center justify-center">
-                {formatDuration(localTime.elapsedTime)}
-                {status === 'running' && (
-                  <div className={`ml-2 ${flipTimer % 2 === 0 ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}>
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                )}
-              </div>
-            </div>
+            // 새로운 통합 시간 정보 표시 컴포넌트
+            <TimeDisplay />
           )}
-
-          <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded-md">
-            <p className="text-xs text-gray-500 dark:text-gray-400">예상 남은 시간</p>
-            <p className={`text-lg sm:text-xl font-bold ${animatedDigits.remainingTime ? 'animate-pulse-once' : ''}`}>
-              {progressViewModel.remainingTimeDisplay}
-            </p>
-          </div>
         </div>
 
         <div className="mt-4 inline-block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-          <div className="text-lg font-bold">
-            {progressViewModel.detailCollectionStatus.displayText} 제품 수집 완료
-          </div>
-          
-          {/* 2단계에서 새로운 항목과 업데이트 항목을 구분하여 표시 */}
-          {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
-            <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              신규: {progress.newItems || 0}개, 업데이트: {progress.updatedItems || 0}개
-            </div>
-          )}
+          {/* 새로운 통합 제품 수집 현황 표시 컴포넌트 */}
+          <CollectionStatusDisplay />
         </div>
 
         {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
@@ -857,6 +791,8 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
              progress.currentStep?.toLowerCase().includes('1.5/3') ||
              progress.currentStep?.toLowerCase().includes('db 중복'))
           }
+          isCompleted={progressViewModel.isCompleted}
+          hasErrors={progressViewModel.isError}
         />
 
         {getRetryInfo()}

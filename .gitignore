@@ -15,6 +15,7 @@ dist-output
 dist-scripts
 data-for-dev
 test-results
+.obsidian
 *.local
 
 # Editor directories and files

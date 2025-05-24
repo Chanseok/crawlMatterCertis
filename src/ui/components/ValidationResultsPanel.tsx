@@ -11,6 +11,8 @@ interface ValidationResultsPanelProps {
   recommendations?: string[];
   isVisible: boolean;
   isInProgress?: boolean;
+  isCompleted?: boolean;
+  hasErrors?: boolean;
 }
 
 /**
@@ -21,7 +23,9 @@ export const ValidationResultsPanel: React.FC<ValidationResultsPanelProps> = ({
   validationSummary,
   recommendations,
   isVisible,
-  isInProgress = false
+  isInProgress = false,
+  isCompleted = false,
+  hasErrors = false
 }) => {
   if (!isVisible) return null;
 
@@ -107,10 +111,34 @@ export const ValidationResultsPanel: React.FC<ValidationResultsPanelProps> = ({
     <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800 animate-fade-in">
       {/* 헤더 */}
       <div className="font-medium text-gray-800 dark:text-gray-200 mb-4 flex items-center">
-        <svg className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span className="text-blue-700 dark:text-blue-300">1.5단계: 제품 검증 완료</span>
+        {hasErrors ? (
+          <>
+            <svg className="w-5 h-5 mr-2 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span className="text-red-700 dark:text-red-300">크롤링 중 오류 발생</span>
+            <button 
+              onClick={() => console.log('Show error details')}
+              className="ml-auto text-xs px-2 py-1 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/70 transition-colors"
+            >
+              상세 정보
+            </button>
+          </>
+        ) : isCompleted ? (
+          <>
+            <svg className="w-5 h-5 mr-2 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-green-700 dark:text-green-300">크롤링 완료</span>
+          </>
+        ) : (
+          <>
+            <svg className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-blue-700 dark:text-blue-300">1.5단계: 제품 검증 완료</span>
+          </>
+        )}
         <div className="ml-auto flex items-center text-xs text-gray-500 dark:text-gray-400">
           <span className="mr-2">처리 효율:</span>
           <span className={`font-semibold ${metrics.processingEfficiency >= 95 ? 'text-green-600' : metrics.processingEfficiency >= 80 ? 'text-yellow-600' : 'text-red-600'}`}>
