@@ -19,6 +19,9 @@ export type CrawlingStage =
   | 'productList:init'
   | 'productList:fetching'
   | 'productList:processing'
+  | 'validation:init'
+  | 'validation:processing'
+  | 'validation:complete'
   | 'productDetail:init'
   | 'productDetail:fetching'
   | 'productDetail:processing'
@@ -34,6 +37,9 @@ export function mapCrawlingStageToStatus(stage: CrawlingStage): CrawlingStatus {
     case 'productList:init':
     case 'productList:fetching':
     case 'productList:processing':
+    case 'validation:init':
+    case 'validation:processing':
+    case 'validation:complete':
     case 'productDetail:init':
     case 'productDetail:fetching':
     case 'productDetail:processing':
@@ -253,12 +259,26 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
   if (this.progressData.startTime) {
     this.progressData.elapsedTime = Date.now() - this.progressData.startTime;
     
-    // 남은 시간 추정 (진행률에 기반)
-    if (this.progressData.total > 0 && this.progressData.current > 0) {
-      const percentComplete = this.progressData.current / this.progressData.total;
-      if (percentComplete > 0) {
-        const totalEstimatedTime = this.progressData.elapsedTime / percentComplete;
-        this.progressData.remainingTime = totalEstimatedTime - this.progressData.elapsedTime;
+    // 완료 상태 확인 - 강화된 조건
+    const isCompleted = this.progressData.status === 'completed' || 
+                       this.progressData.percentage >= 100 ||
+                       data.stage === 'complete' ||
+                       data.status === 'completed' ||
+                       (this.progressData.total > 0 && this.progressData.current >= this.progressData.total);
+    
+    if (isCompleted) {
+      // 완료된 경우 남은 시간을 0으로 설정
+      this.progressData.remainingTime = 0;
+      this.progressData.percentage = 100;
+      console.log('[CrawlerState] Setting remaining time to 0 due to completion');
+    } else {
+      // 남은 시간 추정 (진행률에 기반)
+      if (this.progressData.total > 0 && this.progressData.current > 0) {
+        const percentComplete = this.progressData.current / this.progressData.total;
+        if (percentComplete > 0.1) { // 10% 이상 진행된 경우에만 예측
+          const totalEstimatedTime = this.progressData.elapsedTime / percentComplete;
+          this.progressData.remainingTime = Math.max(0, totalEstimatedTime - this.progressData.elapsedTime);
+        }
         this.progressData.percentage = Math.round(percentComplete * 100);
       }
     }
@@ -1012,6 +1032,48 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
       updatedItems: updated,
       unchangedItems: unchanged,
       failedItems: failed
+    });
+  }
+
+  /**
+   * 진행률을 강제로 동기화하는 메소드
+   * UI와 실제 처리 상태가 불일치할 때 사용
+   */
+  public forceProgressSync(processed: number, total: number): void {
+    console.log(`[CrawlerState] Forcing progress sync: ${processed}/${total}`);
+    
+    // 모든 관련 상태 변수를 동기화
+    this.detailStageProcessedCount = processed;
+    this.detailStageTotalProductCount = total;
+    
+    // 모든 UI 관련 속성 업데이트
+    this.updateProgress({
+      currentPage: processed,
+      totalPages: total,
+      percentage: Math.min(Math.round((processed / total) * 100), 100),
+      processedItems: processed,
+      totalItems: total,
+      newItems: this.detailStageNewCount,
+      updatedItems: this.detailStageUpdatedCount,
+      currentStep: `${processed}/${total} 제품 처리 완료`,
+      remainingTime: processed >= total ? 0 : undefined // 완료 시 남은 시간 0
+    });
+    
+    // 완료 시 상세 진행 상황 강제 동기화
+    if (processed >= total) {
+      this.emitDetailProgressComplete();
+    }
+  }
+
+  /**
+   * 상세 정보 수집 완료 이벤트 발생
+   */
+  private emitDetailProgressComplete(): void {
+    crawlerEvents.emit('detailStageComplete', {
+      processedCount: this.detailStageProcessedCount,
+      totalCount: this.detailStageTotalProductCount,
+      newCount: this.detailStageNewCount,
+      updatedCount: this.detailStageUpdatedCount
     });
   }
 }

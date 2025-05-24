@@ -1794,6 +1794,9 @@ export class ProductDetailCollector {
     // 로그로 최종 상태 확인
     console.log(`[ProductDetailCollector] Final collection status: processed=${actualProcessedItems}/${totalItems}, new=${newItems}, updated=${updatedItems}`);
     
+    // 수집 완료 전 UI와 상태 동기화 강제 실행
+    this.state.forceProgressSync(actualProcessedItems, totalItems);
+    
     // 상태 객체에 최종 상태 업데이트
     this.state.updateProgress({
       current: actualProcessedItems, // CrawlerState의 실제 카운터 사용

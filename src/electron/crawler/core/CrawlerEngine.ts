@@ -14,6 +14,7 @@ import { getDatabaseSummaryFromDb, saveProductsToDb } from '../../database.js';
 import { CrawlerState } from './CrawlerState.js';
 import { ProductListCollector } from '../tasks/productList.js';
 import { ProductDetailCollector } from '../tasks/productDetail.js';
+import { ProductValidationCollector } from '../tasks/productValidation.js';
 import { CrawlerConfig } from '../../../../types.js';
 import { saveProductsToFile, saveMatterProductsToFile } from '../utils/file.js';
 import { 
@@ -457,6 +458,51 @@ export class CrawlerEngine {
       // 제품 목록 결과 저장
       this.handleListCrawlingResults(products);
 
+      // 1.5단계: 로컬DB 상태 체크 및 중복 필터링
+      console.log('[CrawlerEngine] Starting 1.5/3단계: 로컬DB 중복 체크');
+      this.state.setStage('validation:init', '1.5/3단계: 로컬DB 상태 체크 중');
+      
+      // ProductValidationCollector 인스턴스 생성
+      const productValidationCollector = new ProductValidationCollector(this.state, sessionConfig);
+      
+      // 제품 검증 및 필터링 수행
+      const { 
+        newProducts, 
+        existingProducts, 
+        duplicateProducts, 
+        validationSummary 
+      } = await productValidationCollector.validateAndFilterProducts(products);
+      
+      // 검증 결과 로깅
+      console.log(`[CrawlerEngine] 검증 완료: 신규 ${newProducts.length}개, 기존 ${existingProducts.length}개, 중복 ${duplicateProducts.length}개`);
+      
+      // 검증 결과에 기반한 크롤링 범위 적절성 평가
+      const { isRangeAppropriate, recommendations } = 
+        productValidationCollector.validateCrawlingRange(validationSummary);
+      
+      // 범위 적절성 결과 로깅
+      console.log(`[CrawlerEngine] 크롤링 범위 적절성: ${isRangeAppropriate ? '적절함' : '부적절함'}`);
+      
+      // 권장사항이 있는 경우 UI에 표시
+      if (recommendations.length > 0) {
+        console.log('[CrawlerEngine] 크롤링 범위 권장사항:', recommendations);
+        
+        // 진행 상태에 권장사항 추가
+        this.state.updateProgress({
+          rangeRecommendations: recommendations
+        });
+      }
+      
+      console.log(`[CrawlerEngine] 검증 완료: 
+        - 총 수집 제품: ${validationSummary.totalProducts}개
+        - 신규 제품: ${validationSummary.newProducts}개 (${(100 - validationSummary.skipRatio).toFixed(1)}%)
+        - 기존 제품: ${validationSummary.existingProducts}개
+        - 중복 제품: ${validationSummary.duplicateProducts}개 (${validationSummary.duplicateRatio.toFixed(1)}%)
+      `);
+      
+      // 검증 단계 완료
+      this.state.setStage('validation:complete', '1.5/3단계: 로컬DB 상태 체크 완료');
+
       // 치명적 오류 확인 - 하지만 성공적인 수집이 있었다면 오류를 무시
       const hasCriticalFailures = this.state.hasCriticalFailures();
       const hasSuccessfulCollection = products.length > 0;
@@ -475,9 +521,21 @@ export class CrawlerEngine {
 
       if (products.length === 0) {
         console.log('[CrawlerEngine] No products found to process. Crawling complete.');
-        this.isCrawling = false;
+        this.finalizeSession(); // 세션 최종화 호출
         return true;
       }
+      
+      // 검증 결과에 따라 2단계에서는 신규 제품만 처리
+      const productsForDetailStage = newProducts;
+      
+      if (productsForDetailStage.length === 0) {
+        console.log('[CrawlerEngine] No new products to process after validation. Skipping detail stage.');
+        this.state.setStage('completed', '새로운 제품이 없습니다. 크롤링이 완료되었습니다.');
+        this.finalizeSession(); // 세션 최종화 호출
+        return true;
+      }
+      
+      console.log(`[CrawlerEngine] Found ${productsForDetailStage.length} new products to process in detail stage.`);
 
       // 성공률 확인
       const failedPages = this.state.getFailedPages();
@@ -520,18 +578,18 @@ export class CrawlerEngine {
       if (!enableBatchProcessing || totalPagesToCrawl <= batchSize) {
         // [NEW CODE START] Correctly setup CrawlerState for Stage 2 product detail collection
         // This ensures the UI displays the correct total number of products to be processed from Stage 1.
-        console.log(`[CrawlerEngine] Preparing CrawlerState for Stage 2 (non-batch or small batch). Total products from Stage 1: ${products.length}`);
+        console.log(`[CrawlerEngine] Preparing CrawlerState for Stage 2 (non-batch or small batch). Total new products from validation: ${productsForDetailStage.length}`);
 
         // Set the specific counter for total products in the detail stage.
         // This helps CrawlerState and UI to correctly track progress against the total items from Stage 1.
-        this.state.setDetailStageProductCount(products.length);
-        console.log(`[CrawlerEngine] Called this.state.setDetailStageProductCount(${products.length}) for Stage 2.`);
+        this.state.setDetailStageProductCount(productsForDetailStage.length);
+        console.log(`[CrawlerEngine] Called this.state.setDetailStageProductCount(${productsForDetailStage.length}) for Stage 2.`);
 
         // Update the main progress state for the beginning of Stage 2.
         // This resets processed counts and sets the overall total for this stage.
         this.state.updateProgress({
             currentStage: CRAWLING_STAGE.PRODUCT_DETAIL, // Mark current stage as Product Detail
-            totalItems: products.length,                 // Total items to process in Stage 2
+            totalItems: productsForDetailStage.length,   // Total items to process in Stage 2
             processedItems: 0,                           // Reset processed items for Stage 2
             newItems: 0,                                 // Reset new items count
             updatedItems: 0,                             // Reset updated items count
@@ -539,26 +597,27 @@ export class CrawlerEngine {
             currentStep: '제품 상세 정보 수집 초기화 중...',   // Initial status message for Stage 2
             currentPage: 0,                              // Reset current page (if applicable to Stage 2)
             totalPages: 0,                               // Reset total pages (if applicable to Stage 2)
+            remainingTime: 0, // Stage 2 시작 시 예상 남은 시간 0으로 명확히
         });
-        console.log(`[CrawlerEngine] Called this.state.updateProgress for start of Stage 2: totalItems=${products.length}, processedItems=0.`);
+        console.log(`[CrawlerEngine] Called this.state.updateProgress for start of Stage 2: totalItems=${productsForDetailStage.length}, processedItems=0.`);
         // [NEW CODE END]
 
         // 2/2단계: 제품 상세 정보 수집 시작 알림
         const detailStartTime = Date.now();
-        updateProductDetailProgress(0, products.length, detailStartTime);
+        updateProductDetailProgress(0, productsForDetailStage.length, detailStartTime);
         
-        debugLog(`[CrawlerEngine] Found ${products.length} products to process. Starting detail collection...`);
+        debugLog(`[CrawlerEngine] Found ${productsForDetailStage.length} new products to process. Starting detail collection...`);
         
         // 제품 상세 정보 수집기 생성 (2단계)
         const productDetailCollector = new ProductDetailCollector(this.state, this.abortController, sessionConfig, this.browserManager); // Pass session config for consistency
         
         // 제품 상세 정보 수집 실행
-        const matterProducts = await productDetailCollector.collect(products);
+        const matterProducts = await productDetailCollector.collect(productsForDetailStage);
 
         // 2단계 완료 이벤트
         updateProductDetailProgress(
-          products.length, 
-          products.length, 
+          productsForDetailStage.length, 
+          productsForDetailStage.length, 
           detailStartTime, 
           true
         );
@@ -585,7 +644,7 @@ export class CrawlerEngine {
       }
 
       console.log('[CrawlerEngine] Crawling process completed successfully.');
-      this.state.setStage('completed', '크롤링이 성공적으로 완료되었습니다.');
+      this.finalizeSession(); // 세션 최종화 호출
       return true;
     } catch (error) {
       this.handleCrawlingError(error);
@@ -967,5 +1026,41 @@ export class CrawlerEngine {
     );
     
     console.log(`[CrawlerEngine] Final counts updated based on DB results: ${saveResult.added} new, ${saveResult.updated} updated`);
+  }
+
+  /**
+   * 크롤링 세션을 최종화하고 일관된 완료 상태를 보장
+   * 이 메서드는 모든 데이터 수집이 완료된 후 호출되어야 함
+   */
+  private finalizeSession(): void {
+    console.log('[CrawlerEngine] Finalizing crawling session...');
+    // 상태를 완료로 설정
+    this.state.setStage('completed', '크롤링이 성공적으로 완료되었습니다.');
+    this.isCrawling = false;
+    // 최종 진행 상태 업데이트 - 100% 완료 상태로 설정
+    const progressData = this.state.getProgressData();
+    
+    // forceProgressSync를 사용하여 완료 상태 동기화
+    this.state.forceProgressSync(progressData.totalItems || 0, progressData.totalItems || 0);
+    
+    this.state.updateProgress({
+      ...progressData,
+      percentage: 100,
+      status: 'completed',
+      currentStage: 0, // 명시적으로 완료 상태(0)로 설정
+      stage: 'complete', // UI에서 사용하는 완료 상태 설정
+      elapsedTime: progressData.startTime ? Date.now() - progressData.startTime : 0,
+      remainingTime: 0, // 완료 시 남은 시간은 0
+      message: '크롤링이 성공적으로 완료되었습니다.'
+    });
+    // 완료 이벤트 명확히 전달
+    crawlerEvents.emit('crawlingComplete', {
+      message: '크롤링이 성공적으로 완료되었습니다.',
+      timestamp: Date.now()
+    });
+    if (this.abortController && !this.abortController.signal.aborted) {
+      this.abortController.abort('cleanup');
+    }
+    console.log('[CrawlerEngine] Session finalized successfully');
   }
 }

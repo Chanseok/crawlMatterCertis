@@ -989,3 +989,25 @@ export async function getVendors(): Promise<Vendor[]> {
         });
     });
 }
+
+/**
+ * Get all existing product URLs from the database for validation purposes
+ * Used in 1.5 stage validation to check for duplicates
+ */
+export async function getExistingProductUrls(): Promise<Set<string>> {
+    return new Promise((resolve, reject) => {
+        const query = `SELECT url FROM product_details WHERE url IS NOT NULL AND url != ''`;
+        
+        db.all(query, [], (err, rows: any[]) => {
+            if (err) {
+                log.error('[DB] Error fetching existing URLs:', err);
+                reject(err);
+                return;
+            }
+            
+            const urlSet = new Set(rows.map(row => row.url));
+            log.info(`[DB] Found ${urlSet.size} existing URLs in database`);
+            resolve(urlSet);
+        });
+    });
+}

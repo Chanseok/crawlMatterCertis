@@ -6,6 +6,8 @@ import { ExpandableSection } from './ExpandableSection';
 import StatusCheckLoadingAnimation from './StatusCheckLoadingAnimation';
 import { format } from 'date-fns';
 import { RetryStatusIndicator } from './RetryStatusIndicator';
+import { StageTransitionIndicator } from './StageTransitionIndicator';
+import { ValidationResultsPanel } from './ValidationResultsPanel';
 
 interface CrawlingDashboardProps {
   isAppStatusChecking: boolean;
@@ -523,7 +525,14 @@ export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppSt
       stageText = '상태확인 완료';
       stageColor = 'bg-blue-50 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
     } else if (status === 'running' || status === 'completed' || status === 'paused') {
-      if (progress.currentStage === 1) {
+      const currentStep = progress.currentStep?.toLowerCase() || '';
+      
+      // 1.5단계 검증 진행 상태 처리
+      if (currentStep.includes('1.5/3단계') || currentStep.includes('로컬db') || 
+          currentStep.includes('검증') || currentStep.includes('db 중복')) {
+        stageText = '1.5단계: 제품 검증';
+        stageColor = 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300';
+      } else if (progress.currentStage === 1) {
         stageText = '1단계: 목록 수집';
         stageColor = 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300';
       } else if (progress.currentStage === 2) {
@@ -549,7 +558,7 @@ export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppSt
         {stageText}
       </span>
     );
-  }, [isBeforeStatusCheck, isAfterStatusCheck, status, progress.currentStage]);
+  }, [isBeforeStatusCheck, isAfterStatusCheck, status, progress.currentStage, progress.currentStep]);
 
   const getRetryInfo = useCallback(() => {
     // RetryStatusIndicator 컴포넌트가 내부적으로 필요한 상태(재시도 중인지 여부)를 처리함
@@ -607,6 +616,12 @@ export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppSt
               </div>
             </div>
           </div>
+
+          {/* 단계 전환 인디케이터 */}
+          <StageTransitionIndicator 
+            currentStage={progress.currentStage}
+            currentStep={progress.currentStep}
+          />
 
           {/* 배치 진행 상태 표시 (배치 처리가 활성화된 경우에만 표시) */}
           {progress.currentBatch !== undefined && progress.totalBatches !== undefined && progress.totalBatches > 1 && (
@@ -819,13 +834,40 @@ export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppSt
             </div>
           </div>
         )}
+        
+        {/* 1.5단계 검증 결과 패널 */}
+        <ValidationResultsPanel 
+          validationSummary={progress.validationSummary}
+          recommendations={progress.rangeRecommendations}
+          isVisible={
+            // 1.5단계 진행 중이거나 완료된 경우에 표시
+            (status === 'running' || status === 'completed' || status === 'paused') && 
+            (progress.validationSummary !== undefined ||
+             (progress.currentStep?.toLowerCase().includes('검증') || 
+              progress.currentStep?.toLowerCase().includes('로컬db') ||
+              progress.currentStep?.toLowerCase().includes('1.5/3') ||
+              progress.currentStep?.toLowerCase().includes('db 중복')))
+          }
+          isInProgress={
+            // 검증이 진행 중인 경우 (validationSummary가 아직 없지만 검증 관련 step인 경우)
+            status === 'running' && 
+            progress.validationSummary === undefined &&
+            (progress.currentStep?.toLowerCase().includes('검증') || 
+             progress.currentStep?.toLowerCase().includes('로컬db') ||
+             progress.currentStep?.toLowerCase().includes('1.5/3') ||
+             progress.currentStep?.toLowerCase().includes('db 중복'))
+          }
+        />
 
         {getRetryInfo()}
 
         {getEstimatedEndTime()}
 
-        {/* 1단계 수집 중 중요 정보 표시 */}
-        {status === 'running' && progress.currentStage === 1 && (
+        {/* 1단계 또는 검증 단계 중 중요 정보 표시 */}
+        {status === 'running' && (progress.currentStage === 1 || 
+          (progress.currentStep?.toLowerCase().includes('검증') || 
+           progress.currentStep?.toLowerCase().includes('로컬db') ||
+           progress.currentStep?.toLowerCase().includes('1.5/3'))) && (
           <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-100 dark:border-blue-800 text-sm">
             <div className="font-medium text-blue-800 dark:text-blue-300 mb-1">진행 정보:</div>
             <ul className="text-xs text-gray-700 dark:text-gray-300">
@@ -861,6 +903,13 @@ export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppSt
               <li>• 설정된 재시도 횟수: {config.productListRetryCount || 3}회</li>
               {progress.retryCount !== undefined && progress.retryCount > 0 && (
                 <li>• 현재 재시도 횟수: {progress.retryCount}회</li>
+              )}
+              {progress.validationSummary && (
+                <li>• 중복검증: <span className="font-medium text-blue-800 dark:text-blue-300">
+                  신규 {progress.validationSummary.newProducts}개, 
+                  기존 {progress.validationSummary.existingProducts}개,
+                  중복 {progress.validationSummary.duplicateProducts}개
+                </span></li>
               )}
               {progress.currentBatch !== undefined && progress.totalBatches !== undefined && (
                 <li>• 배치 처리: <span className="font-medium text-blue-800 dark:text-blue-300">{progress.currentBatch}/{progress.totalBatches} 배치</span>

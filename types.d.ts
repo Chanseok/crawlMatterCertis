@@ -117,6 +117,27 @@ export type CrawlingStatus =
     | 'completed_stage_1';
 
 /**
+ * 크롤링 단계를 세부적으로 나타내는 열거형 타입
+ * 
+ * @typedef {string} CrawlingStage
+ */
+export type CrawlingStage = 
+    | 'idle' 
+    | 'productList:init' 
+    | 'productList:collecting' 
+    | 'productList:retrying' 
+    | 'productList:complete'
+    | 'validation:init'
+    | 'validation:processing'
+    | 'validation:complete'
+    | 'productDetail:init' 
+    | 'productDetail:collecting' 
+    | 'productDetail:retrying' 
+    | 'productDetail:complete'
+    | 'complete' 
+    | 'error';
+
+/**
  * 개별 페이지 처리 상태 값을 나타내는 열거형 타입
  * 
  * @typedef {string} PageProcessingStatusValue
@@ -206,6 +227,34 @@ export type CrawlingProgress = {
     totalBatches?: number;     
     batchRetryCount?: number;  
     batchRetryLimit?: number;  
+
+    // 1.5단계 검증 정보
+    validationSummary?: ValidationSummary;
+    rangeRecommendations?: string[];
+    
+    // 현재 크롤링 단계 (세분화된 상태)
+    stage?: CrawlingStage;
+};
+
+/**
+ * 로컬DB 상태 체크 결과를 나타내는 타입
+ * 1.5단계에서 제품 검증 및 필터링 결과를 포함
+ * 
+ * @typedef {Object} ValidationSummary
+ * @property {number} totalProducts - 1단계에서 수집한 총 제품 수
+ * @property {number} newProducts - DB에 존재하지 않는 새로운 제품 수
+ * @property {number} existingProducts - 이미 DB에 존재하는 제품 수
+ * @property {number} duplicateProducts - 1단계 수집 중에 발견된 중복 제품 수
+ * @property {number} skipRatio - 건너뛰게 될 제품의 비율 (백분율)
+ * @property {number} duplicateRatio - 중복 제품의 비율 (백분율)
+ */
+export type ValidationSummary = {
+    totalProducts: number;
+    newProducts: number;
+    existingProducts: number;
+    duplicateProducts: number;
+    skipRatio: number;
+    duplicateRatio: number;
 };
 
 /**
