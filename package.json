@@ -38,6 +38,8 @@
     "date-fns": "^4.1.0",
     "electron-log": "^5.4.0",
     "exceljs": "^4.4.0",
+    "mobx": "^6.13.7",
+    "mobx-react-lite": "^4.1.0",
     "nanoid": "^5.1.5",
     "nanostores": "^1.0.1",
     "os-utils": "^0.0.14",

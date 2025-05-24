@@ -13,7 +13,7 @@ import {
   crawlingProgressStore
 } from '../../stores';
 import { ExpandableSection } from '../ExpandableSection';
-import { CrawlingDashboard } from '../CrawlingDashboard';
+import CrawlingDashboard from '../CrawlingDashboard';
 import PageProgressDisplay from '../PageProgressDisplay';
 import { ConcurrentTasksVisualizer } from '../../Charts';
 

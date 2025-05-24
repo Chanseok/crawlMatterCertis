@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
+import { observer } from 'mobx-react-lite';
 import { useStore } from '@nanostores/react';
 import { crawlingProgressStore, crawlingStatusStore, configStore, crawlingStatusSummaryStore, 
   lastCrawlingStatusSummaryStore, CrawlingStatusSummary, concurrentTasksStore, updateCrawlingProgress, statusStore } from '../stores';
@@ -8,6 +9,7 @@ import { format } from 'date-fns';
 import { RetryStatusIndicator } from './RetryStatusIndicator';
 import { StageTransitionIndicator } from './StageTransitionIndicator';
 import { ValidationResultsPanel } from './ValidationResultsPanel';
+import { useProgressSync } from '../hooks/useProgressSync.js';
 
 interface CrawlingDashboardProps {
   isAppStatusChecking: boolean;
@@ -27,7 +29,11 @@ interface AnimatedValues {
 /**
  * 크롤링 진행 상황을 시각적으로 보여주는 대시보드 컴포넌트
  */
-export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
+function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
+  // 새로운 ViewModel 패턴을 통한 진행 상태 관리
+  const progressViewModel = useProgressSync();
+
+  // 기존 스토어들 (점진적 마이그레이션을 위해 유지)
   const progress = useStore(crawlingProgressStore);
   const status = useStore(crawlingStatusStore);
   const config = useStore(configStore);
@@ -484,14 +490,15 @@ export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppSt
     retryStatusText = "제품 정보 재시도";
   }
 
-  let remainingTimeDisplay: string;
-  if (isBeforeStatusCheck) {
-    remainingTimeDisplay = "상태확인 전";
-  } else if (isAfterStatusCheck || localTime.remainingTime === 0 || localTime.remainingTime === undefined || localTime.remainingTime === null || isNaN(localTime.remainingTime)) {
-    remainingTimeDisplay = "-:--:--";
-  } else {
-    remainingTimeDisplay = formatDuration(localTime.remainingTime);
-  }
+  // ViewModel이 remainingTimeDisplay를 제공하므로 이 코드는 더 이상 필요하지 않음
+  // let remainingTimeDisplay: string;
+  // if (isBeforeStatusCheck) {
+  //   remainingTimeDisplay = "상태확인 전";
+  // } else if (isAfterStatusCheck || localTime.remainingTime === 0 || localTime.remainingTime === undefined || localTime.remainingTime === null || isNaN(localTime.remainingTime)) {
+  //   remainingTimeDisplay = "-:--:--";
+  // } else {
+  //   remainingTimeDisplay = formatDuration(localTime.remainingTime);
+  // }
 
   const getStatusBadgeColor = useCallback(() => {
     switch (status) {
@@ -603,13 +610,13 @@ export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppSt
           <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
             <span>{progress.currentStep || '대기 중...'}</span>
             <span className="font-medium transition-all duration-300">
-              {animatedValues.percentage !== undefined ? `${animatedValues.percentage.toFixed(1)}%` : '0%'}
+              {progressViewModel.progressBarLabel}
             </span>
           </div>
           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mt-1">
             <div
-              className="bg-blue-500 h-3 rounded-full transition-all duration-300 relative overflow-hidden"
-              style={{ width: `${Math.max(0.5, animatedValues.percentage || 0)}%` }}
+              className={`h-3 rounded-full transition-all duration-300 relative overflow-hidden ${progressViewModel.progressBarColor}`}
+              style={{ width: `${Math.max(0.5, progressViewModel.progressBarPercentage)}%` }}
             >
               <div className="absolute inset-0 overflow-hidden">
                 <div className="animate-pulse-light bg-white/30 h-full w-1/4 skew-x-12 transform -translate-x-full animate-progress-wave"></div>
@@ -788,21 +795,14 @@ export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppSt
           <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded-md">
             <p className="text-xs text-gray-500 dark:text-gray-400">예상 남은 시간</p>
             <p className={`text-lg sm:text-xl font-bold ${animatedDigits.remainingTime ? 'animate-pulse-once' : ''}`}>
-              {remainingTimeDisplay}
+              {progressViewModel.remainingTimeDisplay}
             </p>
           </div>
         </div>
 
         <div className="mt-4 inline-block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
           <div className="text-lg font-bold">
-            {Math.round(progress.processedItems || 0)} / {
-              progress.totalItems ||
-              statusSummary?.siteProductCount ||
-              (((progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || 
-                statusSummary?.crawlingRange ? 
-                (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
-                targetPageCount) * (config.productsPerPage || 12))
-          } 제품 수집 완료
+            {progressViewModel.detailCollectionStatus.displayText} 제품 수집 완료
           </div>
           
           {/* 2단계에서 새로운 항목과 업데이트 항목을 구분하여 표시 */}
@@ -1135,4 +1135,7 @@ export const CrawlingDashboard = React.memo(function CrawlingDashboard({ isAppSt
       {/* BatchUITestButton removed - moved to Settings tab */}
     </>
   );
-});
+}
+
+// MobX observer로 감싸서 ViewModel 변경사항을 자동으로 감지
+export default observer(CrawlingDashboard);

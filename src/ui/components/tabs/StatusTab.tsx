@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useStore } from '@nanostores/react';
 import { crawlingProgressStore } from '../../stores';
 import { ExpandableSection } from '../ExpandableSection';
-import { CrawlingDashboard } from '../CrawlingDashboard';
+import CrawlingDashboard from '../CrawlingDashboard';
 import PageProgressDisplay from '../PageProgressDisplay';
 import { ConcurrentTasksVisualizer } from '../../Charts';
 import StatusCheckAnimation from '../StatusCheckAnimation';
