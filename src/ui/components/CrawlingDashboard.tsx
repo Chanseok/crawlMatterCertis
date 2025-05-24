@@ -15,7 +15,7 @@ import { CollectionStatusDisplay } from './displays/CollectionStatusDisplay';
 import { ProgressBarDisplay } from './displays/ProgressBarDisplay';
 import { StatusDisplay } from './displays/StatusDisplay';
 import { TimeDisplay } from './displays/TimeDisplay';
-import { useProgressSync } from '../hooks/useUnifiedProgressSync';
+import { useUnifiedProgressSync } from '../hooks/useUnifiedProgressSync';
 import { useProgressViewModel } from '../stores/ProgressStore';
 
 interface CrawlingDashboardProps {
@@ -41,7 +41,7 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
   const progressViewModel = useProgressViewModel();
   
   // 통합 데이터 동기화 (모든 IPC 이벤트 처리)
-  useProgressSync();
+  useUnifiedProgressSync();
 
   // 필요한 Legacy 스토어들 (점진적 마이그레이션 중)
   const progress = useStore(crawlingProgressStore);

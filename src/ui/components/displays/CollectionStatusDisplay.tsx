@@ -17,7 +17,7 @@ import { useProgressViewModel } from '../../stores/ProgressStore';
  */
 export const CollectionStatusDisplay = observer(() => {
   const viewModel = useProgressViewModel();
-  const { processed, total, displayText, isComplete } = viewModel.collectionDisplay;
+  const { processed, total, displayText, isComplete, phaseText } = viewModel.collectionDisplay;
   
   // 상태에 따른 스타일 결정
   const getStatusStyle = () => {
@@ -67,7 +67,7 @@ export const CollectionStatusDisplay = observer(() => {
               {displayText}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">
-              제품 상세 수집 현황
+              {phaseText} 수집 현황
             </div>
           </div>
         </div>

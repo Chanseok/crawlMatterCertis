@@ -1,44 +1,21 @@
-import { useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
 import { progressStore } from '../stores/ProgressStore.js';
+import { useUnifiedProgressSync } from './useUnifiedProgressSync.js';
 import type { CrawlingProgress } from '../../../types.js';
 
 /**
- * 크롤링 진행 상태 동기화를 위한 커스텀 훅
+ * 크롤링 진행 상태 동기화를 위한 커스텀 훅 (Legacy 호환성)
  * 
  * 이 훅은:
- * 1. Electron IPC로부터 진행 상태 업데이트를 수신
- * 2. ProgressStore의 ViewModel을 통해 상태를 업데이트
- * 3. MobX observer를 통해 자동으로 UI 리렌더링 트리거
+ * 1. 새로운 UnifiedProgressSync Hook을 사용
+ * 2. 기존 컴포넌트들과의 호환성 보장
+ * 3. ProgressStore의 UnifiedViewModel을 통해 상태 제공
  */
 export function useProgressSync() {
   const viewModel = progressStore.viewModel;
-
-  useEffect(() => {
-    // IPC 구독 콜백 함수
-    const handleProgressUpdate = (progress: CrawlingProgress) => {
-      console.log('[useProgressSync] Received progress update:', progress);
-      progressStore.updateProgress(progress);
-    };
-
-    // Electron IPC 구독 시작
-    let unsubscribe: (() => void) | undefined;
-    
-    if (window.electron && window.electron.subscribeCrawlingProgress) {
-      console.log('[useProgressSync] Setting up IPC subscription');
-      unsubscribe = window.electron.subscribeCrawlingProgress(handleProgressUpdate);
-    } else {
-      console.warn('[useProgressSync] Electron API not available - running in development mode?');
-    }
-
-    // 컴포넌트 언마운트 시 구독 해제
-    return () => {
-      if (unsubscribe) {
-        console.log('[useProgressSync] Cleaning up IPC subscription');
-        unsubscribe();
-      }
-    };
-  }, []);
+  
+  // 새로운 통합 동기화 Hook 사용
+  useUnifiedProgressSync();
 
   // ViewModel의 computed properties들을 반환
   return {

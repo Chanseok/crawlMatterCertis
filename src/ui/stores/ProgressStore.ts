@@ -1,15 +1,15 @@
-import { CrawlingProgressViewModel } from '../viewModels/UnifiedCrawlingProgressViewModel.js';
+import { UnifiedCrawlingProgressViewModel } from '../viewModels/UnifiedCrawlingProgressViewModel.js';
 import type { CrawlingProgress } from '../../../types.js';
 
 /**
  * Clean Architecture 기반 통합 Progress Store
- * 단일 ViewModel 인스턴스 전역 관리
+ * 단일 UnifiedViewModel 인스턴스 전역 관리
  */
 class ProgressStore {
-  private _viewModel: CrawlingProgressViewModel;
+  private _viewModel: UnifiedCrawlingProgressViewModel;
 
   constructor() {
-    this._viewModel = new CrawlingProgressViewModel();
+    this._viewModel = new UnifiedCrawlingProgressViewModel();
     console.log('[ProgressStore] Unified ViewModel initialized');
     
     // 개발 환경에서 디버깅 용도
@@ -21,7 +21,7 @@ class ProgressStore {
   /**
    * 단일 ViewModel 인스턴스 반환
    */
-  get viewModel(): CrawlingProgressViewModel {
+  get viewModel(): UnifiedCrawlingProgressViewModel {
     return this._viewModel;
   }
 
@@ -49,7 +49,7 @@ export const progressStore = new ProgressStore();
 /**
  * React Hook: ViewModel 접근
  */
-export function useProgressViewModel(): CrawlingProgressViewModel {
+export function useProgressViewModel(): UnifiedCrawlingProgressViewModel {
   return progressStore.viewModel;
 }
 

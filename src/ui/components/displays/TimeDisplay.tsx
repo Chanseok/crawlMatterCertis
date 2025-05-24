@@ -17,25 +17,8 @@ import { useProgressViewModel } from '../../stores/ProgressStore';
  */
 export const TimeDisplay = observer(() => {
   const viewModel = useProgressViewModel();
-  const { elapsed, remainingDisplay } = viewModel.timeDisplay;
-  const { isComplete, isIdle } = viewModel.statusDisplay;
-  
-  // 경과 시간 포맷
-  const formatElapsed = (ms: number): string => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    if (hours > 0) {
-      return `${hours}시간 ${minutes % 60}분`;
-    } else if (minutes > 0) {
-      return `${minutes}분 ${seconds % 60}초`;
-    } else {
-      return `${seconds}초`;
-    }
-  };
-
-  const elapsedDisplay = formatElapsed(elapsed);
+  const { elapsedDisplay, remainingDisplay, isComplete } = viewModel.timeDisplay;
+  const { isIdle } = viewModel.statusDisplay;
 
   return (
     <div className="space-y-2">

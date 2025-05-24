@@ -1,11 +1,11 @@
 /**
- * useProgressSync.ts
- * Clean Architecture 기반 데이터 동기화 Hook
+ * useUnifiedProgressSync.ts
+ * Clean Architecture 기반 통합 데이터 동기화 Hook
  * 
  * 책임:
- * - IPC 이벤트와 ViewModel 간 완전한 데이터 동기화
- * - 모든 관련 이벤트의 통합 처리
- * - 데이터 일관성 보장
+ * - IPC 이벤트와 UnifiedViewModel 간 완전한 데이터 동기화
+ * - 모든 관련 이벤트의 통합 처리 (진행, 완료, 오류)
+ * - 3가지 UI 동기화 문제 완전 해결
  */
 
 import { useEffect } from 'react';
@@ -13,19 +13,19 @@ import { useProgressViewModel } from '../stores/ProgressStore';
 import type { CrawlingProgress } from '../../../types';
 
 /**
- * 크롤링 진행 상태 동기화 Hook
- * IPC 이벤트를 ViewModel로 통합하여 UI 일관성 보장
+ * 통합 크롤링 진행 상태 동기화 Hook
+ * IPC 이벤트를 UnifiedViewModel로 완전히 동기화하여 3가지 원본 문제 해결
  */
-export function useProgressSync(): void {
+export function useUnifiedProgressSync(): void {
   const viewModel = useProgressViewModel();
 
   useEffect(() => {
     /**
-     * 통합 이벤트 핸들러
-     * 모든 크롤링 관련 이벤트를 단일 함수에서 처리
+     * 진행 상태 업데이트 핸들러
+     * 모든 크롤링 진행 이벤트를 통합 처리
      */
-    const handleProgressUpdate = (event: any, data: CrawlingProgress) => {
-      console.log('[ProgressSync] Event received:', event?.type || 'unknown', data);
+    const handleProgressUpdate = (_event: any, data: CrawlingProgress) => {
+      console.log('[UnifiedProgressSync] Progress event:', data);
       
       // 완전한 데이터 매핑 및 검증
       const mappedData: Partial<CrawlingProgress> = {
@@ -34,8 +34,9 @@ export function useProgressSync(): void {
         status: data.status,
         percentage: data.percentage,
         currentStep: data.currentStep,
+        currentStage: data.currentStage,
         
-        // 페이지 관련
+        // 페이지 관련 (다양한 필드명 지원)
         currentPage: data.currentPage || data.current,
         totalPages: data.totalPages || data.total,
         
@@ -49,45 +50,43 @@ export function useProgressSync(): void {
         elapsedTime: data.elapsedTime,
         remainingTime: data.remainingTime,
         
-        // 단계 정보
-        currentStage: data.currentStage,
-        
-        // 오류 정보 - message를 사용 (errorMessage 필드는 존재하지 않음)
+        // 오류 정보
         message: data.message
       };
 
-      // ViewModel 업데이트
+      // ViewModel로 업데이트 전달
       viewModel.updateFromRawProgress(mappedData);
     };
 
     /**
-     * 완료 상태 전용 핸들러
+     * 완료 상태 전용 핸들러 
+     * 원본 문제 #1, #2, #3 해결을 위한 명시적 완료 처리
      */
     const handleCompletionEvent = (_event: any, data: any) => {
-      console.log('[ProgressSync] Completion event:', data);
+      console.log('[UnifiedProgressSync] Completion event:', data);
       
-      viewModel.updateFromRawProgress({
-        ...data,
-        status: 'completed',
-        percentage: 100,
-        currentStep: '크롤링 완료'
-      });
+      // 먼저 최종 진행 데이터 업데이트
+      if (data.processedItems && data.totalItems) {
+        viewModel.updateFromRawProgress({
+          ...data,
+          processedItems: data.totalItems, // 완료 시 처리 항목을 총 항목과 일치시킴
+          percentage: 100
+        });
+      }
+      
+      // 명시적 완료 상태 설정
+      viewModel.markComplete();
     };
 
     /**
      * 오류 상태 전용 핸들러
      */
     const handleErrorEvent = (_event: any, data: any) => {
-      console.log('[ProgressSync] Error event:', data);
+      console.log('[UnifiedProgressSync] Error event:', data);
       
-      viewModel.updateFromRawProgress({
-        ...data,
-        status: 'error',
-        currentStep: data.message || '오류 발생',
-        errorMessage: data.message || data.error
-      });
+      const errorMessage = data.message || data.error || '알 수 없는 오류가 발생했습니다';
+      viewModel.markError(errorMessage, data.isRecoverable !== false);
     };
-
 
     // 구독 함수들을 저장할 배열
     const unsubscribeFunctions: (() => void)[] = [];
@@ -113,9 +112,9 @@ export function useProgressSync(): void {
         });
         unsubscribeFunctions.push(unsubscribeError);
 
-        console.log('[ProgressSync] Event subscriptions registered');
+        console.log('[UnifiedProgressSync] Event subscriptions registered');
       } catch (error) {
-        console.warn('[ProgressSync] Failed to register subscriptions:', error);
+        console.warn('[UnifiedProgressSync] Failed to register subscriptions:', error);
       }
     }
 
