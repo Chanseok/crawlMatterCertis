@@ -27,6 +27,7 @@ import { useTabs } from './hooks/useTabs';
 import { useCrawlingComplete } from './hooks/useCrawlingComplete';
 import { useApiInitialization } from './hooks/useApiInitialization';
 import { AnalysisTab } from './components/tabs/AnalysisTab';
+import { ProgressDebugPanel } from './components/debug/ProgressDebugPanel';
 
 function App() {
   // API 초기화 (앱 시작 시 한 번만 수행)
@@ -191,7 +192,8 @@ function App() {
   // 로그 메시지 렌더링 함수
 
   return (
-    <AppLayout>
+    <>
+      <AppLayout>
       <div className="lg:col-span-3 space-y-6">
         {/* 컨트롤 패널 */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
@@ -255,7 +257,11 @@ function App() {
         
         {/* 수집된 제품 정보 섹션은 로컬DB 탭으로 이동되었습니다 */}
       </div>
-    </AppLayout>
+      </AppLayout>
+      
+      {/* 개발 환경에서만 표시되는 디버그 패널 */}
+      <ProgressDebugPanel />
+    </>
   );
 }
 

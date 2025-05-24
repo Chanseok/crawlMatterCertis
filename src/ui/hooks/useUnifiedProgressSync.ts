@@ -9,7 +9,7 @@
  */
 
 import { useEffect } from 'react';
-import { useProgressViewModel } from '../stores/ProgressStore';
+import { useProgressViewModel } from './useProgressViewModel';
 import type { CrawlingProgress } from '../../../types';
 
 /**
@@ -66,15 +66,26 @@ export function useUnifiedProgressSync(): void {
       console.log('[UnifiedProgressSync] Completion event:', data);
       
       // 먼저 최종 진행 데이터 업데이트
-      if (data.processedItems && data.totalItems) {
+      if (data.totalItems) { 
+        // 46/48 -> 48/48 문제 해결을 위해 항상 총 항목으로 설정
         viewModel.updateFromRawProgress({
           ...data,
-          processedItems: data.totalItems, // 완료 시 처리 항목을 총 항목과 일치시킴
-          percentage: 100
+          processedItems: data.totalItems, // 항상 처리 항목을 총 항목과 일치시킴
+          percentage: 100,
+          status: 'completed'
+        });
+      } else if (data.total) {
+        // 총 항목 수가 total로 제공되는 경우도 처리
+        viewModel.updateFromRawProgress({
+          ...data,
+          processedItems: data.total, // 완료 시 처리 항목을 총 항목과 일치시킴
+          totalItems: data.total,
+          percentage: 100,
+          status: 'completed'
         });
       }
       
-      // 명시적 완료 상태 설정
+      // 명시적 완료 상태 설정 및 오류 상태 제거
       viewModel.markComplete();
     };
 

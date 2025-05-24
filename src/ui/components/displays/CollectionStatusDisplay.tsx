@@ -9,7 +9,7 @@
  */
 
 import { observer } from 'mobx-react-lite';
-import { useProgressViewModel } from '../../stores/ProgressStore';
+import { useProgressViewModel } from '../../hooks/useProgressViewModel';
 
 /**
  * 제품 수집 현황 표시 컴포넌트

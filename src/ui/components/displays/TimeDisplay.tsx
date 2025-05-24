@@ -9,7 +9,7 @@
  */
 
 import { observer } from 'mobx-react-lite';
-import { useProgressViewModel } from '../../stores/ProgressStore';
+import { useProgressViewModel } from '../../hooks/useProgressViewModel';
 
 /**
  * 시간 정보 표시 컴포넌트

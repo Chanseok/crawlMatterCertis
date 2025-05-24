@@ -133,3 +133,13 @@ export interface TimeDisplay {
   remainingDisplay: string;
   isComplete: boolean;
 }
+
+/**
+ * 페이지 진행 표시용
+ * - 문제 #3 해결: 페이지/제품 수 혼합 표시(48/5 페이지) 문제
+ */
+export interface PageDisplay {
+  current: number;
+  total: number;
+  displayText: string;
+}

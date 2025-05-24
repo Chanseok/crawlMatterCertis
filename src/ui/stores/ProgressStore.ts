@@ -1,11 +1,13 @@
 import { UnifiedCrawlingProgressViewModel } from '../viewModels/UnifiedCrawlingProgressViewModel.js';
 import type { CrawlingProgress } from '../../../types.js';
+import { registerViewModelForTesting } from './TestAccessBridge';
 
 /**
  * Clean Architecture 기반 통합 Progress Store
  * 단일 UnifiedViewModel 인스턴스 전역 관리
  */
-class ProgressStore {
+export class ProgressStore {
+  private static _instance: ProgressStore;
   private _viewModel: UnifiedCrawlingProgressViewModel;
 
   constructor() {
@@ -15,7 +17,12 @@ class ProgressStore {
     // 개발 환경에서 디버깅 용도
     if (typeof window !== 'undefined') {
       (window as any).__progressStore = this;
+      
+      // 테스트용 ViewModel 등록
+      registerViewModelForTesting(this._viewModel);
     }
+    
+    ProgressStore._instance = this;
   }
 
   /**
@@ -23,6 +30,13 @@ class ProgressStore {
    */
   get viewModel(): UnifiedCrawlingProgressViewModel {
     return this._viewModel;
+  }
+  
+  /**
+   * 테스트 환경에서 ViewModel 접근을 위한 정적 메서드
+   */
+  static getViewModel(): UnifiedCrawlingProgressViewModel | null {
+    return this._instance ? this._instance._viewModel : null;
   }
 
   /**
@@ -52,5 +66,3 @@ export const progressStore = new ProgressStore();
 export function useProgressViewModel(): UnifiedCrawlingProgressViewModel {
   return progressStore.viewModel;
 }
-
-export type { ProgressStore };

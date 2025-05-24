@@ -15,8 +15,9 @@ import { CollectionStatusDisplay } from './displays/CollectionStatusDisplay';
 import { ProgressBarDisplay } from './displays/ProgressBarDisplay';
 import { StatusDisplay } from './displays/StatusDisplay';
 import { TimeDisplay } from './displays/TimeDisplay';
+import { PageProgressDisplay } from './displays/PageProgressDisplay';
 import { useUnifiedProgressSync } from '../hooks/useUnifiedProgressSync';
-import { useProgressViewModel } from '../stores/ProgressStore';
+import { useProgressViewModel } from '../hooks/useProgressViewModel';
 
 interface CrawlingDashboardProps {
   isAppStatusChecking: boolean;
@@ -746,6 +747,9 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
           {/* 새로운 통합 제품 수집 현황 표시 컴포넌트 */}
           <CollectionStatusDisplay />
         </div>
+        
+        {/* 페이지 진행 상태 표시 컴포넌트 - 문제 #3 해결: 페이지/제품 수 혼합 표시 방지 */}
+        <PageProgressDisplay />
 
         {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
           <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-md">
@@ -791,8 +795,8 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
              progress.currentStep?.toLowerCase().includes('1.5/3') ||
              progress.currentStep?.toLowerCase().includes('db 중복'))
           }
-          isCompleted={progressViewModel.isCompleted}
-          hasErrors={progressViewModel.isError}
+          isCompleted={progressViewModel.statusDisplay.isComplete}
+          hasErrors={progressViewModel.statusDisplay.isError}
         />
 
         {getRetryInfo()}
