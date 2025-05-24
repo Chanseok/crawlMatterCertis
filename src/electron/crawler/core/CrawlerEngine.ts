@@ -359,6 +359,9 @@ export class CrawlerEngine {
                     failed: saveResult.failed,
                     message: `배치 ${batchNumber}: ${saveResult.added}개 추가, ${saveResult.updated}개 업데이트됨`
                   });
+                  
+                  // 배치 처리 중이라도 최종 카운트는 계속 누적 업데이트
+                  this.handleDatabaseSaveResult(saveResult);
                 } catch (dbError) {
                   console.error(`[CrawlerEngine] Error saving batch ${batchNumber} to DB:`, dbError);
                   
@@ -867,6 +870,9 @@ export class CrawlerEngine {
             failed: saveResult.failed,
             duplicateInfo: saveResult.duplicateInfo
           });
+          
+          // 최종 저장 결과로 크롤링 상태 카운터 업데이트
+          this.handleDatabaseSaveResult(saveResult);
         }
       } catch (err) {
         console.error('[CrawlerEngine] Error saving products to DB:', err);
@@ -938,5 +944,28 @@ export class CrawlerEngine {
       console.error('[CrawlerEngine] Failed to save batch file:', error);
       throw error;
     }
+  }
+
+  /**
+   * DB 저장 결과를 처리하고 최종 카운트 업데이트
+   * 
+   * 크롤링 중에는 새로운/업데이트된 항목으로 간주되었지만 실제 DB 저장 시
+   * 다른 결과가 나올 수 있으므로 최종 결과를 기준으로 카운트 업데이트
+   */
+  private handleDatabaseSaveResult(saveResult: { 
+    added: number; 
+    updated: number; 
+    unchanged?: number; 
+    failed?: number; 
+  }): void {
+    // CrawlerState의 최종 카운트 업데이트 메서드 호출
+    this.state.updateFinalCounts(
+      saveResult.added, 
+      saveResult.updated, 
+      saveResult.unchanged || 0, 
+      saveResult.failed || 0
+    );
+    
+    console.log(`[CrawlerEngine] Final counts updated based on DB results: ${saveResult.added} new, ${saveResult.updated} updated`);
   }
 }

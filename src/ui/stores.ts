@@ -270,12 +270,22 @@ export function initializeApiSubscriptions() {
   });
   unsubscribeFunctions.push(unsubDbSaveSkipped);
   
-  // DB 저장 오류 이벤트 구독 (추가)
-  const unsubDbSaveError = api.subscribeToEvent('dbSaveError', (data) => {
-    console.error('[UI] DB 저장 오류 이벤트 수신:', data);
-    addLog(`제품 정보 DB 저장 실패: ${data.error || '알 수 없는 오류'}`, 'error');
-  });
-  unsubscribeFunctions.push(unsubDbSaveError);
+  // 최종 크롤링 결과 이벤트 구독 (추가)
+  const unsubFinalCrawlingResult = api.subscribeToEvent(
+    'finalCrawlingResult',
+    (data: { collected: number; newItems: number; updatedItems: number; unchangedItems?: number; failedItems?: number }) => {
+      console.log('[UI] 최종 크롤링 결과 이벤트 수신:', data);
+      addLog(`크롤링 최종 결과: 총 ${data.collected}개 중 ${data.newItems}개 신규, ${data.updatedItems}개 업데이트됨`, 'info');
+      
+      // 최종 결과를 기반으로 크롤링 진행 상태 업데이트
+      updateCrawlingProgress({
+        newItems: data.newItems,
+        updatedItems: data.updatedItems,
+        message: `크롤링 완료: ${data.collected}개 수집 (${data.newItems}개 추가, ${data.updatedItems}개 업데이트)`
+      });
+    }
+  );
+  unsubscribeFunctions.push(unsubFinalCrawlingResult);
 
   // 동시 작업 상태 실시간 구독
   const unsubConcurrentTasks = api.subscribeToEvent('crawlingTaskStatus', (taskStatus) => {

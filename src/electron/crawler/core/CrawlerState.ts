@@ -970,4 +970,48 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     this.processedProductUrls.clear();
     console.log('[CrawlerState] Detail stage initialized with clean state');
   }
+
+  /**
+   * 최종 DB 저장 결과를 반영하여 카운터 업데이트
+   * 크롤링 중에는 새로운 항목으로 간주되었지만, 실제 DB 저장 시에는 
+   * 이미 존재하는 항목으로 판명된 경우를 처리하기 위함
+   * 
+   * @param {number} added DB에 새로 추가된 항목 수
+   * @param {number} updated DB에서 업데이트된 항목 수
+   * @param {number} unchanged DB에서 변경 없는 항목 수 (선택)
+   * @param {number} failed DB 저장 실패한 항목 수 (선택)
+   */
+  public updateFinalCounts(added: number, updated: number, unchanged: number = 0, failed: number = 0): void {
+    console.log(`[CrawlerState] Updating final counts with DB results - added: ${added}, updated: ${updated}, unchanged: ${unchanged}, failed: ${failed}`);
+    
+    // 기존 상태 정보 저장 (디버깅용)
+    const prevNewCount = this.detailStageNewCount;
+    const prevUpdatedCount = this.detailStageUpdatedCount;
+    
+    // 실제 DB 저장 결과를 기준으로 카운터 업데이트
+    this.detailStageNewCount = added;
+    this.detailStageUpdatedCount = updated;
+    
+    // 진행 상태 데이터 업데이트
+    this.progressData.newItems = added;
+    this.progressData.updatedItems = updated;
+    
+    // 메시지 추가
+    this.progressData.message = `크롤링 완료: ${this.processedProductUrls.size}개 수집 (${added}개 추가, ${updated}개 업데이트)`;
+    
+    // 로그 출력
+    console.log(`[CrawlerState] Final counts updated: newItems ${prevNewCount} → ${this.detailStageNewCount}, updatedItems ${prevUpdatedCount} → ${this.detailStageUpdatedCount}`);
+    
+    // 상태 변경 이벤트 발행
+    this.emitProgressUpdate();
+    
+    // 최종 크롤링 결과 이벤트 발행
+    crawlerEvents.emit('finalCrawlingResult', {
+      collected: this.processedProductUrls.size,
+      newItems: added,
+      updatedItems: updated,
+      unchangedItems: unchanged,
+      failedItems: failed
+    });
+  }
 }

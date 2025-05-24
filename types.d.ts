@@ -346,6 +346,18 @@ export type ConcurrentCrawlingTask = {
     error?: string;
 };
 
+/**
+ * 데이터베이스 저장 결과를 나타내는 인터페이스
+ * 크롤링 중 수집된 제품과 실제로 DB에 저장된 제품 간의 차이를 추적하기 위해 사용
+ */
+export interface FinalCrawlingResult {
+    collected: number;      // 크롤링 엔진에서 수집된 총 제품 수
+    newItems: number;       // DB에 새로 추가된 제품 수
+    updatedItems: number;   // DB에서 업데이트된 제품 수
+    unchangedItems?: number; // 변경되지 않은 제품 수
+    failedItems?: number;    // 저장 실패한 제품 수
+}
+
 // 이벤트 페이로드 맵핑 확장
 export type EventPayloadMapping = {
     statistics: Statistics;
@@ -359,8 +371,9 @@ export type EventPayloadMapping = {
     crawlingStopped: ConcurrentCrawlingTask[];
     crawlingFailedPages: { pageNumber: number; errors: string[] }[];
     dbSaveError: { error?: string }; 
-    dbSaveComplete: { success: boolean }; // <-- Add this line
+    dbSaveComplete: { success: boolean; added?: number; updated?: number; unchanged?: number; failed?: number; }; 
     dbSaveSkipped: any; // <-- Add this if you use 'dbSaveSkipped' elsewhere
+    finalCrawlingResult: FinalCrawlingResult; // 최종 크롤링 결과 추가
 };
 
 // 메서드 매개변수 맵핑

@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { addLog } from '../stores';
 import { useMultipleEventSubscriptions, EventSubscription } from './useEventSubscription';
 import type { MatterProduct } from '../../../types';
-import { CrawlingCompleteData, DbSaveCompleteData, DbSaveSkippedData } from '../types/crawling';
+import { CrawlingCompleteData, DbSaveCompleteData, DbSaveSkippedData, FinalCrawlingResultData } from '../types/crawling';
 import { useDebugLog } from './useDebugLog';
 
 /**
@@ -64,7 +64,13 @@ export function useCrawlingComplete() {
     if (data.success) {
       setAutoSavedToDb(true);
       setError(null);
-      addLog(`DB 저장 완료${data.count ? `: ${data.count}개 항목` : ''}`, 'success');
+      
+      // 상세 저장 결과가 있는 경우 더 자세한 로그 표시
+      if (data.added !== undefined && data.updated !== undefined) {
+        addLog(`DB 저장 완료: ${data.added}개 추가됨, ${data.updated}개 업데이트됨`, 'success');
+      } else {
+        addLog(`DB 저장 완료${data.count ? `: ${data.count}개 항목` : ''}`, 'success');
+      }
     } else {
       setError('DB 저장 실패');
       addLog(`DB 저장 실패${data.message ? `: ${data.message}` : ''}`, 'warning');
@@ -75,6 +81,12 @@ export function useCrawlingComplete() {
     setIsSavingToDb(false);
     setAutoSavedToDb(false);
     addLog(`DB 저장 건너뜀${data.reason ? ': ' + data.reason : ''}`, 'info');
+  }, []);
+
+  // 최종 크롤링 결과 처리 핸들러
+  const handleFinalCrawlingResult = useCallback((data: FinalCrawlingResultData) => {
+    console.log('Final crawling result received:', data);
+    addLog(`최종 수집 결과: 총 ${data.collected}개 제품 중 ${data.newItems}개 신규, ${data.updatedItems}개 업데이트됨`, 'info');
   }, []);
 
   // 에러 핸들러
@@ -88,8 +100,9 @@ export function useCrawlingComplete() {
   const subscriptions = useMemo<EventSubscription[]>(() => [
     { eventName: 'crawlingComplete', callback: handleCrawlingComplete },
     { eventName: 'dbSaveComplete', callback: handleDbSaveComplete },
-    { eventName: 'dbSaveSkipped', callback: handleDbSaveSkipped }
-  ], [handleCrawlingComplete, handleDbSaveComplete, handleDbSaveSkipped]);
+    { eventName: 'dbSaveSkipped', callback: handleDbSaveSkipped },
+    { eventName: 'finalCrawlingResult', callback: handleFinalCrawlingResult }
+  ], [handleCrawlingComplete, handleDbSaveComplete, handleDbSaveSkipped, handleFinalCrawlingResult]);
 
   // 여러 이벤트 구독을 위한 훅 사용
   useMultipleEventSubscriptions(subscriptions, handleSubscriptionError);

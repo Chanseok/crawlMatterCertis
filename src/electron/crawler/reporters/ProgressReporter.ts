@@ -4,7 +4,7 @@
  */
 
 import { crawlerEvents } from '../utils/progress.js';
-import type { CrawlingProgress } from '../../../../types.js';
+import type { CrawlingProgress, FinalCrawlingResult } from '../../../../types.js';
 import { CrawlingStage } from '../core/CrawlerState.js';
 
 export class ProgressReporter {
@@ -26,6 +26,14 @@ export class ProgressReporter {
     crawlerEvents.on('crawlingStageChanged', (stage: CrawlingStage, message: string) => {
       console.log(`[ProgressReporter] Stage changed to ${stage}: ${message}`);
       this.lastStage = stage;
+    });
+    
+    // 최종 크롤링 결과 이벤트 모니터링 추가
+    crawlerEvents.on('finalCrawlingResult', (result: FinalCrawlingResult) => {
+      console.log(`[ProgressReporter] Final crawling result received: ${result.newItems} new, ${result.updatedItems} updated of ${result.collected} total`);
+      
+      // 이 이벤트는 CrawlerState에서 이미 처리되어 crawlingProgress 이벤트를 발생시키지만,
+      // 추가적인 상태 업데이트가 필요하면 여기서 처리
     });
   }
   
