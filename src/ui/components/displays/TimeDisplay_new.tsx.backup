@@ -1,6 +1,7 @@
+import React from 'react';
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 
-export function TimeDisplay() {
+const TimeDisplay: React.FC = () => {
   const { progress, status } = useCrawlingStore();
   
   const formatTime = (seconds: number): string => {
@@ -19,14 +20,14 @@ export function TimeDisplay() {
 
   const elapsedTime = progress?.elapsedTime || 0;
   const remainingTime = progress?.remainingTime || 0;
-  const remaining = Math.max(0, remainingTime / 1000);
+  const remaining = Math.max(0, remainingTime / 1000); // Convert milliseconds to seconds
 
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
         <span className="text-sm text-gray-600 dark:text-gray-400">경과 시간</span>
         <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-          {formatTime(elapsedTime / 1000)}
+          {formatTime(elapsedTime / 1000)} {/* Convert milliseconds to seconds */}
         </span>
       </div>
       
@@ -40,6 +41,7 @@ export function TimeDisplay() {
       )}
     </div>
   );
-}
+};
 
-
+export { TimeDisplay };
+export default TimeDisplay;

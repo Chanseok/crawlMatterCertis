@@ -1,6 +1,6 @@
 // test-validation-vitest.js - Run with npx vitest run
 import { describe, it, expect, beforeEach } from 'vitest';
-import { UnifiedCrawlingProgressViewModel } from './src/ui/viewModels/UnifiedCrawlingProgressViewModel';
+import { CrawlingStore } from './src/ui/stores/domain/CrawlingStore.js';
 
 // 테스트 데이터
 const mockData = {
@@ -42,10 +42,10 @@ const mockData = {
 };
 
 describe('UI 동기화 문제 해결 검증', () => {
-  let viewModel;
+  let crawlingStore;
   
   beforeEach(() => {
-    viewModel = new UnifiedCrawlingProgressViewModel();
+    crawlingStore = new CrawlingStore();
   });
   
   it('완료 시 오류 표시 문제가 해결되었는지 검증', () => {

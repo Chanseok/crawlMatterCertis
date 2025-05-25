@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useStore } from '@nanostores/react';
-import { crawlingProgressStore } from '../../stores';
 import { ExpandableSection } from '../ExpandableSection';
 import CrawlingDashboard from '../CrawlingDashboard';
 import PageProgressDisplay from '../PageProgressDisplay';
 import { ConcurrentTasksVisualizer } from '../../Charts';
 import StatusCheckAnimation from '../StatusCheckAnimation';
 import { SetStateAction } from 'react';
+import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 
 interface StatusTabProps {
   statusExpanded: boolean;
@@ -33,7 +32,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
   crawlingStatus,
   productsLength
 }) => {
-  const progress = useStore(crawlingProgressStore);
+  const { progress } = useCrawlingStore();
   
   // 애니메이션 상태 관리
   const [showAnimation, setShowAnimation] = useState(false);

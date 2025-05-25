@@ -1,0 +1,242 @@
+/**
+ * DatabaseStore.ts
+ * Domain Store for Database Operations
+ * 
+ * Manages database operations, product management, and database summary information.
+ * Encapsulates all database-related business logic and state.
+ */
+
+import { atom } from 'nanostores';
+import type { DatabaseSummary, MatterProduct } from '../../../../types';
+import { getPlatformApi } from '../../platform/api';
+
+export interface ProductDetail {
+  id: string;
+  productName: string;
+  companyName: string;
+  certNumber: string;
+  lastUpdated?: string;
+  [key: string]: any;
+}
+
+/**
+ * Database Domain Store
+ * Manages all database-related state and operations
+ */
+export class DatabaseStore {
+  // State atoms
+  public readonly summary = atom<DatabaseSummary | null>(null);
+  public readonly products = atom<MatterProduct[]>([]);
+  public readonly loading = atom<boolean>(false);
+  public readonly saving = atom<boolean>(false);
+  public readonly lastSaveResult = atom<{ success: boolean; message?: string } | null>(null);
+
+  // Search and pagination state
+  public readonly searchQuery = atom<string>('');
+  public readonly currentPage = atom<number>(1);
+  public readonly totalPages = atom<number>(0);
+
+  // Unsubscribe functions
+  private unsubscribeFunctions: (() => void)[] = [];
+  private api = getPlatformApi();
+
+  constructor() {
+    this.initializeEventSubscriptions();
+  }
+
+  /**
+   * Initialize IPC event subscriptions for database events
+   */
+  private initializeEventSubscriptions(): void {
+    // Database summary updates
+    const unsubSummary = this.api.subscribeToEvent('dbSummary', (summary: DatabaseSummary) => {
+      this.summary.set(summary);
+    });
+    this.unsubscribeFunctions.push(unsubSummary);
+
+    // Product data updates
+    const unsubProducts = this.api.subscribeToEvent('products', (products: MatterProduct[]) => {
+      this.products.set(products);
+    });
+    this.unsubscribeFunctions.push(unsubProducts);
+
+    // Database save completion
+    const unsubSaveComplete = this.api.subscribeToEvent('dbSaveComplete', 
+      (data: { success: boolean; added?: number; updated?: number; unchanged?: number; failed?: number; error?: string }) => {
+        this.saving.set(false);
+        
+        if (data.success) {
+          const { added = 0, updated = 0, unchanged = 0, failed = 0 } = data;
+          this.lastSaveResult.set({
+            success: true,
+            message: `저장 완료: ${added}개 추가, ${updated}개 업데이트, ${unchanged}개 변동 없음, ${failed}개 실패`
+          });
+        } else {
+          this.lastSaveResult.set({
+            success: false,
+            message: `저장 실패: ${data.error || '알 수 없는 오류'}`
+          });
+        }
+      }
+    );
+    this.unsubscribeFunctions.push(unsubSaveComplete);
+
+    // Database save skipped
+    const unsubSaveSkipped = this.api.subscribeToEvent('dbSaveSkipped', (data: { message?: string }) => {
+      this.saving.set(false);
+      this.lastSaveResult.set({
+        success: false,
+        message: data.message || '제품 정보가 DB에 저장되지 않았습니다.'
+      });
+    });
+    this.unsubscribeFunctions.push(unsubSaveSkipped);
+  }
+
+  /**
+   * Load database summary
+   */
+  async loadSummary(): Promise<void> {
+    try {
+      const summary = await this.api.invokeMethod('getDatabaseSummary');
+      if (summary) {
+        this.summary.set(summary as DatabaseSummary);
+      }
+    } catch (error) {
+      throw new Error(`데이터베이스 요약 정보 로드 실패: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Load products with pagination
+   */
+  async loadProducts(options: { page?: number; limit?: number }): Promise<void> {
+    try {
+      this.loading.set(true);
+      
+      const result = await this.api.invokeMethod('getProducts', options);
+      
+      if (result && Array.isArray(result.products)) {
+        this.products.set(result.products);
+      }
+    } catch (error) {
+      throw new Error(`제품 데이터 로드 실패: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  /**
+   * Save products to database
+   */
+  async saveProducts(products: MatterProduct[]): Promise<void> {
+    try {
+      if (!products || products.length === 0) {
+        throw new Error('저장할 제품 정보가 없습니다.');
+      }
+
+      this.saving.set(true);
+      this.lastSaveResult.set(null);
+
+      const result = await this.api.invokeMethod('saveProductsToDB', products);
+      
+      // The result will be handled by the event subscription
+      if (!result.success) {
+        throw new Error(result.error || '제품 저장 실패');
+      }
+    } catch (error) {
+      this.saving.set(false);
+      throw error;
+    }
+  }
+
+  /**
+   * Search products
+   */
+  async searchProducts(query: string, options?: { page?: number; limit?: number }): Promise<void> {
+    try {
+      this.loading.set(true);
+      
+      const result = await this.api.invokeMethod('searchProducts', {
+        query,
+        page: options?.page || 1,
+        limit: options?.limit || 100
+      });
+
+      if (result && Array.isArray(result.products)) {
+        this.products.set(result.products);
+        this.searchQuery.set(query);
+      }
+    } catch (error) {
+      throw new Error(`제품 검색 실패: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  /**
+   * Delete records by page range
+   */
+  async deleteRecordsByPageRange(startPageId: number, endPageId: number): Promise<void> {
+    try {
+      const result = await this.api.invokeMethod('deleteRecordsByPageRange', {
+        startPageId,
+        endPageId
+      });
+
+      if (result && result.success) {
+        // Reload data after deletion
+        await this.loadProducts({ page: 1, limit: 100 });
+        await this.loadSummary();
+      } else {
+        throw new Error(result?.error || '레코드 삭제 실패');
+      }
+    } catch (error) {
+      throw new Error(`레코드 삭제 실패: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Clear save result
+   */
+  clearSaveResult(): void {
+    this.lastSaveResult.set(null);
+  }
+
+  /**
+   * Reset search
+   */
+  resetSearch(): void {
+    this.searchQuery.set('');
+    this.currentPage.set(1);
+  }
+
+  /**
+   * Cleanup subscriptions
+   */
+  async cleanup(): Promise<void> {
+    this.unsubscribeFunctions.forEach(unsubscribe => unsubscribe());
+    this.unsubscribeFunctions = [];
+  }
+
+  /**
+   * Debug information
+   */
+  getDebugInfo(): object {
+    return {
+      summary: this.summary.get(),
+      productsCount: this.products.get().length,
+      searchQuery: this.searchQuery.get(),
+      currentPage: this.currentPage.get(),
+      loading: this.loading.get(),
+      saving: this.saving.get(),
+      lastSaveResult: this.lastSaveResult.get(),
+      subscriptionsCount: this.unsubscribeFunctions.length
+    };
+  }
+}
+
+// Singleton instance and exports
+export const databaseStore = new DatabaseStore();
+
+// Also export as default for easier importing
+export default databaseStore;

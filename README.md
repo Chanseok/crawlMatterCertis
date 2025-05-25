@@ -1,11 +1,29 @@
-# React + TypeScript + Vite
+# Crawl Matter Certis
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A React + Electron application for crawling Matter certification data, with a focus on clean architecture.
 
-Currently, two official plugins are available:
+## Architecture
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+This application follows a clean architecture approach:
+
+- **Domain Stores**: Core business logic and state management
+- **React Hooks**: React integration layer (new)
+- **Components**: UI layer
+
+## Recent Updates
+
+### Domain Store Hooks
+
+We've implemented React hooks for accessing domain stores. These hooks provide a clean way to access state and actions from domain stores in React components.
+
+See [DOMAIN_HOOKS.md](DOMAIN_HOOKS.md) for details.
+
+## Technologies
+
+- React + TypeScript + Vite
+- Electron
+- Nanostores for state management
+- Tailwind CSS for styling
 
 ## Expanding the ESLint configuration
 

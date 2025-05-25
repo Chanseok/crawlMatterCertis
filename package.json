@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "transpile:electron": "tsc --project src/electron/tsconfig.json",
+    "test:ui": "node --experimental-modules scripts/test-ui.js",
     "populate-dev-db": "ts-node-esm ./scripts/populateDevDb.ts",
     "query-db": "ts-node-esm ./scripts/queryDb.ts",
     "convert-device-data": "ts-node-esm ./scripts/convertDeviceData.ts",

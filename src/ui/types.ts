@@ -3,6 +3,7 @@ import {
   AppMode,
   DatabaseSummary,
   MatterProduct,
+  CrawlingProgress,
   ConcurrentCrawlingTask,
   ConcurrentTaskStatus,
   EventPayloadMapping
@@ -13,6 +14,7 @@ export type {
   AppMode,
   DatabaseSummary,
   MatterProduct,
+  CrawlingProgress,
   ConcurrentCrawlingTask,
   ConcurrentTaskStatus,
   EventPayloadMapping

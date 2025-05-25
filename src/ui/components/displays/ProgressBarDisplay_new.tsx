@@ -1,7 +1,7 @@
 import React from 'react';
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 
-const ProgressBarDisplay: React.FC = () => {
+export const ProgressBarDisplay: React.FC = () => {
   const { progress, status } = useCrawlingStore();
   
   const percentage = progress?.percentage || 0;
@@ -36,6 +36,3 @@ const ProgressBarDisplay: React.FC = () => {
     </div>
   );
 };
-
-export { ProgressBarDisplay };
-export default ProgressBarDisplay;

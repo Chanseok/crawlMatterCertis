@@ -14,10 +14,11 @@ import { ValidationResultsPanel } from './ValidationResultsPanel';
 import { CollectionStatusDisplay } from './displays/CollectionStatusDisplay';
 import { ProgressBarDisplay } from './displays/ProgressBarDisplay';
 import { StatusDisplay } from './displays/StatusDisplay';
-import { TimeDisplay } from './displays/TimeDisplay';
+
 import { PageProgressDisplay } from './displays/PageProgressDisplay';
-import { useUnifiedProgressSync } from '../hooks/useUnifiedProgressSync';
-import { useProgressViewModel } from '../hooks/useProgressViewModel';
+import { useCrawlingStore } from '../hooks/useCrawlingStore';
+import { TimeDisplay } from './displays/TimeDisplay';
+
 
 interface CrawlingDashboardProps {
   isAppStatusChecking: boolean;
@@ -38,11 +39,8 @@ interface AnimatedValues {
  * 크롤링 진행 상황을 시각적으로 보여주는 대시보드 컴포넌트
  */
 function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
-  // 새로운 ViewModel 패턴을 통한 통합 진행 상태 관리
-  const progressViewModel = useProgressViewModel();
-  
-  // 통합 데이터 동기화 (모든 IPC 이벤트 처리)
-  useUnifiedProgressSync();
+  // Domain Store 패턴을 통한 통합 진행 상태 관리
+  const crawlingData = useCrawlingStore();
 
   // 필요한 Legacy 스토어들 (점진적 마이그레이션 중)
   const progress = useStore(crawlingProgressStore);
@@ -795,8 +793,8 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
              progress.currentStep?.toLowerCase().includes('1.5/3') ||
              progress.currentStep?.toLowerCase().includes('db 중복'))
           }
-          isCompleted={progressViewModel.statusDisplay.isComplete}
-          hasErrors={progressViewModel.statusDisplay.isError}
+          isCompleted={crawlingData.status === 'completed'}
+          hasErrors={crawlingData.status === 'error'}
         />
 
         {getRetryInfo()}
