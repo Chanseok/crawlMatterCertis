@@ -24,5 +24,15 @@
     "noUncheckedSideEffectImports": true
   },
   "include": ["src"],
-  "exclude": ["src/electron"],
+  "exclude": [
+    "src/electron",
+    "**/*.backup",
+    "**/*.bak",
+    "**/dist/**",
+    "**/dist-electron/**",
+    "**/dist-react/**",
+    "**/test-legacy/**",
+    "**/test-results/**",
+    "**/node_modules/**"
+  ],
 }

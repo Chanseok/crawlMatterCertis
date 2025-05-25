@@ -18,6 +18,13 @@ test-results
 .obsidian
 *.local
 
+# Backup files
+*.backup
+*.bak
+*~
+*.tmp
+*.temp
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
