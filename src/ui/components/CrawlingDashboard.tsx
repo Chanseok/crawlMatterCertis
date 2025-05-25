@@ -40,12 +40,17 @@ interface AnimatedValues {
 function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
   // Domain Store Hook을 통한 통합 진행 상태 관리
   const { 
-    status, 
+    status,
     progress, 
     config, 
     statusSummary, 
     lastStatusSummary,
-    updateProgress
+    updateProgress,
+    startCrawling,
+    stopCrawling,
+    checkStatus,
+    error,
+    clearError
   } = useCrawlingStore();
   
   // Task Store Hook을 통한 동시 작업 관리
@@ -560,6 +565,52 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
     return null;
   }, [status, localTime.remainingTime]);
 
+  // 기존 state에 추가
+  const [isStatusChecking, setIsStatusChecking] = useState(false);
+
+  // 상태 체크 버튼 클릭 핸들러 수정
+  const handleCheckStatus = async () => {
+    try {
+      console.log('=== 상태 체크 시작 ===');
+      console.log('현재 statusSummary:', statusSummary);
+      
+      setIsStatusChecking(true);
+      setAppCompareExpanded(true);
+      
+      console.log('checkStatus 호출 시작...');
+      await checkStatus();
+      console.log('checkStatus 호출 완료');
+      
+      // 강제 컴포넌트 업데이트를 위한 트릭
+      const timer = setInterval(() => {
+        console.log('타이머 체크 - statusSummary:', statusSummary);
+        if (statusSummary && Object.keys(statusSummary).length > 0) {
+          console.log('✅ statusSummary 업데이트 확인됨!');
+          clearInterval(timer);
+          setIsStatusChecking(false);
+        }
+      }, 500);
+      
+      // 최대 5초 후 타이머 종료
+      setTimeout(() => {
+        clearInterval(timer);
+        setIsStatusChecking(false);
+        console.log('타이머 종료 - 최종 statusSummary:', statusSummary);
+      }, 5000);
+      
+      console.log('=== 상태 체크 완료 ===');
+    } catch (error) {
+      console.error('상태 체크 실패:', error);
+      setIsStatusChecking(false);
+    }
+  };
+
+  // CrawlingDashboard.tsx에서 statusSummary 감시 추가
+  useEffect(() => {
+    console.log('statusSummary가 업데이트됨:', statusSummary);
+    console.log('statusSummary 키 개수:', statusSummary ? Object.keys(statusSummary).length : 0);
+  }, [statusSummary]);
+
   return (
     <>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-4">
@@ -567,6 +618,100 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
           <h2 className="text-xl font-semibold text-gray-800 dark:text-white">크롤링 상태</h2>
           {/* 새로운 통합 상태 표시 컴포넌트 */}
           <StatusDisplay />
+        </div>
+
+        {/* 에러 표시 */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+            <div className="flex justify-between items-center">
+              <span>{error}</span>
+              <button 
+                onClick={clearError}
+                className="text-red-500 hover:text-red-700 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 제어 버튼들 */}
+        <div className="flex space-x-4 mb-6">
+          {/* 상태 체크 버튼 */}
+          <button
+            onClick={handleCheckStatus}
+            disabled={status === 'running' || isStatusChecking}
+            className={`
+              px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2
+              ${status === 'running' || isStatusChecking
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
+              }
+            `}
+          >
+            {isStatusChecking ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                <span>상태 확인 중...</span>
+              </>
+            ) : (
+              <>
+                <span>🔍</span>
+                <span>상태 체크</span>
+              </>
+            )}
+          </button>
+
+          {/* 크롤링 시작/중지 버튼 */}
+          {status === 'idle' || status === 'completed' || status === 'error' ? (
+            <button
+              onClick={() => {
+                console.log('크롤링 시작');
+                startCrawling();
+              }}
+              className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 active:bg-green-800 transition-colors"
+            >
+              ▶️ 크롤링 시작
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                console.log('크롤링 중지');
+                stopCrawling();
+              }}
+              disabled={status !== 'running'}
+              className={`
+                px-6 py-3 rounded-lg font-medium transition-colors
+                ${status === 'running' 
+                  ? 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800' 
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }
+              `}
+            >
+              ⏹️ 크롤링 중지
+            </button>
+          )}
+        </div>
+
+        {/* 현재 상태 표시 */}
+        <div className="bg-gray-50 rounded p-4 mb-4">
+          <div className="flex items-center space-x-2">
+            <span className="font-medium">현재 상태:</span>
+            <span className={`
+              px-3 py-1 rounded-full text-sm font-medium
+              ${status === 'running' ? 'bg-green-100 text-green-800' :
+                status === 'error' ? 'bg-red-100 text-red-800' :
+                status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                'bg-gray-100 text-gray-800'
+              }
+            `}>
+              {status === 'running' ? '실행 중' :
+               status === 'error' ? '오류' :
+               status === 'completed' ? '완료' :
+               status === 'paused' ? '일시정지' :
+               '대기 중'}
+            </span>
+          </div>
         </div>
 
         <div className="mb-4 flex justify-between items-center">
@@ -972,9 +1117,31 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
         isExpanded={appCompareExpanded}
         onToggle={toggleCompareSection}
         additionalClasses="site-local-compare-section"
-        isLoading={isAppStatusChecking}
-        loadingContent={<StatusCheckLoadingAnimation />}
+        isLoading={isStatusChecking}
+        loadingContent={
+          <div>
+            <p>상태 확인 중...</p>
+            <StatusCheckLoadingAnimation />
+          </div>
+        }
       >
+        {/* 디버깅을 위한 임시 표시 */}
+        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded mb-4">
+          <h4 className="font-bold text-yellow-800">🔍 디버깅 정보:</h4>
+          <div className="text-sm text-yellow-700 space-y-1">
+            <p>statusSummary 존재: <strong>{statusSummary ? 'Yes' : 'No'}</strong></p>
+            <p>statusSummary 타입: <strong>{typeof statusSummary}</strong></p>
+            <p>statusSummary 키 개수: <strong>{statusSummary ? Object.keys(statusSummary).length : 0}</strong></p>
+            <p>isStatusChecking: <strong>{isStatusChecking.toString()}</strong></p>
+            <details className="mt-2">
+              <summary className="cursor-pointer font-medium">📋 statusSummary 전체 내용 보기</summary>
+              <pre className="mt-2 text-xs bg-gray-100 p-2 rounded overflow-auto max-h-40">
+                {JSON.stringify(statusSummary, null, 2)}
+              </pre>
+            </details>
+          </div>
+        </div>
+
         {Object.keys(statusSummary || {}).length === 0 ? (
           <div className="flex flex-col items-center justify-center h-20">
             <p className="text-center text-gray-600 dark:text-gray-400">
@@ -982,7 +1149,11 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
             </p>
           </div>
         ) : (
+          // 기존 코드 유지
           <div className="space-y-3">
+            <div className="p-2 bg-green-50 border border-green-200 rounded">
+              <p className="text-green-800 font-semibold">✅ 상태 체크 완료!</p>
+            </div>
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">마지막 DB 업데이트:</span>
               <span className={`font-medium ${isValueChanged('dbLastUpdated') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>

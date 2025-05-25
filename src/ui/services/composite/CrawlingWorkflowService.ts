@@ -53,24 +53,13 @@ export class CrawlingWorkflowService extends BaseService {
       // Step 1: Validate and update configuration if provided
       let finalConfig: CrawlerConfig;
       if (config) {
-        const updateResult = await configService.updateConfig(config);
-        if (!updateResult.success) {
-          throw new Error(`Configuration update failed: ${updateResult.error?.message || 'Unknown error'}`);
-        }
-        finalConfig = updateResult.data!;
+        finalConfig = await configService.updateConfig(config);
       } else {
-        const getResult = await configService.getConfig();
-        if (!getResult.success) {
-          throw new Error(`Failed to get configuration: ${getResult.error?.message || 'Unknown error'}`);
-        }
-        finalConfig = getResult.data!;
+        finalConfig = await configService.getConfig();
       }
 
       // Step 2: Validate configuration
-      const validationResult = configService.validateConfig(finalConfig);
-      if (!validationResult.success) {
-        throw new Error(`Configuration validation failed: ${validationResult.error?.message || 'Unknown error'}`);
-      }
+      configService.validateConfigComplete(finalConfig);
 
       // Step 3: Start crawling with validated configuration
       const startResult = await crawlingService.startCrawling();
@@ -189,21 +178,16 @@ export class CrawlingWorkflowService extends BaseService {
       const configService = serviceFactory.getConfigurationService();
       const crawlingService = serviceFactory.getCrawlingService();
 
-      // Step 1: Update configuration
-      const updateResult = await configService.updateConfig(config);
-      if (!updateResult.success || !updateResult.data) {
-        throw new Error(`Configuration update failed: ${updateResult.error?.message || 'Unknown error'}`);
-      }
+      // Step 1: Update configuration (returns config directly)
+      const updatedConfig = await configService.updateConfig(config);
 
-      // Step 2: Validate the updated configuration
-      const validationResult = configService.validateConfig(updateResult.data);
-      if (!validationResult.success) {
-        throw new Error(`Updated configuration is invalid: ${validationResult.error?.message || 'Validation failed'}`);
-      }
+      // Step 2: Validate the updated configuration (already done in updateConfig)
+      // Just verify it's valid again
+      configService.validateConfigComplete(updatedConfig);
 
       // Step 3: Apply configuration to crawling service
       const applyResult = await crawlingService.updateConfig({
-        config: updateResult.data,
+        config: updatedConfig,
         applyImmediately: true
       });
       if (!applyResult.success) {
@@ -211,7 +195,7 @@ export class CrawlingWorkflowService extends BaseService {
       }
 
       return {
-        config: updateResult.data,
+        config: updatedConfig,
         validated: true,
         applied: true,
       };
@@ -344,14 +328,14 @@ export class CrawlingWorkflowService extends BaseService {
 
       // Get status from all services
       const [configStatus, crawlingStatus, databaseStatus] = await Promise.all([
-        configService.getStatus(),
+        Promise.resolve(configService.getStatus()), // ConfigService.getStatus() returns plain object
         crawlingService.getStatus(),
         databaseService.getSummary(),
       ]);
 
       return {
         crawling: crawlingStatus.success ? (crawlingStatus.data || {}) : { error: crawlingStatus.error?.message || 'Unknown error' },
-        configuration: configStatus.success ? (configStatus.data || {}) : { error: configStatus.error?.message || 'Unknown error' },
+        configuration: configStatus, // configStatus is already a plain object
         database: databaseStatus.success ? (databaseStatus.data || {}) : { error: databaseStatus.error?.message || 'Unknown error' },
         lastActivity: new Date().toISOString(),
       };

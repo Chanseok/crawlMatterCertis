@@ -21,30 +21,7 @@ export type Statistics = {
 
 /**
  * Matter 인증 제품의 상세 정보를 나타내는 타입
- * 
- * @typedef {Object} MatterProduct
- * @property {string} url - 제품 상세 페이지의 고유 URL (식별자로 사용)
- * @property {number} [pageId] - 제품이 위치한 목록 페이지 번호
- * @property {number} [indexInPage] - 페이지 내에서의 제품 인덱스
- * @property {string} [id] - 제품 고유 식별자
- * @property {string} [manufacturer] - 제조사 이름
- * @property {string} [model] - 모델명
- * @property {string} [deviceType] - 장치 유형
- * @property {string} [certificateId] - Matter 인증 ID
- * @property {string|Date} [certificationDate] - 인증 날짜
- * @property {string} [softwareVersion] - 소프트웨어 버전
- * @property {string} [hardwareVersion] - 하드웨어 버전
- * @property {string} [vid] - 벤더 ID
- * @property {string} [pid] - 제품 ID
- * @property {string} [familySku] - 제품군 SKU
- * @property {string} [familyVariantSku] - 제품군 변형 SKU
- * @property {string} [firmwareVersion] - 펌웨어 버전
- * @property {string} [familyId] - 제품군 ID
- * @property {string} [tisTrpTested] - Thread/TRP 테스트 여부
- * @property {string} [specificationVersion] - Matter 스펙 버전
- * @property {string} [transportInterface] - 지원하는 전송 인터페이스
- * @property {string} [primaryDeviceTypeId] - 주 장치 유형 ID
- * @property {string[]} [applicationCategories] - 적용 카테고리 목록
+ * 타입 일관성을 위해 필드 타입을 명확히 정의
  */
 export type MatterProduct = {
     url: string;
@@ -58,6 +35,7 @@ export type MatterProduct = {
     certificationDate?: string | Date;
     softwareVersion?: string;
     hardwareVersion?: string;
+    // 타입 일관성을 위해 string으로 통일
     vid?: string;
     pid?: string;
     familySku?: string;
@@ -67,9 +45,13 @@ export type MatterProduct = {
     tisTrpTested?: string;
     specificationVersion?: string;
     transportInterface?: string;
+    // string으로 통일 (배열이 아닌 단일 값)
     primaryDeviceTypeId?: string;
     applicationCategories?: string[];
-    // isNewProduct 필드 삭제됨
+    
+    // 데이터베이스 관련 필드 추가
+    createdAt?: string;
+    updatedAt?: string;
 };
 
 /**

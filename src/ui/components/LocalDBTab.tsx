@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useDatabaseStore, useCrawlingStore } from '../hooks';
 import type { MatterProduct } from '../../../types';
 import { format } from 'date-fns';
@@ -10,234 +10,155 @@ export const LocalDBTab: React.FC = () => {
   const { 
     products, 
     summary: dbSummary, 
-    searchProducts, 
+    isLoading,
+    error: dbError,
+    loadAllProducts,
     loadSummary, 
     exportToExcel,
-    deleteRecordsByPageRange
+    deleteRecordsByPageRange,
+    clearError
   } = useDatabaseStore();
   
   const { config } = useCrawlingStore();
   
+  // Local state
+  const [displayProducts, setDisplayProducts] = useState<MatterProduct[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(12);
   const [totalPages, setTotalPages] = useState(1);
   const [maxPageId, setMaxPageId] = useState(0);
-  const [displayProducts, setDisplayProducts] = useState<MatterProduct[]>([]);
-  
-  // 실제 데이터베이스 통계 계산
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteRange, setDeleteRange] = useState({ startPageId: 0, endPageId: 0 });
   const [totalProductPages, setTotalProductPages] = useState(0);
   
-  // 섹션 접기/펼치기 상태
+  // Section expansion state
   const [dbSectionExpanded, setDbSectionExpanded] = useState(true);
   const [productsSectionExpanded, setProductsSectionExpanded] = useState(true);
   
-  // 삭제 모달 상태
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [deleteRange, setDeleteRange] = useState({
-    startPageId: 0,
-    endPageId: 0
-  });
+  const itemsPerPage = 50; // UI 페이지네이션용
 
-  // 컴포넌트 마운트 시 제품 데이터 로드 및 첫 페이지 설정
+  // 컴포넌트 마운트 시 초기 데이터 로드
   useEffect(() => {
-    loadProducts().then(() => {
-      // 데이터베이스 요약 정보 기준으로 페이지 계산 (로드된 데이터 대신 총 레코드 수 사용)
-      const dbTotalProducts = dbSummary?.totalProducts || 0;
-      
-      if (dbTotalProducts > 0) {
-        const calculatedTotalPages = Math.ceil(dbTotalProducts / itemsPerPage);
-        
-        if (calculatedTotalPages > 0) {
-          setTotalPages(calculatedTotalPages);
-          // 최신 데이터 표시를 위해 첫 페이지를 가장 큰 페이지 번호로 설정
-          setCurrentPage(calculatedTotalPages); 
-          
-          const productsPerPage = config?.productsPerPage || 12;
-          setTotalProductPages(Math.ceil(dbTotalProducts / productsPerPage));
-        } else {
-          setTotalPages(1);
-          setCurrentPage(1);
-          setTotalProductPages(0);
-        }
-      } else {
-        setTotalPages(1);
-        setCurrentPage(1);
-        setTotalProductPages(0);
+    const loadInitialData = async () => {
+      try {
+        console.log('LocalDBTab: Loading initial data');
+        await loadAllProducts(1, 1000); // 충분한 양의 데이터 로드
+        await loadSummary();
+        console.log('LocalDBTab: Initial data loaded successfully');
+      } catch (error) {
+        console.error('LocalDBTab: Failed to load initial data:', error);
       }
-    });
-  // itemsPerPage와 config.productsPerPage도 초기 로직에 영향을 줄 수 있으므로 추가
-  }, [itemsPerPage, config?.productsPerPage, dbSummary?.totalProducts]);
-  
-  // 페이지 변경 시 제품 데이터 필터링
+    };
+
+    loadInitialData();
+  }, []); // 의존성 배열 최소화
+
+  // 데이터베이스 요약 정보 변경 시 페이지 정보 업데이트
   useEffect(() => {
-    if (products && products.length > 0) {
-      console.log('[UI] 제품 정보 정렬 시작, 총 제품 수:', products.length);
+    if (dbSummary?.totalProducts) {
+      const calculatedTotalPages = Math.ceil(dbSummary.totalProducts / itemsPerPage);
+      setTotalPages(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
+      setCurrentPage(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
       
-      // 전체 제품 데이터를 내림차순으로 정렬 (pageId * 12 + indexInPage 기준)
+      const productsPerPage = config?.productsPerPage || 12;
+      setTotalProductPages(Math.ceil(dbSummary.totalProducts / productsPerPage));
+    }
+  }, [dbSummary?.totalProducts, config?.productsPerPage]);
+
+  // 제품 데이터 및 현재 페이지 변경 시 표시 데이터 업데이트
+  useEffect(() => {
+    if (products && Array.isArray(products) && products.length > 0) {
+      // 제품 정렬 (페이지ID와 인덱스 기준)
       const sortedProducts = [...products].sort((a, b) => {
-        // pageId와 indexInPage 조합으로 No. 값 계산
-        const aNo = (a.pageId || 0) * 12 + (a.indexInPage || 0);
-        const bNo = (b.pageId || 0) * 12 + (b.indexInPage || 0);
-        return bNo - aNo; // 내림차순 정렬 (newest first)
+        const aPageId = a.pageId ?? 0;
+        const bPageId = b.pageId ?? 0;
+        const aIndex = a.indexInPage ?? 0;
+        const bIndex = b.indexInPage ?? 0;
+        
+        if (aPageId !== bPageId) {
+          return bPageId - aPageId; // 페이지 ID 내림차순
+        }
+        return bIndex - aIndex; // 같은 페이지 내에서는 인덱스 내림차순
       });
       
-      // 현재 페이지에 표시할 제품들 필터링
-      const currentDisplayPage = Math.min(currentPage, totalPages > 0 ? totalPages : 1);
-      const pageIndexForSlicing = (totalPages > 0 ? totalPages : 1) - currentDisplayPage;
-      
+      // 현재 페이지에 표시할 제품들 계산
+      const validCurrentPage = Math.min(currentPage, totalPages > 0 ? totalPages : 1);
+      const pageIndexForSlicing = (totalPages > 0 ? totalPages : 1) - validCurrentPage;
       const startIndex = pageIndexForSlicing * itemsPerPage;
       const endIndex = startIndex + itemsPerPage;
       const pagedProducts = sortedProducts.slice(startIndex, endIndex);
       
-      console.log(`[UI] 현재 페이지(${currentPage} -> UI상 ${currentDisplayPage}, sliceIndex ${pageIndexForSlicing})의 제품 정보:`,
-        pagedProducts.map(p => ({
-          no: (p.pageId || 0) * 12 + (p.indexInPage || 0) + 1,
-          pageId: p.pageId,
-          indexInPage: p.indexInPage
-        }))
-      );
-      
       setDisplayProducts(pagedProducts);
       
-      // 데이터베이스의 총 레코드 수를 기준으로 페이지 계산
-      const calculatedTotalPages = Math.ceil((dbSummary?.totalProducts || 0) / itemsPerPage);
-      setTotalPages(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
-      
+      // maxPageId 업데이트
       if (sortedProducts.length > 0) {
-        const maxId = Math.max(...sortedProducts.map(p => p.pageId || 0));
+        const maxId = Math.max(...sortedProducts.map(p => p.pageId ?? 0));
         setMaxPageId(maxId);
         setDeleteRange({
           startPageId: maxId,
           endPageId: maxId
         });
-        
-        const productsPerPage = config?.productsPerPage || 12;
-        // 데이터베이스의 총 레코드 수 기준으로 계산
-        setTotalProductPages(Math.ceil((dbSummary?.totalProducts || 0) / productsPerPage));
       }
     } else {
       setDisplayProducts([]);
-      setTotalPages(1);
-      setCurrentPage(1);
-      setTotalProductPages(0);
       setMaxPageId(0);
+      setDeleteRange({ startPageId: 0, endPageId: 0 });
     }
-  }, [products, currentPage, itemsPerPage, config?.productsPerPage, totalPages, dbSummary?.totalProducts]);
+  }, [products, currentPage, totalPages]);
 
-  // 제품 데이터 로드 함수
-  const loadProducts = async () => {
+  // 제품 데이터 재로드 함수
+  const loadProducts = useCallback(async () => {
     try {
-      console.log('제품 데이터 로드 시작');
-      // 백엔드에서 데이터를 가져옴 (내림차순 정렬 요청)
-      await searchProducts('', { page: 1, limit: 8000 }); // 8000개 데이터 로드 (5000에서 8000으로 상향)
-      
-      // 데이터베이스 요약 정보도 함께 갱신
+      console.log('LocalDBTab: Reloading product data');
+      await loadAllProducts(1, 1000);
       await loadSummary();
-      
-      console.log('제품 데이터와 데이터베이스 요약 정보 갱신 완료');
+      console.log('LocalDBTab: Product data reloaded successfully');
     } catch (error) {
-      console.error('제품 데이터 로딩 중 오류:', error);
+      console.error('LocalDBTab: Failed to reload product data:', error);
     }
-  };
-  
+  }, [loadAllProducts, loadSummary]);
+
   // 페이지 변경 핸들러
-  const handlePageChange = (page: number) => {
+  const handlePageChange = useCallback((page: number) => {
     setCurrentPage(page);
-  };
-  
-  // 삭제 모달 열기
-  const openDeleteModal = () => {
+  }, []);
+
+  // 삭제 모달 관련 핸들러
+  const openDeleteModal = useCallback(() => {
     setDeleteModalVisible(true);
-  };
-  
-  // 삭제 모달 닫기
-  const closeDeleteModal = () => {
+  }, []);
+
+  const closeDeleteModal = useCallback(() => {
     setDeleteModalVisible(false);
-  };
-  
-  // 레코드 삭제 실행
-  const handleDelete = async () => {
+  }, []);
+
+  // 레코드 삭제 핸들러
+  const handleDelete = useCallback(async () => {
     const { startPageId, endPageId } = deleteRange;
     try {
-      console.log(`[UI] 레코드 삭제 요청: 페이지 범위 ${startPageId+1}~${endPageId+1}, 실제 pageId: ${startPageId}~${endPageId}`);
-      console.log(`[UI] 삭제 전 상태 - maxPageId: ${maxPageId}, 현재 페이지: ${currentPage}, 총 페이지: ${totalPages}`);
-      console.log(`[UI] 제품 수: ${products?.length}`);
+      console.log(`LocalDBTab: Deleting records from page ${startPageId + 1} to ${endPageId + 1}`);
       
-      // 레코드 삭제 요청 (using Domain Store hook)
       await deleteRecordsByPageRange(startPageId, endPageId);
       
-      // 모달 닫기
+      console.log(`LocalDBTab: Successfully deleted records`);
       closeDeleteModal();
-      
-      // 제품 목록과 데이터베이스 요약 정보를 다시 로드하여 최신 상태 반영
-      await loadProducts();
-      
-      // 데이터가 로드된 후에 전체 제품 데이터 정렬 및 페이지 계산
-      // Use current products from the hook instead of store.get()
-      
-      if (products && products.length > 0) {
-        // 내림차순으로 정렬 (pageId * 12 + indexInPage 기준)
-        const sortedProducts = [...products].sort((a, b) => {
-          const aNo = (a.pageId || 0) * 12 + (a.indexInPage || 0);
-          const bNo = (b.pageId || 0) * 12 + (b.indexInPage || 0);
-          return bNo - aNo; // 내림차순 정렬
-        });
-        
-        // 총 페이지 수 재계산 (데이터베이스 총 레코드 수 기준)
-        const calculatedTotalPages = Math.ceil((dbSummary?.totalProducts || 0) / itemsPerPage);
-        setTotalPages(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
-
-        // 삭제 후, 데이터가 있으면 가장 최신 페이지(totalPages)로 이동
-        // 데이터가 없으면 1페이지로 설정
-        setCurrentPage(calculatedTotalPages > 0 ? calculatedTotalPages : 1); 
-        
-        // 페이지당 제품 수를 기준으로 총 제품 페이지 수 재계산 (데이터베이스 총 레코드 수 기준)
-        const productsPerPage = config?.productsPerPage || 12;
-        setTotalProductPages(Math.ceil((dbSummary?.totalProducts || 0) / productsPerPage));
-        
-        // 최대 pageId 업데이트
-        if (sortedProducts.length > 0) {
-          const maxId = Math.max(...sortedProducts.map(p => p.pageId || 0));
-          console.log(`[UI] 삭제 후 새로운 maxPageId: ${maxId}`);
-          setMaxPageId(maxId);
-          setDeleteRange({
-            startPageId: maxId,
-            endPageId: maxId
-          });
-        } else {
-          // 남은 데이터가 없는 경우
-          console.log('[UI] 삭제 후 남은 데이터가 없음, maxPageId를 0으로 설정');
-          setMaxPageId(0);
-          setDeleteRange({
-            startPageId: 0,
-            endPageId: 0
-          });
-        }
-      } else {
-        // 데이터가 없는 경우 초기값으로 설정
-        console.log('[UI] 레코드 삭제 후 데이터가 없습니다.');
-        setDisplayProducts([]);
-        setCurrentPage(1);
-        setTotalPages(1);
-        setMaxPageId(0);
-        setTotalProductPages(0);
-        setDeleteRange({
-          startPageId: 0,
-          endPageId: 0
-        });
-      }
-      
+      await loadProducts(); // 데이터 재로드
     } catch (error) {
-      console.error('[UI] 레코드 삭제 중 오류:', error);
-      // 에러가 발생해도 모달은 닫기
+      console.error('LocalDBTab: Failed to delete records:', error);
       closeDeleteModal();
     }
-  };
-  
+  }, [deleteRange, deleteRecordsByPageRange, closeDeleteModal, loadProducts]);
+
   // 엑셀 내보내기 핸들러
-  const handleExportToExcel = async () => {
-    await exportToExcel();
-  };
+  const handleExportToExcel = useCallback(async () => {
+    try {
+      console.log('LocalDBTab: Starting Excel export');
+      await exportToExcel();
+      
+      console.log('LocalDBTab: Excel export completed successfully');
+    } catch (error) {
+      console.error('LocalDBTab: Excel export failed:', error);
+    }
+  }, [exportToExcel]);
 
   // 페이지네이션 렌더링
   const renderPagination = () => {
@@ -336,6 +257,26 @@ export const LocalDBTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* 에러 표시 */}
+      {dbError && (
+        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+          {dbError}
+          <button 
+            onClick={clearError}
+            className="ml-2 text-red-500 hover:text-red-700"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      
+      {/* 로딩 상태 표시 */}
+      {isLoading && (
+        <div className="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded">
+          데이터를 로딩 중입니다...
+        </div>
+      )}
+      
       {/* 로컬 데이터베이스 섹션 */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
         <div 

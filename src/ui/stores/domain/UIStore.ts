@@ -52,6 +52,17 @@ export interface SearchFilterState {
 }
 
 /**
+ * Search state interface
+ */
+export interface SearchState {
+  query: string;
+  category: string;
+  sortBy: string;
+  sortOrder: 'asc' | 'desc';
+  filters: Record<string, any>;
+}
+
+/**
  * UI Domain Store
  * Manages all UI-specific state and user interface interactions
  */

@@ -39,14 +39,8 @@ export class ConfigViewModel {
 
   private async initializeConfig() {
     try {
-      const result = await this.configService.getConfig();
-      if (result.success) {
-        this.updateState({ config: result.data });
-      } else {
-        this.updateState({ 
-          error: result.error?.message || 'Failed to load configuration' 
-        });
-      }
+      const config = await this.configService.getConfig();
+      this.updateState({ config });
     } catch (error) {
       console.error('Failed to initialize config:', error);
       this.updateState({ 
@@ -70,14 +64,10 @@ export class ConfigViewModel {
     this.updateState({ isUpdating: true, error: null });
 
     try {
-      const result = await this.configService.updateConfig(settings);
+      const updatedConfig = await this.configService.updateConfig(settings);
       
-      if (result.success) {
-        // Update local state with new configuration
-        this.updateState({ config: result.data });
-      } else {
-        throw new Error(result.error?.message || 'Update failed');
-      }
+      // Update local state with new configuration
+      this.updateState({ config: updatedConfig });
     } catch (error) {
       console.error('Failed to update config settings:', error);
       this.updateState({ 

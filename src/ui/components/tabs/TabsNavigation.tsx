@@ -1,5 +1,6 @@
 import React from 'react';
-import { TabType } from '../../hooks/useTabs';
+
+type TabType = 'settings' | 'status' | 'localDB' | 'analysis';
 
 interface TabsNavigationProps {
   activeTab: TabType;

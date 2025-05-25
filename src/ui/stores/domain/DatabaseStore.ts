@@ -29,11 +29,16 @@ export class DatabaseStore {
   public readonly loading = atom<boolean>(false);
   public readonly saving = atom<boolean>(false);
   public readonly lastSaveResult = atom<{ success: boolean; message?: string } | null>(null);
+  public readonly error = atom<string | null>(null);
 
   // Search and pagination state
   public readonly searchQuery = atom<string>('');
   public readonly currentPage = atom<number>(1);
   public readonly totalPages = atom<number>(0);
+  public readonly pagination = atom<{ page: number; limit: number; total: number }>({ page: 1, limit: 50, total: 0 });
+
+  // Alias for loading state to match hook expectations
+  public readonly isLoading = this.loading;
 
   // Unsubscribe functions
   private unsubscribeFunctions: (() => void)[] = [];
@@ -85,7 +90,14 @@ export class DatabaseStore {
       });
       
       if (result.success && result.data) {
-        this.products.set(result.data.products || []);
+        // Convert the products to match the expected type
+        const convertedProducts = (result.data.products || []).map(product => ({
+          ...product,
+          createdAt: product.createdAt instanceof Date ? product.createdAt.toISOString() : product.createdAt,
+          updatedAt: product.updatedAt instanceof Date ? product.updatedAt.toISOString() : product.updatedAt
+        }));
+        
+        this.products.set(convertedProducts as MatterProduct[]);
         this.totalPages.set(result.data.totalPages || 0);
         this.currentPage.set(page);
         if (query !== undefined) {
@@ -149,10 +161,53 @@ export class DatabaseStore {
   /**
    * Search products with query
    */
-  async searchProducts(query: string, options?: { page?: number; limit?: number }): Promise<void> {
-    const page = options?.page || 1;
-    const limit = options?.limit || 50;
-    await this.loadProducts(query, page, limit);
+  async searchProducts(query: string = '', page: number = 1, limit: number = 100): Promise<void> {
+    try {
+      this.loading.set(true);
+      this.error.set(null);
+
+      // 빈 쿼리일 때는 모든 제품 로드
+      if (!query || query.trim() === '') {
+        console.log('Empty search query detected, loading all products');
+        await this.loadProducts(undefined, page, limit);
+        return;
+      }
+
+      console.log(`Searching products with query: "${query.trim()}"`);
+      const result = await this.databaseService.searchProducts({
+        query: query.trim(),
+        page,
+        limit
+      });
+      
+      if (result.success && result.data) {
+        const searchResult = result.data;
+        // Convert the products to match the expected type
+        const convertedProducts = (searchResult.products || []).map(product => ({
+          ...product,
+          createdAt: product.createdAt instanceof Date ? product.createdAt.toISOString() : product.createdAt,
+          updatedAt: product.updatedAt instanceof Date ? product.updatedAt.toISOString() : product.updatedAt
+        }));
+        
+        this.products.set(convertedProducts as MatterProduct[]);
+        this.totalPages.set(searchResult.totalPages || 0);
+        this.currentPage.set(page);
+        if (query !== undefined) {
+          this.searchQuery.set(query);
+        }
+        
+        console.log(`Search completed: ${convertedProducts.length || 0} products found`);
+      } else {
+        throw new Error(result.error?.message || 'Search operation failed');
+      }
+    } catch (error) {
+      console.error('Failed to search products:', error);
+      this.error.set(`제품 검색에 실패했습니다: ${error instanceof Error ? error.message : String(error)}`);
+      this.products.set([]);
+      this.totalPages.set(0);
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   /**
@@ -164,7 +219,7 @@ export class DatabaseStore {
       if (result.success) {
         // Refresh data after successful deletion
         await this.loadSummary();
-        await this.loadProducts(this.searchQuery.get(), 1); // Reset to page 1 after deletion
+        await this.loadProducts(this.searchQuery.get(), 1, 50); // Reset to page 1 after deletion
         this.currentPage.set(1);
       } else {
         throw new Error(result.error?.message || 'Failed to delete records');
@@ -217,6 +272,30 @@ export class DatabaseStore {
   destroy(): void {
     this.unsubscribeFunctions.forEach(unsub => unsub());
     this.unsubscribeFunctions = [];
+  }
+
+  /**
+   * Clear error state
+   */
+  clearError(): void {
+    this.error.set(null);
+  }
+
+  /**
+   * Get debug information
+   */
+  getDebugInfo(): object {
+    return {
+      summary: this.summary.get(),
+      productsCount: this.products.get().length,
+      searchQuery: this.searchQuery.get(),
+      currentPage: this.currentPage.get(),
+      totalPages: this.totalPages.get(),
+      loading: this.loading.get(),
+      saving: this.saving.get(),
+      error: this.error.get(),
+      lastSaveResult: this.lastSaveResult.get()
+    };
   }
 }
 

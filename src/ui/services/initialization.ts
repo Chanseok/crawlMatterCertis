@@ -33,12 +33,11 @@ export async function initializeServices(): Promise<void> {
     
     // Load initial configuration
     const configService = serviceFactory.getConfigurationService();
-    const configResult = await configService.getConfig();
-    
-    if (configResult.success) {
+    try {
+      await configService.getConfig();
       console.log('[ServiceInit] Initial configuration loaded successfully');
-    } else {
-      console.warn('[ServiceInit] Failed to load initial configuration:', configResult.error?.message || 'Unknown error');
+    } catch (error) {
+      console.warn('[ServiceInit] Failed to load initial configuration:', error instanceof Error ? error.message : 'Unknown error');
     }
     
   } catch (error) {
@@ -90,11 +89,17 @@ export async function performServiceHealthChecks(): Promise<{
   try {
     // Check configuration service
     const configService = serviceFactory.getConfigurationService();
-    const configResult = await configService.getConfig();
-    checks.configuration = {
-      status: configResult.success ? 'healthy' : 'unhealthy',
-      message: configResult.success ? undefined : configResult.error?.message || 'Unknown error',
-    };
+    try {
+      await configService.getConfig();
+      checks.configuration = {
+        status: 'healthy',
+      };
+    } catch (error) {
+      checks.configuration = {
+        status: 'unhealthy',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
     
     // Check database service
     const databaseService = serviceFactory.getDatabaseService();

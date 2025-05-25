@@ -24,7 +24,7 @@ export const DomainStoreDemo: React.FC = () => {
     products, 
     isSaving, 
     saveResult, 
-    loadProducts 
+    loadAllProducts 
   } = useDatabaseStore();
 
   const { 
@@ -62,7 +62,7 @@ export const DomainStoreDemo: React.FC = () => {
     addLog('DomainStoreDemo component mounted', 'info');
     
     // Load products
-    loadProducts({ page: 1, limit: 50 })
+    loadAllProducts(1, 50)
       .catch((error: Error) => {
         addLog(`Error loading products: ${error.message}`, 'error');
       });
@@ -78,7 +78,7 @@ export const DomainStoreDemo: React.FC = () => {
     if (searchQuery.trim()) {
       addLog(`Searching for: ${searchQuery}`, 'info');
       // Search functionality would need to be implemented in the store
-      loadProducts({ page: 1, limit: 50 });
+      loadAllProducts(1, 50);
     }
   };
   // Handle crawl button click

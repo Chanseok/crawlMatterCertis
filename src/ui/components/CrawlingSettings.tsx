@@ -22,17 +22,28 @@ export function CrawlingSettings() {
     setAutoAddToDb(config.autoAddToLocalDB);
   }, [config]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     try {
-      clearError();
-      updateConfig({
+      console.log('handleSave called with:', {
         pageRangeLimit: pageLimit,
         productListRetryCount: productListRetry,
         productDetailRetryCount: productDetailRetry,
         autoAddToLocalDB: autoAddToDb
       });
+      
+      clearError();
+      await updateConfig({
+        pageRangeLimit: pageLimit,
+        productListRetryCount: productListRetry,
+        productDetailRetryCount: productDetailRetry,
+        autoAddToLocalDB: autoAddToDb
+      });
+      
+      console.log('설정이 저장되었습니다.');
+      alert('설정이 저장되었습니다.'); // 사용자에게 피드백
     } catch (err) {
       console.error('설정 저장 실패:', err);
+      alert('설정 저장에 실패했습니다.'); // 사용자에게 피드백
     }
   };
 
@@ -77,7 +88,7 @@ export function CrawlingSettings() {
           <input
             type="number"
             min="1"
-            max="10"
+            max="20"
             value={productListRetry}
             onChange={(e) => setProductListRetry(Number(e.target.value))}
             disabled={isDisabled}
@@ -92,7 +103,7 @@ export function CrawlingSettings() {
           <input
             type="number"
             min="1"
-            max="10"
+            max="20"
             value={productDetailRetry}
             onChange={(e) => setProductDetailRetry(Number(e.target.value))}
             disabled={isDisabled}
@@ -100,34 +111,31 @@ export function CrawlingSettings() {
           />
         </div>
 
-        <div className="flex items-center">
+        <div>
           <label className="flex items-center">
             <input
               type="checkbox"
               checked={autoAddToDb}
               onChange={(e) => setAutoAddToDb(e.target.checked)}
               disabled={isDisabled}
-              className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:bg-gray-100"
+              className="mr-2"
             />
             <span className="text-sm font-medium text-gray-700">
-              자동 DB 저장
+              자동으로 로컬 DB에 추가
             </span>
           </label>
         </div>
       </div>
 
-      <div className="mt-6 flex justify-end">
+      {/* 저장 버튼 - 이 부분이 핵심! */}
+      <div className="mt-6 flex justify-end space-x-3">
         <button
           onClick={handleSave}
           disabled={isDisabled}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
           설정 저장
         </button>
-      </div>
-
-      <div className="mt-4 text-sm text-gray-500">
-        현재 상태: {status === 'running' ? '크롤링 중' : '대기 중'}
       </div>
     </div>
   );

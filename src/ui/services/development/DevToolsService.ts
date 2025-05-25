@@ -143,8 +143,8 @@ export class DevToolsService extends BaseService {
       
       // Configuration service
       const configService = serviceFactory.getConfigurationService();
-      const configStatus = await configService.getStatus();
-      services.configuration = configStatus.success ? configStatus.data : { error: configStatus.error?.message };
+      const configStatus = configService.getStatus(); // getStatus() returns plain object
+      services.configuration = configStatus; // configStatus is already a plain object
       
       // Database service
       const databaseService = serviceFactory.getDatabaseService();
@@ -235,8 +235,8 @@ export class DevToolsService extends BaseService {
       const startConfig = Date.now();
       try {
         const configService = serviceFactory.getConfigurationService();
-        const configResult = await configService.getConfig();
-        connectivity.configuration = configResult.success;
+        await configService.getConfig(); // getConfig() returns CrawlerConfig directly
+        connectivity.configuration = true;
         performance.configurationMs = Date.now() - startConfig;
         
         if (performance.configurationMs > 1000) {

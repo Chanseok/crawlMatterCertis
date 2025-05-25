@@ -462,22 +462,18 @@ async function loadInitialData() {
 export async function loadConfig(): Promise<void> {
   try {
     const configService = serviceFactory.getConfigurationService();
-    const result = await configService.getConfig();
+    const config = await configService.getConfig();
     
-    if (result.success && result.data) {
-      configStore.set(result.data);
-      
-      // 설정이 로드될 때 statusStore의 targetPageCount도 업데이트
-      // 이전에 저장된 targetPageCount 값이 없거나 0인 경우에만 업데이트
-      const currentStatus = statusStore.get();
-      if (!currentStatus.targetPageCount) {
-        statusStore.setKey('targetPageCount', result.data.pageRangeLimit || 0);
-      }
-      
-      addLog('설정을 로드했습니다.', 'info');
-    } else {
-      addLog(`설정 로드 실패: ${result.error?.message || 'Unknown error'}`, 'error');
+    configStore.set(config);
+    
+    // 설정이 로드될 때 statusStore의 targetPageCount도 업데이트
+    // 이전에 저장된 targetPageCount 값이 없거나 0인 경우에만 업데이트
+    const currentStatus = statusStore.get();
+    if (!currentStatus.targetPageCount) {
+      statusStore.setKey('targetPageCount', config.pageRangeLimit || 0);
     }
+    
+    addLog('설정을 로드했습니다.', 'info');
   } catch (error) {
     addLog(`설정 로드 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
@@ -487,19 +483,15 @@ export async function loadConfig(): Promise<void> {
 export async function updateConfigSettings(newConfig: Partial<CrawlerConfig>): Promise<void> {
   try {
     const configService = serviceFactory.getConfigurationService();
-    const result = await configService.updateConfig(newConfig);
+    const updatedConfig = await configService.updateConfig(newConfig);
     
-    if (result.success && result.data) {
-      configStore.set(result.data);
-      
-      // pageRangeLimit이 변경되면 statusStore의 targetPageCount도 업데이트
-      if (newConfig.pageRangeLimit !== undefined) {
-        statusStore.setKey('targetPageCount', newConfig.pageRangeLimit);
-      }
-      addLog('설정이 업데이트되었습니다.', 'success');
-    } else {
-      addLog(`설정 업데이트 실패: ${result.error?.message || 'Unknown error'}`, 'error');
+    configStore.set(updatedConfig);
+    
+    // pageRangeLimit이 변경되면 statusStore의 targetPageCount도 업데이트
+    if (newConfig.pageRangeLimit !== undefined) {
+      statusStore.setKey('targetPageCount', newConfig.pageRangeLimit);
     }
+    addLog('설정이 업데이트되었습니다.', 'success');
   } catch (error) {
     addLog(`설정 업데이트 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
@@ -561,15 +553,10 @@ export async function startCrawling(): Promise<void> {
     // 항상 최신 설정을 로드
     try {
       const configService = serviceFactory.getConfigurationService();
-      const result = await configService.getConfig();
+      const config = await configService.getConfig();
       
-      if (result.success && result.data) {
-        console.log('[UI] 크롤링 시작 전 최신 설정 로드됨:', result.data);
-        configStore.set(result.data);
-      } else {
-        console.error('[UI] 크롤링 시작 전 설정 로드 실패:', result.error?.message || 'Unknown error');
-        addLog('설정을 로드하는데 문제가 있습니다. 기존 설정을 사용합니다.', 'warning');
-      }
+      console.log('[UI] 크롤링 시작 전 최신 설정 로드됨:', config);
+      configStore.set(config);
     } catch (configError) {
       console.error('[UI] 크롤링 시작 전 설정 로드 실패:', configError);
       addLog('설정을 로드하는데 문제가 있습니다. 기존 설정을 사용합니다.', 'warning');
@@ -754,14 +741,10 @@ export async function checkCrawlingStatus(): Promise<void> {
     // 설정을 변경하고 저장한 후 '상태 체크'를 누르면 최신 설정이 로드되도록 보장
     try {
       const configService = serviceFactory.getConfigurationService();
-      const result = await configService.getConfig();
+      const config = await configService.getConfig();
       
-      if (result.success && result.data) {
-        console.log('[UI] 상태 체크 전 최신 설정 로드됨:', result.data);
-        configStore.set(result.data);
-      } else {
-        console.error('[UI] 상태 체크 전 설정 로드 실패:', result.error?.message || 'Unknown error');
-      }
+      console.log('[UI] 상태 체크 전 최신 설정 로드됨:', config);
+      configStore.set(config);
     } catch (configError) {
       console.error('[UI] 상태 체크 전 설정 로드 실패:', configError);
       // 설정 로드 실패해도 기존 설정으로 진행

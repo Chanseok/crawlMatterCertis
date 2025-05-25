@@ -11,6 +11,7 @@ import type { CrawlingProgress, CrawlingStatus, CrawlerConfig } from '../../../.
 import type { CrawlingSummary } from '../../../electron/crawler/utils/types';
 import { IPCService } from '../../services/IPCService';
 import { CrawlingService } from '../../services/domain/CrawlingService';
+import { ConfigurationService } from '../../services/domain/ConfigurationService';
 
 export interface CrawlingStatusSummary {
   dbLastUpdated: Date | null;
@@ -70,11 +71,13 @@ export class CrawlingStore {
 
   private ipcService: IPCService;
   private crawlingService: CrawlingService;
+  private configurationService: ConfigurationService; // 추가
   private unsubscribeFunctions: (() => void)[] = [];
 
   constructor() {
     this.ipcService = IPCService.getInstance();
     this.crawlingService = CrawlingService.getInstance();
+    this.configurationService = ConfigurationService.getInstance(); // 추가
     this.initializeEventSubscriptions();
   }
 
@@ -194,11 +197,26 @@ export class CrawlingStore {
   /**
    * Update configuration
    */
-  updateConfig(newConfig: Partial<CrawlerConfig>): void {
-    const currentConfig = this.config.get();
-    const updatedConfig = { ...currentConfig, ...newConfig };
-    this.config.set(updatedConfig);
-    this.onConfigChange.set(updatedConfig);
+  async updateConfig(newConfig: Partial<CrawlerConfig>): Promise<void> {
+    try {
+      console.log('CrawlingStore.updateConfig called with:', newConfig);
+      const currentConfig = this.config.get();
+      const updatedConfig = { ...currentConfig, ...newConfig };
+      
+      // 메모리 상태 업데이트
+      this.config.set(updatedConfig);
+      this.onConfigChange.set(updatedConfig);
+      
+      // 파일에 저장 (이 부분이 핵심!)
+      await this.configurationService.updateConfig(updatedConfig);
+      
+      console.log('Configuration saved to file:', updatedConfig);
+      
+    } catch (error) {
+      console.error('Failed to update config:', error);
+      this.error.set('설정 저장에 실패했습니다.');
+      throw error;
+    }
   }
 
   /**
@@ -266,6 +284,25 @@ export class CrawlingStore {
       error: this.error.get(),
       subscriptionsCount: this.unsubscribeFunctions.length
     };
+  }
+
+  /**
+   * Load configuration
+   */
+  async loadConfig(): Promise<CrawlerConfig> {
+    try {
+      console.log('CrawlingStore.loadConfig called');
+      const config = await this.configurationService.getConfig();
+      console.log('Configuration loaded from file:', config);
+      
+      // Store 상태에 반영 (이 부분이 핵심!)
+      this.config.set(config);
+      
+      return config;
+    } catch (error) {
+      console.error('Failed to load config:', error);
+      throw error;
+    }
   }
 }
 

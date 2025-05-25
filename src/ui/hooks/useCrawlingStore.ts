@@ -49,12 +49,27 @@ export function useCrawlingStore() {
     stopCrawling: () => crawlingStore.stopCrawling(),
     checkStatus: () => crawlingStore.checkStatus(),
     loadConfig: async () => {
-      // Load latest config and update the store
-      const config = crawlingStore.config.get();
-      return config;
+      console.log('useCrawlingStore.loadConfig called');
+      try {
+        // 실제 CrawlingStore의 loadConfig 메서드 호출
+        const config = await crawlingStore.loadConfig();
+        console.log('useCrawlingStore.loadConfig completed with config:', config);
+        return config;
+      } catch (error) {
+        console.error('useCrawlingStore.loadConfig error:', error);
+        throw error;
+      }
     },
-    updateConfig: (newConfig: Partial<CrawlerConfig>) => 
-      crawlingStore.updateConfig(newConfig),
+    updateConfig: async (config: Partial<CrawlerConfig>) => {
+      console.log('useCrawlingStore.updateConfig called with:', config);
+      try {
+        await crawlingStore.updateConfig(config);
+        console.log('useCrawlingStore.updateConfig completed successfully');
+      } catch (error) {
+        console.error('useCrawlingStore.updateConfig error:', error);
+        throw error;
+      }
+    },
     updateProgress: (progressUpdate: Parameters<typeof crawlingStore.updateProgress>[0]) => 
       crawlingStore.updateProgress(progressUpdate),
     clearError: () => crawlingStore.clearError(),
