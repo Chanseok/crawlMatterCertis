@@ -1,6 +1,5 @@
 import React from 'react';
-import { useStore } from '@nanostores/react';
-import { crawlingProgressStore } from '../stores';
+import { useCrawlingStore } from '../hooks/useCrawlingStore';
 
 interface RetryStatusIndicatorProps {
   className?: string;
@@ -11,7 +10,7 @@ interface RetryStatusIndicatorProps {
  * 재시도가 발생할 때만 표시됨
  */
 export const RetryStatusIndicator: React.FC<RetryStatusIndicatorProps> = React.memo(({ className }) => {
-  const progress = useStore(crawlingProgressStore);
+  const { progress } = useCrawlingStore();
   
   // 현재 단계에 따라 재시도 정보 결정
   const currentRetry = progress.retryCount || 0;

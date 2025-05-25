@@ -1,9 +1,8 @@
 import { useMemo, useRef, useEffect, useState } from "react";
 import { BaseChart } from "./BaseChart";
-import { useStore } from '@nanostores/react';
-import { concurrentTasksStore, activeTasksStore } from './stores';
 import type { ConcurrentCrawlingTask } from './types';
 import { TaskProgressIndicator } from "./components/TaskProgressIndicator";
+import { useTaskStore } from './hooks/useTaskStore';
 
 export type ChartProps = {
     data: number[];
@@ -24,13 +23,12 @@ export function Chart(props: ChartProps) {
 
 // 동시 처리 작업 현황 시각화 컴포넌트
 export function ConcurrentTasksVisualizer() {
-  const tasks = useStore(concurrentTasksStore);
-  const activeTasksDetail = useStore(activeTasksStore);
+  const { concurrentTasks, activeTasks } = useTaskStore();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [lastChangedTasks, setLastChangedTasks] = useState<(string | number)[]>([]);
 
   // Safety check to ensure tasks is an array
-  const tasksArray = Array.isArray(tasks) ? tasks : [];
+  const tasksArray = Array.isArray(concurrentTasks) ? concurrentTasks : [];
 
   // 작업 상태 변경 감지를 위한 이전 상태 추적
   const prevTasksRef = useRef<ConcurrentCrawlingTask[]>([]);
@@ -105,7 +103,7 @@ export function ConcurrentTasksVisualizer() {
     >
       {tasksArray.length === 0 && <span className="text-gray-400">아직 동시 작업 없음</span>}
       {tasksArray.map((task: ConcurrentCrawlingTask) => {
-        const taskDetail = activeTasksDetail[task.pageNumber];
+        const taskDetail = activeTasks[task.pageNumber];
         const startTime = taskDetail?.startTime || 0;
         const isActive = task.status === 'running' || task.status === 'attempting';
         

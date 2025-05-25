@@ -1,9 +1,8 @@
 import React from 'react';
-import { useStore } from '@nanostores/react';
-import { appModeStore, toggleAppMode } from '../../stores';
+import { useUIStore } from '../../hooks/useUIStore';
 
 export const Header: React.FC = () => {
-  const mode = useStore(appModeStore);
+  const { appMode, toggleAppMode } = useUIStore();
   
   return (
     <header className="bg-white dark:bg-gray-800 shadow-md p-4">
@@ -16,12 +15,12 @@ export const Header: React.FC = () => {
             <button
               onClick={toggleAppMode}
               className={`px-3 py-1 rounded-md text-sm font-medium ${
-                mode === 'development'
+                appMode === 'development'
                   ? 'bg-amber-500 text-white'
                   : 'bg-green-500 text-white'
               }`}
             >
-              {mode === 'development' ? '개발 모드' : '실사용 모드'}
+              {appMode === 'development' ? '개발 모드' : '실사용 모드'}
             </button>
           </div>
         </div>

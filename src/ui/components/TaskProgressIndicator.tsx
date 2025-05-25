@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useStore } from '@nanostores/react';
-import { activeTasksStore, configStore } from '../stores';
+import { useCrawlingStore } from '../hooks/useCrawlingStore';
+import { useTaskStore } from '../hooks/useTaskStore';
 import './TaskProgressIndicator.css';
 
 interface TaskProgressIndicatorProps {
@@ -19,8 +19,8 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = ({
   statusEmoji = '🚀'
 }) => {
   // 활성 작업 목록과 설정 구독
-  const allActiveTasks = useStore(activeTasksStore);
-  const currentConfig = useStore(configStore);
+  const { activeTasks } = useTaskStore();
+  const { config: currentConfig } = useCrawlingStore();
   
   // 컴포넌트의 현재 시각적 상태
   const [displayState, setDisplayState] = useState<'default' | 'collecting' | 'countdown'>('default');
@@ -38,8 +38,7 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = ({
   const [showRocketAnimation, setShowRocketAnimation] = useState<boolean>(false);
 
   // 페이지 번호에 해당하는 작업 찾기
-  const taskKey = `page-${pageNumber}`;
-  const currentTask = allActiveTasks[taskKey];
+  const taskKey = `page-${pageNumber}`;    const currentTask = activeTasks[taskKey];
 
   // 작업 상태에 따라 디스플레이 상태 업데이트
   useEffect(() => {

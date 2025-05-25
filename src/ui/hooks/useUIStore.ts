@@ -25,6 +25,7 @@ export function useUIStore() {
   const deleteRange = useStore(uiStore.deleteRange);
   const notifications = useStore(uiStore.notifications);
   const onUIChange = useStore(uiStore.onUIChange);
+  const appMode = useStore(uiStore.appMode);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -45,6 +46,10 @@ export function useUIStore() {
     deleteRange,
     notifications,
     onUIChange,
+    appMode,
+
+    // App mode actions
+    toggleAppMode: () => uiStore.toggleAppMode(),
 
     // Search and filter actions
     setSearchQuery: (query: string) => uiStore.setSearchQuery(query),

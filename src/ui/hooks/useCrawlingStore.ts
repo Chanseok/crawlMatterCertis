@@ -48,6 +48,11 @@ export function useCrawlingStore() {
     startCrawling: () => crawlingStore.startCrawling(),
     stopCrawling: () => crawlingStore.stopCrawling(),
     checkStatus: () => crawlingStore.checkStatus(),
+    loadConfig: async () => {
+      // Load latest config and update the store
+      const config = crawlingStore.config.get();
+      return config;
+    },
     updateConfig: (newConfig: Partial<CrawlerConfig>) => 
       crawlingStore.updateConfig(newConfig),
     updateProgress: (progressUpdate: Parameters<typeof crawlingStore.updateProgress>[0]) => 

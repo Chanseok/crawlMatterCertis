@@ -1,17 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { useStore } from '@nanostores/react';
-import { 
-  crawlingStatusStore, 
-  productsStore,
-  startCrawling,
-  stopCrawling,
-  exportToExcel,
-  checkCrawlingStatus,
-  loadConfig,
-  crawlingStatusSummaryStore,
-  addLog,
-  crawlingProgressStore
-} from '../../stores';
+import { useCrawlingStore } from '../../hooks/useCrawlingStore';
+import { useDatabaseStore } from '../../hooks/useDatabaseStore';
+import { useLogStore } from '../../hooks/useLogStore';
 import { ExpandableSection } from '../ExpandableSection';
 import CrawlingDashboard from '../CrawlingDashboard';
 import PageProgressDisplay from '../PageProgressDisplay';
@@ -26,9 +16,18 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   statusExpanded, 
   onToggleStatus
 }) => {
-  const crawlingStatus = useStore(crawlingStatusStore);
-  const products = useStore(productsStore);
-  const progress = useStore(crawlingProgressStore);
+  // Domain Store Hooks 사용
+  const { 
+    status: crawlingStatus, 
+    progress, 
+    statusSummary,
+    startCrawling,
+    stopCrawling,
+    checkStatus,
+    loadConfig
+  } = useCrawlingStore();
+  const { products, exportToExcel } = useDatabaseStore();
+  const { addLog } = useLogStore();
   
   // 상태 체크 및 비교 섹션 관련 상태
   const [isStatusChecking, setIsStatusChecking] = useState<boolean>(false);
@@ -63,7 +62,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         await loadConfig();
         
         // 이미 상태 체크를 한 경우를 판단하기 위해 상태 요약 정보 확인
-        const currentSummary = crawlingStatusSummaryStore.get();
+        const currentSummary = statusSummary;
         const hasStatusData = currentSummary && 
                              currentSummary.siteTotalPages !== undefined && 
                              currentSummary.siteTotalPages > 0;
@@ -75,7 +74,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           
           try {
             setIsStatusChecking(true);
-            await checkCrawlingStatus();
+            await checkStatus();
           } catch (error) {
             addLog(`자동 상태 체크 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'warning');
             // 오류가 있더라도 크롤링 시도
@@ -103,7 +102,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     setIsStatusChecking(true);
     try {
       await loadConfig();
-      await checkCrawlingStatus();
+      await checkStatus();
     } catch (error) {
       addLog(`상태 체크 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
     } finally {

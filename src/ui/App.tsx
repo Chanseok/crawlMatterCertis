@@ -1,22 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useStore } from '@nanostores/react';
 import './App.css';
 import { CrawlingSettings } from './components/CrawlingSettings';
 import { LocalDBTab } from './components/LocalDBTab';
 import { CrawlingCompleteView } from './components/CrawlingCompleteView';
-import {
-  crawlingStatusStore,
-  searchQueryStore,
-  searchProducts,
-  productsStore,
-  loadConfig,
-  stopCrawling,
-  crawlingStatusSummaryStore,
-  exportToExcel,
-  checkCrawlingStatus,
-  startCrawling,
-  addLog
-} from './stores';
+
+// Domain Store Hooks 사용
+import { 
+  useCrawlingStore, 
+  useDatabaseStore, 
+  useLogStore,
+  useUIStore
+} from './hooks';
 
 // 새로 분리된 컴포넌트들 import
 import { LogPanel } from './components/logs/LogPanel';
@@ -37,10 +31,29 @@ function App() {
   // API 초기화 (앱 시작 시 한 번만 수행)
   useApiInitialization();
   
-  // nanostores를 통한 상태 관리
-  const crawlingStatus = useStore(crawlingStatusStore);
-  const products = useStore(productsStore);
-  const searchQuery = useStore(searchQueryStore);
+  // Domain Store Hooks 사용
+  const { 
+    status: crawlingStatus, 
+    statusSummary: crawlingStatusSummary,
+    startCrawling, 
+    stopCrawling, 
+    checkStatus,
+    loadConfig
+  } = useCrawlingStore();
+  
+  const { 
+    products,
+    searchProducts,
+    exportToExcel
+  } = useDatabaseStore();
+  
+  const { 
+    addLog 
+  } = useLogStore();
+  
+  const {
+    searchQuery
+  } = useUIStore();
   
   // 커스텀 훅을 통한 탭 관리
   const { activeTab, handleTabChange } = useTabs('status');
@@ -119,7 +132,7 @@ function App() {
         await loadConfig();
         
         // 이미 상태 체크를 한 경우를 판단하기 위해 상태 요약 정보 확인
-        const currentSummary = crawlingStatusSummaryStore.get();
+        const currentSummary = crawlingStatusSummary;
         const hasStatusData = currentSummary && 
                              currentSummary.siteTotalPages !== undefined && 
                              currentSummary.siteTotalPages > 0;
@@ -136,7 +149,7 @@ function App() {
           
           try {
             // 상태 체크 실행
-            await checkCrawlingStatus();
+            await checkStatus();
             
             // 상태 체크 완료 후 약간의 지연으로 UI 업데이트 시간 확보
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -173,7 +186,7 @@ function App() {
     setIsStatusChecking(true);
     try {
       await loadConfig(); // Ensure latest config is loaded before checking status
-      await checkCrawlingStatus();
+      await checkStatus();
     } catch (error) {
       console.error(`상태 체크 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`);
     } finally {

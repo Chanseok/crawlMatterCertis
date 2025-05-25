@@ -7,6 +7,7 @@ import { atom } from 'nanostores';
 import type { DatabaseSummary, MatterProduct } from '../../../../types';
 import { getPlatformApi } from '../../platform/api';
 import { DatabaseService } from '../../services/domain/DatabaseService';
+import { ExportService } from '../../services/domain/ExportService';
 
 export interface ProductDetail {
   id: string;
@@ -38,6 +39,7 @@ export class DatabaseStore {
   private unsubscribeFunctions: (() => void)[] = [];
   private api = getPlatformApi();
   private databaseService = DatabaseService.getInstance();
+  private exportService = ExportService.getInstance();
 
   constructor() {
     this.initializeEventSubscriptions();
@@ -141,6 +143,56 @@ export class DatabaseStore {
       });
     } finally {
       this.saving.set(false);
+    }
+  }
+
+  /**
+   * Search products with query
+   */
+  async searchProducts(query: string, options?: { page?: number; limit?: number }): Promise<void> {
+    const page = options?.page || 1;
+    const limit = options?.limit || 50;
+    await this.loadProducts(query, page, limit);
+  }
+
+  /**
+   * Delete records by page range
+   */
+  async deleteRecordsByPageRange(startPageId: number, endPageId: number): Promise<void> {
+    try {
+      const result = await this.databaseService.deleteRecordsByPageRange(startPageId, endPageId);
+      if (result.success) {
+        // Refresh data after successful deletion
+        await this.loadSummary();
+        await this.loadProducts(this.searchQuery.get(), 1); // Reset to page 1 after deletion
+        this.currentPage.set(1);
+      } else {
+        throw new Error(result.error?.message || 'Failed to delete records');
+      }
+    } catch (error) {
+      console.error('Failed to delete records by page range:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Export data to Excel
+   */
+  async exportToExcel(path?: string): Promise<void> {
+    try {
+      // Use the ExportService directly
+      const result = await this.exportService.exportToExcel({
+        format: 'xlsx' as const,
+        path: path,
+        includeHeaders: true
+      });
+      
+      if (!result.success) {
+        throw new Error(result.error?.message || 'Export failed');
+      }
+    } catch (error) {
+      console.error('Failed to export to Excel:', error);
+      throw error;
     }
   }
 

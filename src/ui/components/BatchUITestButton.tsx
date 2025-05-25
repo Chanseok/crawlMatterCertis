@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { addLog } from '../stores';
+import { useLogStore } from '../hooks/useLogStore';
 
 /**
  * 배치 처리 UI 테스트 버튼 컴포넌트
@@ -9,6 +9,8 @@ export function BatchUITestButton() {
   const [isRunning, setIsRunning] = useState(false);
   const [batchCount, setBatchCount] = useState(5);
   const [delayMs, setDelayMs] = useState(2000);
+  
+  const { addLog } = useLogStore();
   
   // 개발 모드 여부 확인 (단순화된 버전)
   const isDev = typeof window !== 'undefined' && 

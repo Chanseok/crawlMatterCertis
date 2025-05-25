@@ -7,6 +7,7 @@
  */
 
 import { atom, map } from 'nanostores';
+import type { AppMode } from '../../types';
 
 /**
  * UI preferences and settings
@@ -55,6 +56,9 @@ export interface SearchFilterState {
  * Manages all UI-specific state and user interface interactions
  */
 export class UIStore {
+  // App mode management
+  public readonly appMode = atom<AppMode>('development');
+
   // Search and filtering
   public readonly searchQuery = atom<string>('');
   public readonly filterBy = atom<string>('all');
@@ -300,6 +304,22 @@ export class UIStore {
       sortOrder: this.sortOrder.get(),
       currentPage: this.currentPage.get()
     };
+  }
+
+  /**
+   * App mode management
+   */
+  toggleAppMode(): void {
+    const currentMode = this.appMode.get();
+    const newMode = currentMode === 'development' ? 'production' : 'development';
+    
+    this.appMode.set(newMode);
+    
+    // API 재초기화 및 로그 추가는 외부에서 처리하도록 이벤트 발생
+    this.onUIChange.set({ 
+      type: 'appModeChanged', 
+      data: { previousMode: currentMode, newMode } 
+    });
   }
 
   /**

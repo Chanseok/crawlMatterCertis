@@ -1,8 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
 import { observer } from 'mobx-react-lite';
-import { useStore } from '@nanostores/react';
-import { crawlingProgressStore, crawlingStatusStore, configStore, crawlingStatusSummaryStore, 
-  lastCrawlingStatusSummaryStore, CrawlingStatusSummary, concurrentTasksStore, updateCrawlingProgress, statusStore } from '../stores';
 import { ExpandableSection } from './ExpandableSection';
 import StatusCheckLoadingAnimation from './StatusCheckLoadingAnimation';
 import { format } from 'date-fns';
@@ -17,7 +14,9 @@ import { StatusDisplay } from './displays/StatusDisplay';
 
 import { PageProgressDisplay } from './displays/PageProgressDisplay';
 import { useCrawlingStore } from '../hooks/useCrawlingStore';
+import { useTaskStore } from '../hooks/useTaskStore';
 import { TimeDisplay } from './displays/TimeDisplay';
+import type { CrawlingStatusSummary } from '../stores/domain/CrawlingStore';
 
 
 interface CrawlingDashboardProps {
@@ -39,16 +38,18 @@ interface AnimatedValues {
  * 크롤링 진행 상황을 시각적으로 보여주는 대시보드 컴포넌트
  */
 function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
-  // Domain Store 패턴을 통한 통합 진행 상태 관리
-  const crawlingData = useCrawlingStore();
-
-  // 필요한 Legacy 스토어들 (점진적 마이그레이션 중)
-  const progress = useStore(crawlingProgressStore);
-  const status = useStore(crawlingStatusStore);
-  const config = useStore(configStore);
-  const statusSummary = useStore(crawlingStatusSummaryStore);
-  const lastStatusSummary = useStore(lastCrawlingStatusSummaryStore);
-  const statusData = useStore(statusStore);
+  // Domain Store Hook을 통한 통합 진행 상태 관리
+  const { 
+    status, 
+    progress, 
+    config, 
+    statusSummary, 
+    lastStatusSummary,
+    updateProgress
+  } = useCrawlingStore();
+  
+  // Task Store Hook을 통한 동시 작업 관리
+  const { concurrentTasks } = useTaskStore();
 
   const [localTime, setLocalTime] = useState({ elapsedTime: 0, remainingTime: 0 });
   const [flipTimer, setFlipTimer] = useState(0);
@@ -73,20 +74,18 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
   // 5. 기본값 1 사용
   const targetPageCount = useMemo(() => 
     (progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || // 1단계일때 실제 크롤링 대상 페이지 사용
-    statusData.targetPageCount || 
+    progress.totalPages || 
     (crawlingRange ? (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 0) ||
     config.pageRangeLimit || 
-    progress.totalPages || 
     statusSummary?.siteTotalPages || 
     1, 
   [
     progress.currentStage, 
     statusSummary?.actualTargetPageCountForStage1, 
-    statusData.targetPageCount, 
+    progress.totalPages, 
     crawlingRange, 
     statusSummary?.crawlingRange,
     config.pageRangeLimit,
-    progress.totalPages,
     statusSummary?.siteTotalPages
   ]);
 
@@ -343,9 +342,8 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
       }
       
       // 2. tasks에서 성공 상태인 페이지 수 확인
-      const tasks = concurrentTasksStore.get();
-      if (tasks && tasks.length > 0) {
-        const successTasksCount = tasks.filter((task) => task.status === 'success').length;
+      if (concurrentTasks && concurrentTasks.length > 0) {
+        const successTasksCount = concurrentTasks.filter((task) => task.status === 'success').length;
         successPageCount = Math.max(successPageCount, successTasksCount);
       }
       
@@ -359,38 +357,37 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
       // 다른 단계들은 API에서 받은 진행률 그대로 사용
       return progress.percentage || 0;
     }
-  }, [progress.currentStage, progress.stage1PageStatuses, progress.currentPage, progress.percentage, targetPageCount, concurrentTasksStore.get()]);
+  }, [progress.currentStage, progress.stage1PageStatuses, progress.currentPage, progress.percentage, targetPageCount, concurrentTasks]);
 
   // 성공 상태의 페이지 수를 모니터링하기 위한 추가 effect
   const [successPagesCount, setSuccessPagesCount] = useState(0);
   
-  // concurrentTasksStore의 변화를 감지하여 성공한 페이지 수 업데이트
+  // concurrentTasks의 변화를 감지하여 성공한 페이지 수 업데이트
   // 더 강력한 성공 페이지 수 추적을 위한 effect
   useEffect(() => {
-    const tasks = concurrentTasksStore.get();
-    if (tasks && tasks.length > 0) {
-      const successCount = tasks.filter(task => task.status === 'success').length;
+    if (concurrentTasks && concurrentTasks.length > 0) {
+      const successCount = concurrentTasks.filter(task => task.status === 'success').length;
       if (successCount > 0 && successCount !== successPagesCount) {
         setSuccessPagesCount(successCount);
         
         // 현재 성공한 페이지 수가 progress.currentPage보다 크면 업데이트
         if (successCount > (progress.currentPage || 0) && progress.currentStage === 1) {
           // 강제로 업데이트 트리거
-          updateCrawlingProgress({
+          updateProgress({
             currentPage: successCount
           });
         }
       }
     }
   }, [
-    // concurrentTasksStore.get() 자체는 참조가 변하므로 필요 속성만 개별적으로 추적
+    // concurrentTasks 자체는 참조가 변하므로 필요 속성만 개별적으로 추적
     // 이 effect는 성공한 작업 수가 변경될 때만 실행되어야 함
     successPagesCount, 
     progress.currentPage, 
     progress.currentStage,
-    concurrentTasksStore.get().length, 
+    concurrentTasks.length, 
     // 성공 상태 배열의 길이만 추적
-    concurrentTasksStore.get().filter(task => task.status === 'success').length
+    concurrentTasks.filter(task => task.status === 'success').length
   ]);
 
   useEffect(() => {
@@ -404,7 +401,7 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
     if (progress.currentStage === 1) {
       // 단계 1에서는 최대 성공 페이지 값 사용
       const fromStatuses = progress.stage1PageStatuses?.filter(p => p.status === 'success').length || 0;
-      const fromTasks = concurrentTasksStore.get().filter(task => task.status === 'success').length;
+      const fromTasks = concurrentTasks.filter(task => task.status === 'success').length;
       currentPageValue = Math.max(currentPageValue, fromStatuses, fromTasks, successPagesCount);
     }
 
@@ -471,8 +468,8 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
 
 
   // 이전 상태 체크 여부와 현재 상태를 구분하는 더 명확한 변수들
-  const isBeforeStatusCheck = useMemo(() => status === 'idle' && !statusData.lastCheckedAt, [status, statusData.lastCheckedAt]);
-  const isAfterStatusCheck = useMemo(() => status === 'idle' && !!statusData.lastCheckedAt, [status, statusData.lastCheckedAt]);
+  const isBeforeStatusCheck = useMemo(() => status === 'idle' && !statusSummary?.dbLastUpdated, [status, statusSummary?.dbLastUpdated]);
+  const isAfterStatusCheck = useMemo(() => status === 'idle' && !!statusSummary?.dbLastUpdated, [status, statusSummary?.dbLastUpdated]);
   
   let collectionStatusText = "제품 상세 수집 현황";
   let retryStatusText = "제품 상세 재시도";
@@ -634,10 +631,9 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
                       displaySuccessCount = Math.max(displaySuccessCount, progress.currentPage);
                     }
                     
-                    // 3. concurrentTasksStore에서 성공 상태인 페이지 확인
-                    const tasks = concurrentTasksStore.get();
-                    if (tasks && tasks.length > 0) {
-                      const successTasksCount = tasks.filter(task => task.status === 'success').length;
+                    // 3. concurrentTasks에서 성공 상태인 페이지 확인
+                    if (concurrentTasks && concurrentTasks.length > 0) {
+                      const successTasksCount = concurrentTasks.filter(task => task.status === 'success').length;
                       displaySuccessCount = Math.max(displaySuccessCount, successTasksCount);
                     }
                     
@@ -669,7 +665,7 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
               {isBeforeStatusCheck ? `상태확인 전` :
                 isAfterStatusCheck ? `0 / ${statusSummary?.crawlingRange ? 
                                        (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
-                                       statusData.targetPageCount || targetPageCount}` :
+                                       targetPageCount}` :
                 status === 'running' && progress.currentStage === 1 ? 
                   (() => {
                     // 성공한 페이지 수 계산 - 개선된 알고리즘
@@ -686,10 +682,9 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
                       successCount = Math.max(successCount, progress.currentPage);
                     }
                     
-                    // 3. concurrentTasksStore에서 성공 상태인 페이지 확인
-                    const tasks = concurrentTasksStore.get();
-                    if (tasks && tasks.length > 0) {
-                      const successTasksCount = tasks.filter(task => task.status === 'success').length;
+                    // 3. concurrentTasks에서 성공 상태인 페이지 확인
+                    if (concurrentTasks && concurrentTasks.length > 0) {
+                      const successTasksCount = concurrentTasks.filter(task => task.status === 'success').length;
                       successCount = Math.max(successCount, successTasksCount);
                     }
                     
@@ -793,8 +788,8 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
              progress.currentStep?.toLowerCase().includes('1.5/3') ||
              progress.currentStep?.toLowerCase().includes('db 중복'))
           }
-          isCompleted={crawlingData.status === 'completed'}
-          hasErrors={crawlingData.status === 'error'}
+          isCompleted={status === 'completed'}
+          hasErrors={status === 'error'}
         />
 
         {getRetryInfo()}
@@ -810,10 +805,10 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
             <div className="font-medium text-blue-800 dark:text-blue-300 mb-1">진행 정보:</div>
             <ul className="text-xs text-gray-700 dark:text-gray-300">
               <li>• 총 페이지 수: {
-                (progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || // 1단계일때 실제 크롤링 대상 페이지 사용
+                (progress.currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || 
                 statusSummary?.crawlingRange ? 
-                                 (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
-                                 statusData.targetPageCount || targetPageCount}페이지</li>
+                  (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
+                  targetPageCount}페이지</li>
               <li>• 현재까지 성공한 페이지: {(() => {
                 // 성공한 페이지 수 계산 - 모든 소스에서 가장 높은 값을 사용
                 let successCount = 0;
@@ -829,10 +824,9 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
                   successCount = Math.max(successCount, progress.currentPage);
                 }
                 
-                // 3. concurrentTasksStore에서 성공 상태인 페이지 확인 - 실시간 UI 업데이트
-                const tasks = concurrentTasksStore.get();
-                if (tasks && tasks.length > 0) {
-                  const successTasksCount = tasks.filter(task => task.status === 'success').length;
+                // 3. concurrentTasks에서 성공 상태인 페이지 확인 - 실시간 UI 업데이트
+                if (concurrentTasks && concurrentTasks.length > 0) {
+                  const successTasksCount = concurrentTasks.filter(task => task.status === 'success').length;
                   successCount = Math.max(successCount, successTasksCount);
                 }
                 

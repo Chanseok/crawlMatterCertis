@@ -37,25 +37,15 @@ export class ConfigurationService extends BaseService {
    */
   public async getConfig(): Promise<ServiceResult<CrawlerConfig>> {
     try {
-      // Mock implementation - in real app would call IPC to get config
-      const config: CrawlerConfig = {
-        pageRangeLimit: 100,
-        productListRetryCount: 3,
-        productDetailRetryCount: 3,
-        productsPerPage: 20,
-        autoAddToLocalDB: true,
-        headlessBrowser: true,
-        crawlerType: 'axios',
-        maxConcurrentTasks: 5,
-        requestDelay: 1000,
-        batchSize: 30,
-        batchDelayMs: 2000,
-        enableBatchProcessing: true,
-        batchRetryLimit: 3
-      };
-
-      this.currentConfig = config;
-      return this.createSuccess(config);
+      // Call IPC to get configuration from ConfigManager
+      const result = await this.ipcService.getConfig();
+      
+      if (result.success && result.config) {
+        this.currentConfig = result.config;
+        return this.createSuccess(result.config);
+      } else {
+        throw new Error(result.error || 'Failed to get configuration');
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       return this.createFailure(this.createError('FETCH_ERROR', `Failed to get configuration: ${errorMessage}`));
@@ -70,18 +60,21 @@ export class ConfigurationService extends BaseService {
       // Validate the configuration update
       this.validateConfigUpdate(config);
 
-      // Mock implementation - merge with current config
-      const currentConfig = this.currentConfig || await this.getDefaultConfig();
-      const updatedConfig = { ...currentConfig, ...config };
+      // Call IPC to update configuration in ConfigManager
+      const result = await this.ipcService.updateConfig(config);
+      
+      if (result.success && result.config) {
+        // Validate the complete configuration returned from backend
+        const validationResult = this.validateConfig(result.config);
+        if (!validationResult.success) {
+          return this.createFailure(validationResult.error!);
+        }
 
-      // Validate the complete configuration
-      const validationResult = this.validateConfig(updatedConfig);
-      if (!validationResult.success) {
-        return this.createFailure(validationResult.error!);
+        this.currentConfig = result.config;
+        return this.createSuccess(result.config);
+      } else {
+        throw new Error(result.error || 'Failed to update configuration');
       }
-
-      this.currentConfig = updatedConfig;
-      return this.createSuccess(updatedConfig);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       return this.createFailure(this.createError('UPDATE_ERROR', `Failed to update configuration: ${errorMessage}`));
@@ -93,9 +86,15 @@ export class ConfigurationService extends BaseService {
    */
   public async resetConfig(): Promise<ServiceResult<CrawlerConfig>> {
     try {
-      const defaultConfig = await this.getDefaultConfig();
-      this.currentConfig = defaultConfig;
-      return this.createSuccess(defaultConfig);
+      // Call IPC to reset configuration in ConfigManager
+      const result = await this.ipcService.resetConfig();
+      
+      if (result.success && result.config) {
+        this.currentConfig = result.config;
+        return this.createSuccess(result.config);
+      } else {
+        throw new Error(result.error || 'Failed to reset configuration');
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       return this.createFailure(this.createError('RESET_ERROR', `Failed to reset configuration: ${errorMessage}`));
@@ -266,26 +265,5 @@ export class ConfigurationService extends BaseService {
         this.createError('STATUS_ERROR', `Failed to get service status: ${errorMessage}`)
       );
     }
-  }
-
-  /**
-   * Get default configuration
-   */
-  private async getDefaultConfig(): Promise<CrawlerConfig> {
-    return {
-      pageRangeLimit: 100,
-      productListRetryCount: 3,
-      productDetailRetryCount: 3,
-      productsPerPage: 20,
-      autoAddToLocalDB: true,
-      headlessBrowser: true,
-      crawlerType: 'axios',
-      maxConcurrentTasks: 5,
-      requestDelay: 1000,
-      batchSize: 30,
-      batchDelayMs: 2000,
-      enableBatchProcessing: true,
-      batchRetryLimit: 3
-    };
   }
 }

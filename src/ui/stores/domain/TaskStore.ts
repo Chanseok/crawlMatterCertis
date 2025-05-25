@@ -8,6 +8,7 @@
 
 import { atom, map } from 'nanostores';
 import { getPlatformApi } from '../../platform/api';
+import type { ConcurrentCrawlingTask } from '../../types';
 
 /**
  * Task status detail information
@@ -43,6 +44,9 @@ export interface TaskStatistics {
  * Manages all task-related state and operations
  */
 export class TaskStore {
+  // Concurrent crawling tasks (for page-by-page progress tracking)
+  public readonly concurrentTasks = atom<ConcurrentCrawlingTask[]>([]);
+  
   // Active tasks currently running
   public readonly activeTasks = map<Record<string | number, TaskStatusDetail>>({});
   
@@ -474,6 +478,14 @@ export class TaskStore {
    */
   getActiveTaskCount(): number {
     return Object.keys(this.activeTasks.get()).length;
+  }
+
+  /**
+   * Update concurrent crawling tasks
+   */
+  updateConcurrentTasks(tasks: ConcurrentCrawlingTask[]): void {
+    this.concurrentTasks.set(tasks);
+    this.lastTaskUpdate.set(new Date());
   }
 
   /**

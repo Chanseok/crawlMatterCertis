@@ -20,6 +20,7 @@ export function useTaskStore() {
   const activeTasks = useStore(taskStore.activeTasks);
   const recentTasks = useStore(taskStore.recentTasks);
   const taskHistory = useStore(taskStore.taskHistory);
+  const concurrentTasks = useStore(taskStore.concurrentTasks);
   
   // Task statistics and status
   const statistics = useStore(taskStore.statistics);
@@ -44,6 +45,7 @@ export function useTaskStore() {
     activeTasks,
     recentTasks,
     taskHistory,
+    concurrentTasks,
     statistics,
     isProcessingTasks,
     lastTaskUpdate,
@@ -56,6 +58,8 @@ export function useTaskStore() {
       taskStore.updateTaskStatus(taskId, statusData),
     updateMultipleTaskStatuses: (taskStatuses: any[]) => 
       taskStore.updateMultipleTaskStatuses(taskStatuses),
+    updateConcurrentTasks: (tasks: any[]) => 
+      taskStore.updateConcurrentTasks(tasks),
     completeTask: (taskId: string | number, data?: any) => 
       taskStore.completeTask(taskId, data),
     errorTask: (taskId: string | number, errorData?: any) => 

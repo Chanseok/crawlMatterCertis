@@ -1,31 +1,28 @@
 import React from 'react';
-import { useStore } from '@nanostores/react';
-import { configStore, concurrentTasksStore, crawlingProgressStore, crawlingStatusStore, crawlingStatusSummaryStore, statusStore } from '../stores';
+import { useCrawlingStore } from '../hooks/useCrawlingStore';
+import { useTaskStore } from '../hooks/useTaskStore';
 import { usePageProgressCalculation } from '../hooks/usePageProgressCalculation';
 import { useDebugLog } from '../hooks/useDebugLog';
 
 // React.memo를 사용하여 불필요한 리렌더링 방지
 export const PageProgressDisplay: React.FC = React.memo(() => {
-  const tasks = useStore(concurrentTasksStore);
-  const progress = useStore(crawlingProgressStore);
-  const crawlingStatus = useStore(crawlingStatusStore);
-  const statusSummary = useStore(crawlingStatusSummaryStore);
-  const config = useStore(configStore); // pageRangeLimit 접근용
-  const status = useStore(statusStore); // targetPageCount 접근용
+  // Domain Store Hooks 사용
+  const { progress, status: crawlingStatus, statusSummary, config } = useCrawlingStore();
+  const { concurrentTasks } = useTaskStore();
   
   // 새로운 디버그 훅 사용
   useDebugLog('PageProgressDisplay', { 
-    tasksCount: tasks.length,
-    successTasks: tasks.filter(task => task.status === 'success').length,
+    tasksCount: concurrentTasks.length,
+    successTasks: concurrentTasks.filter(task => task.status === 'success').length,
     stage1PageStatusesCount: progress.stage1PageStatuses?.length ?? 0,
     successStage1Pages: progress.stage1PageStatuses?.filter(p => p.status === 'success').length ?? 0,
     currentPage: progress.currentPage,
-    targetPageCount: status.targetPageCount
-  }, [tasks, progress.stage1PageStatuses, progress.currentPage, status.targetPageCount]);
+    targetPageCount: config.pageRangeLimit // config에서 pageRangeLimit 사용
+  }, [concurrentTasks, progress.stage1PageStatuses, progress.currentPage, config.pageRangeLimit]);
   
   // 커스텀 훅을 사용하여 계산 로직 분리
   const { displaySuccessPages, displayTotalPages } = usePageProgressCalculation(
-    progress, tasks, statusSummary, config, status, crawlingStatus
+    progress, concurrentTasks, statusSummary, config, { targetPageCount: config.pageRangeLimit }, crawlingStatus
   );
   
   return (

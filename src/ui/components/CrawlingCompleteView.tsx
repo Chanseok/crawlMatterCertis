@@ -1,6 +1,5 @@
-import { useStore } from '@nanostores/react';
-import { configStore } from '../stores';
 import { useDatabaseStore } from '../hooks/useDatabaseStore';
+import { useCrawlingStore } from '../hooks/useCrawlingStore';
 import type { MatterProduct } from '../../../types';
 
 interface CrawlingCompleteViewProps {
@@ -14,7 +13,7 @@ interface CrawlingCompleteViewProps {
  * 자동 DB 저장이 꺼져 있는 경우 수동으로 DB에 저장할 수 있는 UI 제공
  */
 export function CrawlingCompleteView({ products, autoSavedToDb, isSavingToDb = false }: CrawlingCompleteViewProps) {
-  const config = useStore(configStore);
+  const { config } = useCrawlingStore();
   const { isSaving, saveResult, saveProducts, clearSaveResult } = useDatabaseStore();
   
   // 자동 DB 저장 꺼져 있는지 확인

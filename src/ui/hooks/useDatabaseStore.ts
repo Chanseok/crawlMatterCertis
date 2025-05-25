@@ -60,7 +60,16 @@ export function useDatabaseStore() {
     loadSummary: () => databaseStore.loadSummary(),
     loadProducts: (options: { page?: number; limit?: number }) => databaseStore.loadProducts(undefined, options.page, options.limit),
     
+    // Export functionality
+    exportToExcel: (path?: string) => databaseStore.exportToExcel(path),
+    
+    // Delete functionality
+    deleteRecordsByPageRange: (startPageId: number, endPageId: number) => 
+      databaseStore.deleteRecordsByPageRange(startPageId, endPageId),
+    
     // Search and pagination
+    searchProducts: (query: string, options?: { page?: number; limit?: number }) => 
+      databaseStore.searchProducts(query, options),
     resetSearch: () => databaseStore.resetSearch(),
       
     // UI state management
