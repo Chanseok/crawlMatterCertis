@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../hooks/useCrawlingStore';
 import { useTaskStore } from '../hooks/useTaskStore';
 import './TaskProgressIndicator.css';
@@ -14,7 +15,7 @@ interface TaskProgressIndicatorProps {
  * - 타임아웃 9초 전부터는 카운트다운 표시 (3D 플립 효과)
  * - 기본 상태는 로켓 이모지 표시
  */
-export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = ({
+export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = observer(({
   pageNumber,
   statusEmoji = '🚀'
 }) => {
@@ -141,6 +142,6 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = ({
       )}
     </div>
   );
-};
+});
 
 export default TaskProgressIndicator;

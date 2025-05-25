@@ -88,11 +88,12 @@ export class CrawlingStore {
       setCheckingStatus: action,
       startCrawling: action,
       stopCrawling: action,
+      pauseCrawling: action,
+      resumeCrawling: action,
       checkStatus: action,
       updateConfig: action,
       updateProgress: action,
       clearError: action,
-      loadConfig: action,
       
       // Computed
       isRunning: computed,
@@ -204,7 +205,7 @@ export class CrawlingStore {
   }
 
   get canPause() {
-    return false; // Pause/resume functionality not implemented
+    return this.status === 'running';
   }
 
   /**
@@ -215,14 +216,14 @@ export class CrawlingStore {
       this.clearError();
       this.setStatus('running');
 
-      const success = await this.ipcService.startCrawling({
+      const result = await this.ipcService.startCrawling({
         config: this.config
       });
 
-      if (!success) {
+      if (!result.success) {
         this.setStatus('error');
-        this.setError('크롤링을 시작할 수 없습니다.');
-        throw new Error('크롤링을 시작할 수 없습니다.');
+        this.setError(result.error?.message || '크롤링을 시작할 수 없습니다.');
+        throw new Error(result.error?.message || '크롤링을 시작할 수 없습니다.');
       }
     } catch (error) {
       this.setStatus('error');
@@ -236,16 +237,54 @@ export class CrawlingStore {
    */
   async stopCrawling(): Promise<void> {
     try {
-      const success = await this.ipcService.stopCrawling();
+      const result = await this.ipcService.stopCrawling();
       
-      if (success) {
+      if (result.success) {
         this.setStatus('idle');
         this.clearError();
       } else {
-        throw new Error('크롤링을 중지할 수 없습니다.');
+        throw new Error(result.error?.message || '크롤링을 중지할 수 없습니다.');
       }
     } catch (error) {
       this.setError(error instanceof Error ? error.message : '크롤링 중지에 실패했습니다.');
+      throw error;
+    }
+  }
+
+  /**
+   * Pause crawling
+   */
+  async pauseCrawling(): Promise<void> {
+    try {
+      const result = await this.ipcService.pauseCrawling();
+      
+      if (result.success) {
+        this.setStatus('paused');
+        this.clearError();
+      } else {
+        throw new Error(result.error?.message || '크롤링을 일시정지할 수 없습니다.');
+      }
+    } catch (error) {
+      this.setError(error instanceof Error ? error.message : '크롤링 일시정지에 실패했습니다.');
+      throw error;
+    }
+  }
+
+  /**
+   * Resume crawling
+   */
+  async resumeCrawling(): Promise<void> {
+    try {
+      const result = await this.ipcService.resumeCrawling();
+      
+      if (result.success) {
+        this.setStatus('running');
+        this.clearError();
+      } else {
+        throw new Error(result.error?.message || '크롤링을 재개할 수 없습니다.');
+      }
+    } catch (error) {
+      this.setError(error instanceof Error ? error.message : '크롤링 재개에 실패했습니다.');
       throw error;
     }
   }
@@ -290,7 +329,7 @@ export class CrawlingStore {
       
       // Save to configuration service (if available)
       try {
-        await this.ipcService.updateConfig(updatedConfig);
+        await this.ipcService.updateCrawlerConfig(updatedConfig);
         console.log('Configuration saved to file:', updatedConfig);
       } catch (saveError) {
         console.warn('Failed to save config to file, but memory state updated:', saveError);
@@ -306,10 +345,10 @@ export class CrawlingStore {
   /**
    * Load configuration
    */
-  loadConfig = async (): Promise<CrawlerConfig> => {
+  async loadConfig(): Promise<CrawlerConfig> {
     try {
       console.log('CrawlingStore.loadConfig called');
-      const config = await this.ipcService.getConfig();
+      const config = await this.ipcService.getCrawlerConfig();
       console.log('Configuration loaded from file:', config);
       
       // Update store state
@@ -320,7 +359,7 @@ export class CrawlingStore {
       console.error('Failed to load config:', error);
       throw error;
     }
-  };
+  }
 
   /**
    * Validate crawling status

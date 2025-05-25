@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../hooks/useCrawlingStore';
 
 /**
@@ -140,3 +141,6 @@ export function CrawlingSettings() {
     </div>
   );
 }
+
+// Wrap with MobX observer for reactive state updates
+export default observer(CrawlingSettings);

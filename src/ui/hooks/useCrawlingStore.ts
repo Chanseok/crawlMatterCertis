@@ -1,29 +1,21 @@
 /**
  * useCrawlingStore.ts
- * React hook for accessing the CrawlingStore domain store
+ * React hook for accessing the MobX-based CrawlingStore domain store
  * 
  * Provides access to crawling operations and state with proper React integration
  */
 
-import { useStore } from '@nanostores/react';
 import { useEffect } from 'react';
 import { crawlingStore } from '../stores/domain/CrawlingStore';
 import type { CrawlerConfig } from '../../../types';
 
 /**
- * Crawling operations hook using Domain Store pattern
+ * Crawling operations hook using MobX Domain Store pattern
  * Provides crawling state and actions with proper React integration
  */
 export function useCrawlingStore() {
-  const status = useStore(crawlingStore.status);
-  const progress = useStore(crawlingStore.progress);
-  const config = useStore(crawlingStore.config);
-  const statusSummary = useStore(crawlingStore.statusSummary);
-  const lastStatusSummary = useStore(crawlingStore.lastStatusSummary);
-  const error = useStore(crawlingStore.error);
-  const onProgressUpdate = useStore(crawlingStore.onProgressUpdate);
-  const onStatusChange = useStore(crawlingStore.onStatusChange);
-  const onConfigChange = useStore(crawlingStore.onConfigChange);
+  // MobX observables are accessed directly from the store instance
+  // The observer wrapper in components will handle reactivity
 
   // Cleanup on unmount
   useEffect(() => {
@@ -33,16 +25,20 @@ export function useCrawlingStore() {
   }, []);
 
   return {
-    // State
-    status,
-    progress,
-    config,
-    statusSummary,
-    lastStatusSummary,
-    error,
-    onProgressUpdate,
-    onStatusChange,
-    onConfigChange,
+    // State - Direct access to MobX observables
+    status: crawlingStore.status,
+    progress: crawlingStore.progress,
+    config: crawlingStore.config,
+    statusSummary: crawlingStore.statusSummary,
+    lastStatusSummary: crawlingStore.lastStatusSummary,
+    error: crawlingStore.error,
+    isCheckingStatus: crawlingStore.isCheckingStatus,
+
+    // Computed properties
+    isRunning: crawlingStore.isRunning,
+    canStart: crawlingStore.canStart,
+    canStop: crawlingStore.canStop,
+    canPause: crawlingStore.canPause,
 
     // Actions
     startCrawling: () => crawlingStore.startCrawling(),

@@ -1,3 +1,4 @@
+import { observer } from 'mobx-react-lite';
 import { useDatabaseStore } from '../hooks/useDatabaseStore';
 import { useCrawlingStore } from '../hooks/useCrawlingStore';
 import type { MatterProduct } from '../../../types';
@@ -12,7 +13,7 @@ interface CrawlingCompleteViewProps {
  * 크롤링 완료 후 수집된 제품 정보를 표시하고
  * 자동 DB 저장이 꺼져 있는 경우 수동으로 DB에 저장할 수 있는 UI 제공
  */
-export function CrawlingCompleteView({ products, autoSavedToDb, isSavingToDb = false }: CrawlingCompleteViewProps) {
+export const CrawlingCompleteView = observer(({ products, autoSavedToDb, isSavingToDb = false }: CrawlingCompleteViewProps) => {
   const { config } = useCrawlingStore();
   const { isSaving, saveResult, saveProducts, clearSaveResult } = useDatabaseStore();
   
@@ -245,4 +246,4 @@ export function CrawlingCompleteView({ products, autoSavedToDb, isSavingToDb = f
       )}
     </div>
   );
-}
+});

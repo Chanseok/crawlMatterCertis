@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { observer } from 'mobx-react-lite';
 import { ExpandableSection } from '../ExpandableSection';
 import CrawlingDashboard from '../CrawlingDashboard';
 import PageProgressDisplay from '../PageProgressDisplay';
@@ -20,7 +21,7 @@ interface StatusTabProps {
   productsLength: number;
 }
 
-export const StatusTab: React.FC<StatusTabProps> = ({ 
+export const StatusTab: React.FC<StatusTabProps> = observer(({ 
   statusExpanded,
   onToggleStatus,
   isStatusChecking,
@@ -86,7 +87,6 @@ export const StatusTab: React.FC<StatusTabProps> = ({
         onToggle={onToggleStatus}
       >
         <CrawlingDashboard 
-          isAppStatusChecking={isStatusChecking} 
           appCompareExpanded={localCompareExpanded}
           setAppCompareExpanded={handleCompareExpandedChange}
         />
@@ -146,4 +146,4 @@ export const StatusTab: React.FC<StatusTabProps> = ({
       </div>
     </>
   );
-};
+});

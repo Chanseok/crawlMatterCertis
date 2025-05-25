@@ -1,8 +1,9 @@
 
+import { observer } from 'mobx-react-lite';
 import { useDatabaseStore } from '../hooks/useDatabaseStore';
 import { useCrawlingStore } from '../hooks/useCrawlingStore';
 
-export function AnalysisTab() {
+export const AnalysisTab = observer(() => {
   const { summary } = useDatabaseStore();
   const { statusSummary } = useCrawlingStore();
 
@@ -68,4 +69,4 @@ export function AnalysisTab() {
       </div>
     </div>
   );
-}
+});

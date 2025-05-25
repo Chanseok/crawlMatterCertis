@@ -1,11 +1,12 @@
 import React from 'react';
+import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../hooks/useCrawlingStore';
 import { useTaskStore } from '../hooks/useTaskStore';
 import { usePageProgressCalculation } from '../hooks/usePageProgressCalculation';
 import { useDebugLog } from '../hooks/useDebugLog';
 
 // React.memo를 사용하여 불필요한 리렌더링 방지
-export const PageProgressDisplay: React.FC = React.memo(() => {
+export const PageProgressDisplay: React.FC = observer(() => {
   // Domain Store Hooks 사용
   const { progress, status: crawlingStatus, statusSummary, config } = useCrawlingStore();
   const { concurrentTasks } = useTaskStore();

@@ -9,13 +9,14 @@
  */
 
 import React from 'react';
+import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 
 /**
  * 상태 표시 컴포넌트
  * Domain Store의 크롤링 상태를 기반으로 상태 표시
  */
-export const StatusDisplay: React.FC = () => {
+export const StatusDisplay: React.FC = observer(() => {
   const { status, progress } = useCrawlingStore();
   
   const getStatusInfo = () => {
@@ -64,4 +65,4 @@ export const StatusDisplay: React.FC = () => {
       )}
     </div>
   );
-};
+});

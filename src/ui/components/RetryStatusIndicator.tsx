@@ -1,4 +1,5 @@
 import React from 'react';
+import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../hooks/useCrawlingStore';
 
 interface RetryStatusIndicatorProps {
@@ -9,7 +10,7 @@ interface RetryStatusIndicatorProps {
  * 크롤링 중 재시도 과정의 상태를 표시하는 컴포넌트
  * 재시도가 발생할 때만 표시됨
  */
-export const RetryStatusIndicator: React.FC<RetryStatusIndicatorProps> = React.memo(({ className }) => {
+export const RetryStatusIndicator: React.FC<RetryStatusIndicatorProps> = observer(({ className }) => {
   const { progress } = useCrawlingStore();
   
   // 현재 단계에 따라 재시도 정보 결정

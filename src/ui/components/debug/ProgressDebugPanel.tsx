@@ -4,9 +4,10 @@
  */
 
 import React, { useState } from 'react';
+import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 
-export const ProgressDebugPanel: React.FC = () => {
+export const ProgressDebugPanel: React.FC = observer(() => {
   const crawlingData = useCrawlingStore();
   const [isExpanded, setIsExpanded] = useState(false);
   
@@ -88,4 +89,4 @@ export const ProgressDebugPanel: React.FC = () => {
       )}
     </div>
   );
-};
+});

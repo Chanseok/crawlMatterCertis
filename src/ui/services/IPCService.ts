@@ -103,6 +103,24 @@ export class IPCService {
   }
 
   /**
+   * 크롤링 중단 이벤트 구독
+   */
+  public subscribeCrawlingStopped(handler: IPCEventHandler): IPCUnsubscribeFunction {
+    if (!this.isElectronAvailable) {
+      return () => {};
+    }
+
+    try {
+      const unsubscribe = window.electron.subscribeCrawlingStopped(handler);
+      console.log('[IPCService] Subscribed to crawling stopped events');
+      return unsubscribe;
+    } catch (error) {
+      console.error('[IPCService] Failed to subscribe to crawling stopped:', error);
+      return () => {};
+    }
+  }
+
+  /**
    * 초기 크롤링 상태 조회
    */
   public async checkCrawlingStatus(): Promise<any> {

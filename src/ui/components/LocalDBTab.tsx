@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { observer } from 'mobx-react-lite';
 import { useDatabaseStore, useCrawlingStore } from '../hooks';
 import type { MatterProduct } from '../../../types';
 import { format } from 'date-fns';
 import { intToHexDisplay, jsonArrayToHexDisplay } from '../utils/hexDisplayUtils';
 
 // LocalDBTab 컴포넌트
-export const LocalDBTab: React.FC = () => {
+export const LocalDBTab: React.FC = observer(() => {
   // Domain Store Hooks
   const { 
     products, 
@@ -541,4 +542,4 @@ export const LocalDBTab: React.FC = () => {
       )}
     </div>
   );
-};
+});

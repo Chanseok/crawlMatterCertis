@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 import { useDatabaseStore } from '../../hooks/useDatabaseStore';
 import { useLogStore } from '../../hooks/useLogStore';
@@ -12,7 +13,7 @@ interface ControlPanelProps {
   onToggleStatus: () => void;
 }
 
-export const ControlPanel: React.FC<ControlPanelProps> = ({ 
+export const ControlPanel: React.FC<ControlPanelProps> = observer(({ 
   statusExpanded, 
   onToggleStatus
 }) => {
@@ -121,7 +122,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         onToggle={onToggleStatus}
       >
         <CrawlingDashboard 
-          isAppStatusChecking={isStatusChecking} 
           appCompareExpanded={compareExpandedInApp}
           setAppCompareExpanded={setCompareExpandedInApp}
         />
@@ -182,4 +182,4 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       </div>
     </>
   );
-};
+});

@@ -28,7 +28,6 @@ function App() {
   const { error, isSavingToDb } = useCrawlingComplete();
   
   // CrawlingDashboard에 필요한 상태
-  const [isAppStatusChecking] = useState(false);
   const [appCompareExpanded, setAppCompareExpanded] = useState(false);
 
   // searchQuery 변경 시에만 검색 실행 (초기 로드 분리)
@@ -58,7 +57,6 @@ function App() {
     switch (activeTab) {
       case 'status':
         return <CrawlingDashboard 
-          isAppStatusChecking={isAppStatusChecking}
           appCompareExpanded={appCompareExpanded}
           setAppCompareExpanded={setAppCompareExpanded}
         />;
@@ -70,7 +68,6 @@ function App() {
         return <AnalysisTab />;
       default:
         return <CrawlingDashboard 
-          isAppStatusChecking={isAppStatusChecking}
           appCompareExpanded={appCompareExpanded}
           setAppCompareExpanded={setAppCompareExpanded}
         />;

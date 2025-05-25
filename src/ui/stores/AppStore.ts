@@ -7,8 +7,8 @@
  * to access domain-specific stores and coordinated actions.
  */
 
-import { atom } from 'nanostores';
-import type { AppMode, CrawlingProgress } from '../types';
+import { makeObservable, observable, action, reaction } from 'mobx';
+import type { AppMode } from '../types';
 
 // Domain Store Imports
 import { CrawlingStore, crawlingStore } from './domain/CrawlingStore';
@@ -27,7 +27,7 @@ export class AppStore {
   private static _instance: AppStore;
   
   // Core app state
-  public readonly appMode = atom<AppMode>('development');
+  @observable appMode: AppMode = 'development';
   
   // Domain stores
   public readonly crawling: CrawlingStore;
@@ -37,6 +37,11 @@ export class AppStore {
   public readonly tasks: TaskStore;
 
   constructor() {
+    makeObservable(this, {
+      appMode: observable,
+      toggleAppMode: action,
+    });
+
     this.crawling = crawlingStore;
     this.database = databaseStore;
     this.ui = uiStore;
@@ -63,37 +68,45 @@ export class AppStore {
    * Initialize coordination between stores
    */
   private initializeStoreCoordination(): void {
-    // Subscribe to mode changes to update services
-    this.appMode.listen((mode) => {
-      this.logs.addLog(`앱 모드가 ${mode === 'development' ? '개발' : '실사용'} 모드로 변경되었습니다.`, 'info');
-    });
+    // React to app mode changes
+    reaction(
+      () => this.appMode,
+      (mode) => {
+        this.logs.addLog(`앱 모드가 ${mode === 'development' ? '개발' : '실사용'} 모드로 변경되었습니다.`, 'info');
+      }
+    );
     
-    // Coordinate crawling events with other stores
-    this.crawling.onProgressUpdate.listen((progress: CrawlingProgress | null) => {
-      // Log important stage transitions
-      if (progress?.message) {
-        if (progress.message.includes('1단계 완료') || 
-            progress.message.includes('2단계 완료') ||
-            progress.message.includes('크롤링 완료')) {
-          this.logs.addLog(progress.message, 'success');
+    // React to crawling progress changes
+    reaction(
+      () => this.crawling.progress,
+      (progress) => {
+        // Log important stage transitions
+        if (progress?.message) {
+          if (progress.message.includes('1단계 완료') || 
+              progress.message.includes('2단계 완료') ||
+              progress.message.includes('크롤링 완료')) {
+            this.logs.addLog(progress.message, 'success');
+          }
         }
       }
-    });
+    );
 
-    // Log database changes (when products are updated)
-    this.database.products.listen(() => {
-      this.logs.addLog('데이터베이스가 업데이트되었습니다.', 'info');
-    });
+    // React to database changes (when products are updated)
+    reaction(
+      () => this.database.products.get().length,
+      () => {
+        this.logs.addLog('데이터베이스가 업데이트되었습니다.', 'info');
+      }
+    );
   }
 
   /**
    * App-wide actions that coordinate multiple stores
    */
+  @action
   async toggleAppMode(): Promise<void> {
-    const currentMode = this.appMode.get();
-    const newMode = currentMode === 'development' ? 'production' : 'development';
-    
-    this.appMode.set(newMode);
+    const newMode = this.appMode === 'development' ? 'production' : 'development';
+    this.appMode = newMode;
     
     // Reload initial data for new mode
     await this.loadInitialData();
@@ -130,7 +143,7 @@ export class AppStore {
    */
   getDebugInfo(): object {
     return {
-      appMode: this.appMode.get(),
+      appMode: this.appMode,
       stores: {
         crawling: this.crawling.getDebugInfo(),
         database: (this.database as any).getDebugInfo?.() || 'getDebugInfo not implemented',

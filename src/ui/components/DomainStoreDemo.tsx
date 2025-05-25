@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { observer } from 'mobx-react-lite';
 import { 
   useDatabaseStore, 
   useLogStore, 
@@ -18,7 +19,7 @@ import {
  * Demo component showcasing the use of all domain store hooks
  * This component demonstrates how to use the domain store hooks in a React component
  */
-export const DomainStoreDemo: React.FC = () => {
+export const DomainStoreDemo: React.FC = observer(() => {
   // Use the hooks to access domain store state and actions
   const { 
     products, 
@@ -129,6 +130,6 @@ export const DomainStoreDemo: React.FC = () => {
       />
     </div>
   );
-};
+});
 
 export default DomainStoreDemo;

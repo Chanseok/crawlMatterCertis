@@ -20,7 +20,6 @@ import type { CrawlingStatusSummary } from '../stores/domain/CrawlingStore';
 
 
 interface CrawlingDashboardProps {
-  isAppStatusChecking: boolean;
   appCompareExpanded: boolean;
   setAppCompareExpanded: Dispatch<SetStateAction<boolean>>;
 }
@@ -37,7 +36,7 @@ interface AnimatedValues {
 /**
  * 크롤링 진행 상황을 시각적으로 보여주는 대시보드 컴포넌트
  */
-function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
+function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
   // Domain Store Hook을 통한 통합 진행 상태 관리
   const { 
     status,
@@ -581,27 +580,26 @@ function CrawlingDashboard({ isAppStatusChecking, appCompareExpanded, setAppComp
       await checkStatus();
       console.log('checkStatus 호출 완료');
       
-      // 강제 컴포넌트 업데이트를 위한 트릭
-      const timer = setInterval(() => {
-        console.log('타이머 체크 - statusSummary:', statusSummary);
-        if (statusSummary && Object.keys(statusSummary).length > 0) {
-          console.log('✅ statusSummary 업데이트 확인됨!');
-          clearInterval(timer);
-          setIsStatusChecking(false);
-        }
-      }, 500);
-      
-      // 최대 5초 후 타이머 종료
+      // 강제 리렌더링을 위한 임시 방법
       setTimeout(() => {
-        clearInterval(timer);
-        setIsStatusChecking(false);
-        console.log('타이머 종료 - 최종 statusSummary:', statusSummary);
-      }, 5000);
+        console.log('1초 후 statusSummary:', statusSummary);
+        if (!statusSummary || Object.keys(statusSummary).length === 0) {
+          console.warn('statusSummary가 아직 업데이트되지 않음 - 강제 새로고침 필요');
+          // 임시 강제 업데이트
+          setIsStatusChecking(false);
+          setIsStatusChecking(true);
+          setTimeout(() => setIsStatusChecking(false), 100);
+        }
+      }, 1000);
       
       console.log('=== 상태 체크 완료 ===');
     } catch (error) {
       console.error('상태 체크 실패:', error);
-      setIsStatusChecking(false);
+    } finally {
+      setTimeout(() => {
+        setIsStatusChecking(false);
+        console.log('isStatusChecking 해제됨:', false);
+      }, 1500);
     }
   };
 
