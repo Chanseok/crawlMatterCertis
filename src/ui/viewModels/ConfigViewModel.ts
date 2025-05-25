@@ -1,5 +1,5 @@
 import { atom } from 'nanostores';
-import { IPCService } from '../services/IPCService';
+import { serviceFactory } from '../services';
 import type { CrawlerConfig } from '../../../types';
 
 export interface ConfigViewModelState {
@@ -29,18 +29,24 @@ const initialState: ConfigViewModelState = {
  * Handles configuration updates and vendor information refresh
  */
 export class ConfigViewModel {
-  private ipcService: IPCService;
+  private configService = serviceFactory.getConfigurationService();
+  private ipcService = serviceFactory.getIPCService();
   private state = atom<ConfigViewModelState>(initialState);
 
   constructor() {
-    this.ipcService = IPCService.getInstance();
     this.initializeConfig();
   }
 
   private async initializeConfig() {
     try {
-      const response = await this.ipcService.getConfig();
-      this.updateState({ config: response.config || response });
+      const result = await this.configService.getConfig();
+      if (result.success) {
+        this.updateState({ config: result.data });
+      } else {
+        this.updateState({ 
+          error: result.error?.message || 'Failed to load configuration' 
+        });
+      }
     } catch (error) {
       console.error('Failed to initialize config:', error);
       this.updateState({ 
@@ -64,10 +70,14 @@ export class ConfigViewModel {
     this.updateState({ isUpdating: true, error: null });
 
     try {
-      const response = await this.ipcService.updateConfig(settings);
+      const result = await this.configService.updateConfig(settings);
       
-      // Update local state with new configuration
-      this.updateState({ config: response.config || response });
+      if (result.success) {
+        // Update local state with new configuration
+        this.updateState({ config: result.data });
+      } else {
+        throw new Error(result.error?.message || 'Update failed');
+      }
     } catch (error) {
       console.error('Failed to update config settings:', error);
       this.updateState({ 

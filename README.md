@@ -1,22 +1,51 @@
 # Crawl Matter Certis
 
-A React + Electron application for crawling Matter certification data, with a focus on clean architecture.
+A React + Electron application for crawling Matter certification data, built with clean architecture principles and modern development practices.
 
-## Architecture
+## 🏗️ Architecture
 
-This application follows a clean architecture approach:
+This application follows a clean, modular architecture:
 
 - **Domain Stores**: Core business logic and state management
-- **React Hooks**: React integration layer (new)
-- **Components**: UI layer
+- **React Hooks**: Clean integration layer for React components
+- **Modular Components**: Reusable, well-tested UI components
+- **Type-Safe Utilities**: Shared utilities with full TypeScript support
 
-## Recent Updates
+## 📁 Project Structure
 
-### Domain Store Hooks
+```
+src/ui/
+├── components/          # Modular, reusable components
+│   ├── demo/           # Domain store demo components
+│   ├── control/        # Control components
+│   ├── layout/         # Layout components
+│   └── ...
+├── hooks/              # Custom React hooks
+├── utils/              # Type-safe utility functions
+└── ...
 
-We've implemented React hooks for accessing domain stores. These hooks provide a clean way to access state and actions from domain stores in React components.
+documents/              # Comprehensive documentation
+├── architecture/       # System design documents
+├── development/        # Development guides
+├── refactoring/        # Improvement documentation
+├── requirements/       # Project requirements
+└── guides/            # User guides
+```
 
-See [DOMAIN_HOOKS.md](DOMAIN_HOOKS.md) for details.
+## 🚀 Recent Major Updates
+
+### ✅ Project Structure Modernization (2025-05-25)
+- **Component Modularization**: DomainStoreDemo split into 5 reusable components
+- **Documentation Reorganization**: All docs moved to `/documents` with clear categorization
+- **Type System Integration**: Shared TypeScript types across components
+- **Clean Code Implementation**: Following Clean Code principles throughout
+
+### ✅ Domain Store Hooks Integration
+- React hooks for accessing domain stores
+- Type-safe state management integration
+- Clean separation of concerns
+
+See [`documents/refactoring/project-structure-improvement-complete.md`](documents/refactoring/project-structure-improvement-complete.md) for detailed changes.
 
 ## Technologies
 

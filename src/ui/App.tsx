@@ -28,8 +28,12 @@ import { useCrawlingComplete } from './hooks/useCrawlingComplete';
 import { useApiInitialization } from './hooks/useApiInitialization';
 import { AnalysisTab } from './components/tabs/AnalysisTab';
 import { ProgressDebugPanel } from './components/debug/ProgressDebugPanel';
+import DebugPanel from './components/debug/DebugPanel';
 
 function App() {
+  // Development mode detection
+  const isDevelopment = import.meta.env.DEV || import.meta.env.NODE_ENV === 'development';
+  
   // API 초기화 (앱 시작 시 한 번만 수행)
   useApiInitialization();
   
@@ -261,6 +265,9 @@ function App() {
       
       {/* 개발 환경에서만 표시되는 디버그 패널 */}
       <ProgressDebugPanel />
+      
+      {/* 개발 환경에서만 표시되는 종합 디버그 패널 */}
+      {isDevelopment && <DebugPanel />}
     </>
   );
 }

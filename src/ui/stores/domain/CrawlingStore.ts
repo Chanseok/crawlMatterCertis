@@ -10,6 +10,7 @@ import { atom, map } from 'nanostores';
 import type { CrawlingProgress, CrawlingStatus, CrawlerConfig } from '../../../../types';
 import type { CrawlingSummary } from '../../../electron/crawler/utils/types';
 import { IPCService } from '../../services/IPCService';
+import { CrawlingService } from '../../services/domain/CrawlingService';
 
 export interface CrawlingStatusSummary {
   dbLastUpdated: Date | null;
@@ -68,10 +69,12 @@ export class CrawlingStore {
   public readonly onConfigChange = atom<CrawlerConfig | null>(null);
 
   private ipcService: IPCService;
+  private crawlingService: CrawlingService;
   private unsubscribeFunctions: (() => void)[] = [];
 
   constructor() {
     this.ipcService = IPCService.getInstance();
+    this.crawlingService = CrawlingService.getInstance();
     this.initializeEventSubscriptions();
   }
 
@@ -127,12 +130,14 @@ export class CrawlingStore {
       this.onStatusChange.set('running');
 
       const config = this.config.get();
-      const success = await this.ipcService.startCrawling(config);
+      const result = await this.crawlingService.startCrawling({
+        config: config
+      });
 
-      if (!success) {
+      if (!result.success) {
         this.status.set('error');
-        this.error.set('크롤링을 시작할 수 없습니다.');
-        throw new Error('크롤링을 시작할 수 없습니다.');
+        this.error.set(result.error?.message || '크롤링을 시작할 수 없습니다.');
+        throw new Error(result.error?.message || '크롤링을 시작할 수 없습니다.');
       }
     } catch (error) {
       this.status.set('error');
@@ -147,14 +152,14 @@ export class CrawlingStore {
    */
   async stopCrawling(): Promise<void> {
     try {
-      const success = await this.ipcService.stopCrawling();
+      const result = await this.crawlingService.stopCrawling();
       
-      if (success) {
+      if (result.success) {
         this.status.set('idle');
         this.error.set(null);
         this.onStatusChange.set('idle');
       } else {
-        throw new Error('크롤링을 중지할 수 없습니다.');
+        throw new Error(result.error?.message || '크롤링을 중지할 수 없습니다.');
       }
     } catch (error) {
       this.error.set(error instanceof Error ? error.message : '크롤링 중지에 실패했습니다.');

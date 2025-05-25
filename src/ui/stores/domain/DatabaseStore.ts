@@ -6,6 +6,7 @@
 import { atom } from 'nanostores';
 import type { DatabaseSummary, MatterProduct } from '../../../../types';
 import { getPlatformApi } from '../../platform/api';
+import { DatabaseService } from '../../services/domain/DatabaseService';
 
 export interface ProductDetail {
   id: string;
@@ -36,6 +37,7 @@ export class DatabaseStore {
   // Unsubscribe functions
   private unsubscribeFunctions: (() => void)[] = [];
   private api = getPlatformApi();
+  private databaseService = DatabaseService.getInstance();
 
   constructor() {
     this.initializeEventSubscriptions();
@@ -57,9 +59,11 @@ export class DatabaseStore {
    */
   async loadSummary(): Promise<void> {
     try {
-      const summary = await this.api.invokeMethod('getDatabaseSummary');
-      if (summary) {
-        this.summary.set(summary);
+      const result = await this.databaseService.getDatabaseSummary();
+      if (result.success && result.data) {
+        this.summary.set(result.data);
+      } else {
+        console.error('Failed to load database summary:', result.error);
       }
     } catch (error) {
       console.error('Failed to load database summary:', error);
@@ -72,14 +76,23 @@ export class DatabaseStore {
   async loadProducts(query?: string, page: number = 1, limit: number = 50): Promise<void> {
     this.loading.set(true);
     try {
-      const result = await this.api.invokeMethod('searchProducts', { query: query || '', page, limit });
-      if (result) {
-        this.products.set(result.products || []);
-        this.totalPages.set(Math.ceil((result.total || 0) / limit));
+      const result = await this.databaseService.searchProducts({
+        query: query || '',
+        page,
+        limit
+      });
+      
+      if (result.success && result.data) {
+        this.products.set(result.data.products || []);
+        this.totalPages.set(result.data.totalPages || 0);
         this.currentPage.set(page);
         if (query !== undefined) {
           this.searchQuery.set(query);
         }
+      } else {
+        console.error('Failed to load products:', result.error);
+        this.products.set([]);
+        this.totalPages.set(0);
       }
     } catch (error) {
       console.error('Failed to load products:', error);
@@ -96,9 +109,36 @@ export class DatabaseStore {
   async saveProducts(products: MatterProduct[]): Promise<void> {
     this.saving.set(true);
     try {
-      await this.api.invokeMethod('saveProductsToDB', products);
+      // Transform products to include required database fields
+      const dbProducts = products.map(product => ({
+        ...product,
+        id: product.id || crypto.randomUUID(),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }));
+      
+      const result = await this.databaseService.saveProducts({
+        products: dbProducts,
+        autoSave: false
+      });
+      
+      if (result.success) {
+        this.lastSaveResult.set({ success: true, message: 'Products saved successfully' });
+        // Refresh data after successful save
+        await this.loadSummary();
+        await this.loadProducts(this.searchQuery.get(), this.currentPage.get());
+      } else {
+        this.lastSaveResult.set({ 
+          success: false, 
+          message: result.error?.message || 'Failed to save products' 
+        });
+      }
     } catch (error) {
       console.error('Failed to save products:', error);
+      this.lastSaveResult.set({ 
+        success: false, 
+        message: error instanceof Error ? error.message : 'Unknown error occurred' 
+      });
     } finally {
       this.saving.set(false);
     }

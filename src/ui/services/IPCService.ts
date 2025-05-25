@@ -239,17 +239,17 @@ export class IPCService {
   }
 
   /**
-   * 벤더 정보 갱신
+   * 설정 초기화
    */
-  public async fetchAndUpdateVendors(): Promise<any> {
+  public async resetConfig(): Promise<any> {
     if (!this.isElectronAvailable) {
       throw new Error('Electron not available');
     }
 
     try {
-      return await window.electron.fetchAndUpdateVendors();
+      return await window.electron.resetConfig();
     } catch (error) {
-      console.error('[IPCService] Failed to fetch and update vendors:', error);
+      console.error('[IPCService] Failed to reset config:', error);
       throw error;
     }
   }
@@ -268,6 +268,202 @@ export class IPCService {
       return await window.electron.invokeMethod('saveProductsToDB', products);
     } catch (error) {
       console.error('[IPCService] Failed to save to database:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 배치 UI 테스트 시작
+   */
+  public async testBatchUI(args?: any): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.testBatchUI(args);
+    } catch (error) {
+      console.error('[IPCService] Failed to start batch UI test:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 제품 목록 조회
+   */
+  public async getProducts(args?: { page?: number; limit?: number }): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      // Add search property to match expected interface
+      const params = args ? { ...args, search: '' } : { search: '' };
+      return await window.electron.getProducts(params);
+    } catch (error) {
+      console.error('[IPCService] Failed to get products:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 제품 ID로 제품 조회
+   */
+  public async getProductById(id: string): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.getProductById(id);
+    } catch (error) {
+      console.error('[IPCService] Failed to get product by ID:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 제품 검색
+   */
+  public async searchProducts(args: { query: string; page?: number; limit?: number }): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.searchProducts(args);
+    } catch (error) {
+      console.error('[IPCService] Failed to search products:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 데이터베이스 요약 정보 조회
+   */
+  public async getDatabaseSummary(): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.getDatabaseSummary();
+    } catch (error) {
+      console.error('[IPCService] Failed to get database summary:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 제품을 데이터베이스에 저장 (명시적 메서드)
+   */
+  public async saveProductsToDb(products: any[]): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.invokeMethod('saveProductsToDB', products);
+    } catch (error) {
+      console.error('[IPCService] Failed to save products to DB:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 데이터베이스 초기화 (clear database)
+   * Note: 실제 구현이 필요할 수 있습니다
+   */
+  public async clearDatabase(): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      // 페이지 범위를 매우 큰 값으로 설정하여 모든 레코드 삭제
+      return await window.electron.deleteRecordsByPageRange({ startPageId: 1, endPageId: 999999 });
+    } catch (error) {
+      console.error('[IPCService] Failed to clear database:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 페이지 범위로 레코드 삭제
+   */
+  public async deleteRecordsByPageRange(args: { startPageId: number; endPageId: number }): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.deleteRecordsByPageRange(args);
+    } catch (error) {
+      console.error('[IPCService] Failed to delete records by page range:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 벤더 목록 조회
+   */
+  public async getVendors(): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.getVendors();
+    } catch (error) {
+      console.error('[IPCService] Failed to get vendors:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 마지막 업데이트 시간 기록
+   */
+  public async markLastUpdated(timestamp?: number): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.markLastUpdated(timestamp || Date.now());
+    } catch (error) {
+      console.error('[IPCService] Failed to mark last updated:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 데이터를 Excel로 내보내기
+   */
+  public async exportToExcel(params: any): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.exportToExcel(params);
+    } catch (error) {
+      console.error('[IPCService] Failed to export to Excel:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 벤더 정보 가져와서 업데이트
+   */
+  public async fetchAndUpdateVendors(): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.fetchAndUpdateVendors();
+    } catch (error) {
+      console.error('[IPCService] Failed to fetch and update vendors:', error);
       throw error;
     }
   }
