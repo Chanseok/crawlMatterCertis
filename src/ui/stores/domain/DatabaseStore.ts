@@ -3,7 +3,7 @@
  * Simplified Domain Store for Database Operations
  */
 
-import { atom } from 'nanostores';
+import { makeObservable, observable, action, computed, runInAction } from 'mobx';
 import type { DatabaseSummary, MatterProduct } from '../../../../types';
 import { getPlatformApi } from '../../platform/api';
 import { DatabaseService } from '../../services/domain/DatabaseService';
@@ -23,22 +23,19 @@ export interface ProductDetail {
  * Manages all database-related state and operations
  */
 export class DatabaseStore {
-  // State atoms
-  public readonly summary = atom<DatabaseSummary | null>(null);
-  public readonly products = atom<MatterProduct[]>([]);
-  public readonly loading = atom<boolean>(false);
-  public readonly saving = atom<boolean>(false);
-  public readonly lastSaveResult = atom<{ success: boolean; message?: string } | null>(null);
-  public readonly error = atom<string | null>(null);
+  // State properties - all observable
+  public summary: DatabaseSummary | null = null;
+  public products: MatterProduct[] = [];
+  public loading: boolean = false;
+  public saving: boolean = false;
+  public lastSaveResult: { success: boolean; message?: string } | null = null;
+  public error: string | null = null;
 
   // Search and pagination state
-  public readonly searchQuery = atom<string>('');
-  public readonly currentPage = atom<number>(1);
-  public readonly totalPages = atom<number>(0);
-  public readonly pagination = atom<{ page: number; limit: number; total: number }>({ page: 1, limit: 50, total: 0 });
-
-  // Alias for loading state to match hook expectations
-  public readonly isLoading = this.loading;
+  public searchQuery: string = '';
+  public currentPage: number = 1;
+  public totalPages: number = 0;
+  public pagination: { page: number; limit: number; total: number } = { page: 1, limit: 50, total: 0 };
 
   // Unsubscribe functions
   private unsubscribeFunctions: (() => void)[] = [];
@@ -47,7 +44,40 @@ export class DatabaseStore {
   private exportService = ExportService.getInstance();
 
   constructor() {
+    makeObservable(this, {
+      // Observable state
+      summary: observable,
+      products: observable,
+      loading: observable,
+      saving: observable,
+      lastSaveResult: observable,
+      error: observable,
+      searchQuery: observable,
+      currentPage: observable,
+      totalPages: observable,
+      pagination: observable,
+
+      // Actions
+      loadSummary: action,
+      loadProducts: action,
+      saveProducts: action,
+      searchProducts: action,
+      deleteRecordsByPageRange: action,
+      exportToExcel: action,
+      clearSaveResult: action,
+      resetSearch: action,
+      clearError: action,
+
+      // Computed properties
+      isLoading: computed,
+    });
+
     this.initializeEventSubscriptions();
+  }
+
+  // Computed property for loading state to match hook expectations
+  get isLoading(): boolean {
+    return this.loading;
   }
 
   /**
@@ -56,7 +86,9 @@ export class DatabaseStore {
   private initializeEventSubscriptions(): void {
     // Database summary updates
     const unsubSummary = this.api.subscribeToEvent('dbSummaryUpdated' as any, (summary: DatabaseSummary) => {
-      this.summary.set(summary);
+      runInAction(() => {
+        this.summary = summary;
+      });
     });
     this.unsubscribeFunctions.push(unsubSummary);
   }
@@ -68,7 +100,9 @@ export class DatabaseStore {
     try {
       const result = await this.databaseService.getDatabaseSummary();
       if (result.success && result.data) {
-        this.summary.set(result.data);
+        runInAction(() => {
+          this.summary = result.data || null;
+        });
       } else {
         console.error('Failed to load database summary:', result.error);
       }
@@ -81,7 +115,10 @@ export class DatabaseStore {
    * Load products from database
    */
   async loadProducts(query?: string, page: number = 1, limit: number = 50): Promise<void> {
-    this.loading.set(true);
+    runInAction(() => {
+      this.loading = true;
+    });
+
     try {
       const result = await this.databaseService.searchProducts({
         query: query || '',
@@ -97,23 +134,31 @@ export class DatabaseStore {
           updatedAt: product.updatedAt instanceof Date ? product.updatedAt.toISOString() : product.updatedAt
         }));
         
-        this.products.set(convertedProducts as MatterProduct[]);
-        this.totalPages.set(result.data.totalPages || 0);
-        this.currentPage.set(page);
-        if (query !== undefined) {
-          this.searchQuery.set(query);
-        }
+        runInAction(() => {
+          this.products = convertedProducts as MatterProduct[];
+          this.totalPages = result.data?.totalPages || 0;
+          this.currentPage = page;
+          if (query !== undefined) {
+            this.searchQuery = query;
+          }
+        });
       } else {
         console.error('Failed to load products:', result.error);
-        this.products.set([]);
-        this.totalPages.set(0);
+        runInAction(() => {
+          this.products = [];
+          this.totalPages = 0;
+        });
       }
     } catch (error) {
       console.error('Failed to load products:', error);
-      this.products.set([]);
-      this.totalPages.set(0);
+      runInAction(() => {
+        this.products = [];
+        this.totalPages = 0;
+      });
     } finally {
-      this.loading.set(false);
+      runInAction(() => {
+        this.loading = false;
+      });
     }
   }
 
@@ -121,7 +166,10 @@ export class DatabaseStore {
    * Save products to database
    */
   async saveProducts(products: MatterProduct[]): Promise<void> {
-    this.saving.set(true);
+    runInAction(() => {
+      this.saving = true;
+    });
+
     try {
       // Transform products to include required database fields
       const dbProducts = products.map(product => ({
@@ -137,24 +185,32 @@ export class DatabaseStore {
       });
       
       if (result.success) {
-        this.lastSaveResult.set({ success: true, message: 'Products saved successfully' });
+        runInAction(() => {
+          this.lastSaveResult = { success: true, message: 'Products saved successfully' };
+        });
         // Refresh data after successful save
         await this.loadSummary();
-        await this.loadProducts(this.searchQuery.get(), this.currentPage.get());
+        await this.loadProducts(this.searchQuery, this.currentPage);
       } else {
-        this.lastSaveResult.set({ 
-          success: false, 
-          message: result.error?.message || 'Failed to save products' 
+        runInAction(() => {
+          this.lastSaveResult = { 
+            success: false, 
+            message: result.error?.message || 'Failed to save products' 
+          };
         });
       }
     } catch (error) {
       console.error('Failed to save products:', error);
-      this.lastSaveResult.set({ 
-        success: false, 
-        message: error instanceof Error ? error.message : 'Unknown error occurred' 
+      runInAction(() => {
+        this.lastSaveResult = { 
+          success: false, 
+          message: error instanceof Error ? error.message : 'Unknown error occurred' 
+        };
       });
     } finally {
-      this.saving.set(false);
+      runInAction(() => {
+        this.saving = false;
+      });
     }
   }
 
@@ -163,8 +219,10 @@ export class DatabaseStore {
    */
   async searchProducts(query: string = '', page: number = 1, limit: number = 100): Promise<void> {
     try {
-      this.loading.set(true);
-      this.error.set(null);
+      runInAction(() => {
+        this.loading = true;
+        this.error = null;
+      });
 
       // 빈 쿼리일 때는 모든 제품 로드
       if (!query || query.trim() === '') {
@@ -189,12 +247,14 @@ export class DatabaseStore {
           updatedAt: product.updatedAt instanceof Date ? product.updatedAt.toISOString() : product.updatedAt
         }));
         
-        this.products.set(convertedProducts as MatterProduct[]);
-        this.totalPages.set(searchResult.totalPages || 0);
-        this.currentPage.set(page);
-        if (query !== undefined) {
-          this.searchQuery.set(query);
-        }
+        runInAction(() => {
+          this.products = convertedProducts as MatterProduct[];
+          this.totalPages = searchResult.totalPages || 0;
+          this.currentPage = page;
+          if (query !== undefined) {
+            this.searchQuery = query;
+          }
+        });
         
         console.log(`Search completed: ${convertedProducts.length || 0} products found`);
       } else {
@@ -202,11 +262,15 @@ export class DatabaseStore {
       }
     } catch (error) {
       console.error('Failed to search products:', error);
-      this.error.set(`제품 검색에 실패했습니다: ${error instanceof Error ? error.message : String(error)}`);
-      this.products.set([]);
-      this.totalPages.set(0);
+      runInAction(() => {
+        this.error = `제품 검색에 실패했습니다: ${error instanceof Error ? error.message : String(error)}`;
+        this.products = [];
+        this.totalPages = 0;
+      });
     } finally {
-      this.loading.set(false);
+      runInAction(() => {
+        this.loading = false;
+      });
     }
   }
 
@@ -219,8 +283,10 @@ export class DatabaseStore {
       if (result.success) {
         // Refresh data after successful deletion
         await this.loadSummary();
-        await this.loadProducts(this.searchQuery.get(), 1, 50); // Reset to page 1 after deletion
-        this.currentPage.set(1);
+        await this.loadProducts(this.searchQuery, 1, 50); // Reset to page 1 after deletion
+        runInAction(() => {
+          this.currentPage = 1;
+        });
       } else {
         throw new Error(result.error?.message || 'Failed to delete records');
       }
@@ -255,15 +321,19 @@ export class DatabaseStore {
    * Clear save result
    */
   clearSaveResult(): void {
-    this.lastSaveResult.set(null);
+    runInAction(() => {
+      this.lastSaveResult = null;
+    });
   }
 
   /**
    * Reset search
    */
   resetSearch(): void {
-    this.searchQuery.set('');
-    this.currentPage.set(1);
+    runInAction(() => {
+      this.searchQuery = '';
+      this.currentPage = 1;
+    });
   }
 
   /**
@@ -278,7 +348,9 @@ export class DatabaseStore {
    * Clear error state
    */
   clearError(): void {
-    this.error.set(null);
+    runInAction(() => {
+      this.error = null;
+    });
   }
 
   /**
@@ -286,15 +358,15 @@ export class DatabaseStore {
    */
   getDebugInfo(): object {
     return {
-      summary: this.summary.get(),
-      productsCount: this.products.get().length,
-      searchQuery: this.searchQuery.get(),
-      currentPage: this.currentPage.get(),
-      totalPages: this.totalPages.get(),
-      loading: this.loading.get(),
-      saving: this.saving.get(),
-      error: this.error.get(),
-      lastSaveResult: this.lastSaveResult.get()
+      summary: this.summary,
+      productsCount: this.products.length,
+      searchQuery: this.searchQuery,
+      currentPage: this.currentPage,
+      totalPages: this.totalPages,
+      loading: this.loading,
+      saving: this.saving,
+      error: this.error,
+      lastSaveResult: this.lastSaveResult
     };
   }
 }

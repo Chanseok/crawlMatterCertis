@@ -6,7 +6,7 @@
  * view states, and user interface interactions.
  */
 
-import { atom, map } from 'nanostores';
+import { makeObservable, observable, action, computed } from 'mobx';
 import type { AppMode } from '../../types';
 
 /**
@@ -68,26 +68,26 @@ export interface SearchState {
  */
 export class UIStore {
   // App mode management
-  public readonly appMode = atom<AppMode>('development');
+  public appMode: AppMode = 'development';
 
   // Search and filtering
-  public readonly searchQuery = atom<string>('');
-  public readonly filterBy = atom<string>('all');
-  public readonly sortBy = atom<string>('pageId');
-  public readonly sortOrder = atom<'asc' | 'desc'>('desc');
-  public readonly currentPage = atom<number>(1);
+  public searchQuery: string = '';
+  public filterBy: string = 'all';
+  public sortBy: string = 'pageId';
+  public sortOrder: 'asc' | 'desc' = 'desc';
+  public currentPage: number = 1;
 
   // UI preferences
-  public readonly preferences = map<UIPreferences>({
+  public preferences: UIPreferences = {
     theme: 'system',
     sidebarCollapsed: false,
     autoRefresh: false,
     pageSize: 100,
     showAdvancedOptions: false
-  });
+  };
 
   // View states
-  public readonly viewState = map<ViewState>({
+  public viewState: ViewState = {
     dbSectionExpanded: true,
     productsSectionExpanded: true,
     logsSectionExpanded: true,
@@ -97,30 +97,72 @@ export class UIStore {
     exportModalVisible: false,
     isRefreshing: false,
     isExporting: false
-  });
+  };
 
   // Delete modal specific state
-  public readonly deleteRange = map<{
+  public deleteRange: {
     startPageId: number;
     endPageId: number;
-  }>({
+  } = {
     startPageId: 0,
     endPageId: 0
-  });
+  };
 
   // Notification state
-  public readonly notifications = atom<Array<{
+  public notifications: Array<{
     id: string;
     type: 'info' | 'success' | 'warning' | 'error';
     message: string;
     timestamp: Date;
     dismissed: boolean;
-  }>>([]);
+  }> = [];
 
   // Event emitters for UI coordination
-  public readonly onUIChange = atom<{ type: string; data?: any } | null>(null);
+  public onUIChange: { type: string; data?: any } | null = null;
 
   constructor() {
+    makeObservable(this, {
+      // Observable state
+      appMode: observable,
+      searchQuery: observable,
+      filterBy: observable,
+      sortBy: observable,
+      sortOrder: observable,
+      currentPage: observable,
+      preferences: observable,
+      viewState: observable,
+      deleteRange: observable,
+      notifications: observable,
+      onUIChange: observable,
+
+      // Actions
+      setSearchQuery: action,
+      setFilter: action,
+      setSorting: action,
+      setCurrentPage: action,
+      toggleSection: action,
+      showModal: action,
+      hideModal: action,
+      setRefreshing: action,
+      setExporting: action,
+      setDeleteRange: action,
+      openDeleteModal: action,
+      closeDeleteModal: action,
+      updatePreferences: action,
+      toggleSidebar: action,
+      setTheme: action,
+      setPageSize: action,
+      addNotification: action,
+      dismissNotification: action,
+      clearAllNotifications: action,
+      resetSearchAndFilters: action,
+      toggleAppMode: action,
+      cleanup: action,
+
+      // Computed properties
+      getSearchFilterState: computed
+    });
+
     this.loadUIPreferences();
   }
 
@@ -132,7 +174,7 @@ export class UIStore {
       const saved = localStorage.getItem('ui-preferences');
       if (saved) {
         const prefs = JSON.parse(saved);
-        this.preferences.set({ ...this.preferences.get(), ...prefs });
+        this.preferences = { ...this.preferences, ...prefs };
       }
     } catch (error) {
       console.warn('Failed to load UI preferences:', error);
@@ -144,7 +186,7 @@ export class UIStore {
    */
   private saveUIPreferences(): void {
     try {
-      localStorage.setItem('ui-preferences', JSON.stringify(this.preferences.get()));
+      localStorage.setItem('ui-preferences', JSON.stringify(this.preferences));
     } catch (error) {
       console.warn('Failed to save UI preferences:', error);
     }
@@ -154,63 +196,63 @@ export class UIStore {
    * Search operations
    */
   setSearchQuery(query: string): void {
-    this.searchQuery.set(query);
-    this.currentPage.set(1); // Reset to first page when searching
-    this.onUIChange.set({ type: 'search', data: { query } });
+    this.searchQuery = query;
+    this.currentPage = 1; // Reset to first page when searching
+    this.onUIChange = { type: 'search', data: { query } };
   }
 
   setFilter(filterBy: string): void {
-    this.filterBy.set(filterBy);
-    this.currentPage.set(1);
-    this.onUIChange.set({ type: 'filter', data: { filterBy } });
+    this.filterBy = filterBy;
+    this.currentPage = 1;
+    this.onUIChange = { type: 'filter', data: { filterBy } };
   }
 
   setSorting(sortBy: string, sortOrder: 'asc' | 'desc' = 'desc'): void {
-    this.sortBy.set(sortBy);
-    this.sortOrder.set(sortOrder);
-    this.onUIChange.set({ type: 'sort', data: { sortBy, sortOrder } });
+    this.sortBy = sortBy;
+    this.sortOrder = sortOrder;
+    this.onUIChange = { type: 'sort', data: { sortBy, sortOrder } };
   }
 
   setCurrentPage(page: number): void {
-    this.currentPage.set(page);
-    this.onUIChange.set({ type: 'pagination', data: { page } });
+    this.currentPage = page;
+    this.onUIChange = { type: 'pagination', data: { page } };
   }
 
   /**
    * View state operations
    */
   toggleSection(section: keyof Pick<ViewState, 'dbSectionExpanded' | 'productsSectionExpanded' | 'logsSectionExpanded' | 'settingsSectionExpanded'>): void {
-    const currentState = this.viewState.get();
-    this.viewState.setKey(section, !currentState[section]);
-    this.onUIChange.set({ type: 'sectionToggle', data: { section, expanded: !currentState[section] } });
+    const currentState = this.viewState;
+    this.viewState = { ...this.viewState, [section]: !currentState[section] };
+    this.onUIChange = { type: 'sectionToggle', data: { section, expanded: !currentState[section] } };
   }
 
   showModal(modal: keyof Pick<ViewState, 'deleteModalVisible' | 'settingsModalVisible' | 'exportModalVisible'>): void {
-    this.viewState.setKey(modal, true);
-    this.onUIChange.set({ type: 'modalShow', data: { modal } });
+    this.viewState = { ...this.viewState, [modal]: true };
+    this.onUIChange = { type: 'modalShow', data: { modal } };
   }
 
   hideModal(modal: keyof Pick<ViewState, 'deleteModalVisible' | 'settingsModalVisible' | 'exportModalVisible'>): void {
-    this.viewState.setKey(modal, false);
-    this.onUIChange.set({ type: 'modalHide', data: { modal } });
+    this.viewState = { ...this.viewState, [modal]: false };
+    this.onUIChange = { type: 'modalHide', data: { modal } };
   }
 
   setRefreshing(isRefreshing: boolean): void {
-    this.viewState.setKey('isRefreshing', isRefreshing);
-    this.onUIChange.set({ type: 'refreshing', data: { isRefreshing } });
+    this.viewState = { ...this.viewState, isRefreshing };
+    this.onUIChange = { type: 'refreshing', data: { isRefreshing } };
   }
 
   setExporting(isExporting: boolean): void {
-    this.viewState.setKey('isExporting', isExporting);
-    this.onUIChange.set({ type: 'exporting', data: { isExporting } });
+    this.viewState = { ...this.viewState, isExporting };
+    this.onUIChange = { type: 'exporting', data: { isExporting } };
   }
 
   /**
    * Delete modal operations
    */
   setDeleteRange(startPageId: number, endPageId: number): void {
-    this.deleteRange.set({ startPageId, endPageId });
-    this.onUIChange.set({ type: 'deleteRange', data: { startPageId, endPageId } });
+    this.deleteRange = { startPageId, endPageId };
+    this.onUIChange = { type: 'deleteRange', data: { startPageId, endPageId } };
   }
 
   openDeleteModal(startPageId: number, endPageId: number): void {
@@ -227,13 +269,13 @@ export class UIStore {
    * Preferences operations
    */
   updatePreferences(updates: Partial<UIPreferences>): void {
-    this.preferences.set({ ...this.preferences.get(), ...updates });
+    this.preferences = { ...this.preferences, ...updates };
     this.saveUIPreferences();
-    this.onUIChange.set({ type: 'preferences', data: updates });
+    this.onUIChange = { type: 'preferences', data: updates };
   }
 
   toggleSidebar(): void {
-    const current = this.preferences.get();
+    const current = this.preferences;
     this.updatePreferences({ sidebarCollapsed: !current.sidebarCollapsed });
   }
 
@@ -243,7 +285,7 @@ export class UIStore {
 
   setPageSize(pageSize: number): void {
     this.updatePreferences({ pageSize });
-    this.currentPage.set(1); // Reset pagination when page size changes
+    this.currentPage = 1; // Reset pagination when page size changes
   }
 
   /**
@@ -258,8 +300,8 @@ export class UIStore {
       dismissed: false
     };
 
-    const current = this.notifications.get();
-    this.notifications.set([notification, ...current]);
+    const current = this.notifications;
+    this.notifications = [notification, ...current];
 
     // Auto-dismiss after 5 seconds for non-error notifications
     if (type !== 'error') {
@@ -268,40 +310,40 @@ export class UIStore {
       }, 5000);
     }
 
-    this.onUIChange.set({ type: 'notification', data: notification });
+    this.onUIChange = { type: 'notification', data: notification };
   }
 
   dismissNotification(id: string): void {
-    const current = this.notifications.get();
-    const updated = current.map(n => 
+    const current = this.notifications;
+    const updated = current.map((n: any) => 
       n.id === id ? { ...n, dismissed: true } : n
     );
-    this.notifications.set(updated);
+    this.notifications = updated;
 
     // Remove dismissed notifications after animation
     setTimeout(() => {
-      const filtered = this.notifications.get().filter(n => !n.dismissed);
-      this.notifications.set(filtered);
+      const filtered = this.notifications.filter((n: any) => !n.dismissed);
+      this.notifications = filtered;
     }, 300);
 
-    this.onUIChange.set({ type: 'notificationDismiss', data: { id } });
+    this.onUIChange = { type: 'notificationDismiss', data: { id } };
   }
 
   clearAllNotifications(): void {
-    this.notifications.set([]);
-    this.onUIChange.set({ type: 'notificationsClear' });
+    this.notifications = [];
+    this.onUIChange = { type: 'notificationsClear' };
   }
 
   /**
    * Reset UI state
    */
   resetSearchAndFilters(): void {
-    this.searchQuery.set('');
-    this.filterBy.set('all');
-    this.sortBy.set('pageId');
-    this.sortOrder.set('desc');
-    this.currentPage.set(1);
-    this.onUIChange.set({ type: 'reset' });
+    this.searchQuery = '';
+    this.filterBy = 'all';
+    this.sortBy = 'pageId';
+    this.sortOrder = 'desc';
+    this.currentPage = 1;
+    this.onUIChange = { type: 'reset' };
   }
 
   /**
@@ -309,11 +351,11 @@ export class UIStore {
    */
   getSearchFilterState(): SearchFilterState {
     return {
-      searchQuery: this.searchQuery.get(),
-      filterBy: this.filterBy.get(),
-      sortBy: this.sortBy.get(),
-      sortOrder: this.sortOrder.get(),
-      currentPage: this.currentPage.get()
+      searchQuery: this.searchQuery,
+      filterBy: this.filterBy,
+      sortBy: this.sortBy,
+      sortOrder: this.sortOrder,
+      currentPage: this.currentPage
     };
   }
 
@@ -321,16 +363,16 @@ export class UIStore {
    * App mode management
    */
   toggleAppMode(): void {
-    const currentMode = this.appMode.get();
+    const currentMode = this.appMode;
     const newMode = currentMode === 'development' ? 'production' : 'development';
     
-    this.appMode.set(newMode);
+    this.appMode = newMode;
     
     // API 재초기화 및 로그 추가는 외부에서 처리하도록 이벤트 발생
-    this.onUIChange.set({ 
+    this.onUIChange = { 
       type: 'appModeChanged', 
       data: { previousMode: currentMode, newMode } 
-    });
+    };
   }
 
   /**
@@ -346,15 +388,15 @@ export class UIStore {
    */
   getDebugInfo(): object {
     return {
-      searchQuery: this.searchQuery.get(),
-      filterBy: this.filterBy.get(),
-      sortBy: this.sortBy.get(),
-      sortOrder: this.sortOrder.get(),
-      currentPage: this.currentPage.get(),
-      preferences: this.preferences.get(),
-      viewState: this.viewState.get(),
-      deleteRange: this.deleteRange.get(),
-      notificationsCount: this.notifications.get().length
+      searchQuery: this.searchQuery,
+      filterBy: this.filterBy,
+      sortBy: this.sortBy,
+      sortOrder: this.sortOrder,
+      currentPage: this.currentPage,
+      preferences: this.preferences,
+      viewState: this.viewState,
+      deleteRange: this.deleteRange,
+      notificationsCount: this.notifications.length
     };
   }
 }

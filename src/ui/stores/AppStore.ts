@@ -93,7 +93,7 @@ export class AppStore {
 
     // React to database changes (when products are updated)
     reaction(
-      () => this.database.products.get().length,
+      () => this.database.products.length,
       () => {
         this.logs.addLog('데이터베이스가 업데이트되었습니다.', 'info');
       }

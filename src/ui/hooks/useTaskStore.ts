@@ -6,7 +6,6 @@
  * Uses consistent patterns with other hooks for better maintainability
  */
 
-import { useStore } from '@nanostores/react';
 import { useEffect } from 'react';
 import { taskStore } from '../stores/domain/TaskStore';
 import type { TaskStatusDetail } from '../stores/domain/TaskStore';
@@ -16,22 +15,6 @@ import type { TaskStatusDetail } from '../stores/domain/TaskStore';
  * Provides task state and actions with proper React integration
  */
 export function useTaskStore() {
-  // Core task data
-  const activeTasks = useStore(taskStore.activeTasks);
-  const recentTasks = useStore(taskStore.recentTasks);
-  const taskHistory = useStore(taskStore.taskHistory);
-  const concurrentTasks = useStore(taskStore.concurrentTasks);
-  
-  // Task statistics and status
-  const statistics = useStore(taskStore.statistics);
-  const isProcessingTasks = useStore(taskStore.isProcessingTasks);
-  const lastTaskUpdate = useStore(taskStore.lastTaskUpdate);
-  
-  // Event data
-  const onTaskStatusChange = useStore(taskStore.onTaskStatusChange);
-  const onTaskComplete = useStore(taskStore.onTaskComplete);
-  const onTaskError = useStore(taskStore.onTaskError);
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -42,16 +25,16 @@ export function useTaskStore() {
 
   return {
     // State
-    activeTasks,
-    recentTasks,
-    taskHistory,
-    concurrentTasks,
-    statistics,
-    isProcessingTasks,
-    lastTaskUpdate,
-    onTaskStatusChange,
-    onTaskComplete,
-    onTaskError,
+    activeTasks: taskStore.activeTasks,
+    recentTasks: taskStore.recentTasks,
+    taskHistory: taskStore.taskHistory,
+    concurrentTasks: taskStore.concurrentTasks,
+    statistics: taskStore.statistics,
+    isProcessingTasks: taskStore.isProcessingTasks,
+    lastTaskUpdate: taskStore.lastTaskUpdate,
+    onTaskStatusChange: taskStore.onTaskStatusChange,
+    onTaskComplete: taskStore.onTaskComplete,
+    onTaskError: taskStore.onTaskError,
 
     // Task management actions
     updateTaskStatus: (taskId: string | number, statusData: any) => 

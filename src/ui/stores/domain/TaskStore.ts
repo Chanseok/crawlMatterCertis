@@ -6,7 +6,7 @@
  * and task-related operations for concurrent crawling activities.
  */
 
-import { atom, map } from 'nanostores';
+import { makeObservable, observable, action, reaction } from 'mobx';
 import { getPlatformApi } from '../../platform/api';
 import type { ConcurrentCrawlingTask } from '../../types';
 
@@ -45,19 +45,19 @@ export interface TaskStatistics {
  */
 export class TaskStore {
   // Concurrent crawling tasks (for page-by-page progress tracking)
-  public readonly concurrentTasks = atom<ConcurrentCrawlingTask[]>([]);
+  public concurrentTasks: ConcurrentCrawlingTask[] = [];
   
   // Active tasks currently running
-  public readonly activeTasks = map<Record<string | number, TaskStatusDetail>>({});
+  public activeTasks: Record<string | number, TaskStatusDetail> = {};
   
   // Recent completed tasks (max 50 entries)
-  public readonly recentTasks = atom<TaskStatusDetail[]>([]);
+  public recentTasks: TaskStatusDetail[] = [];
   
   // Task history for current session
-  public readonly taskHistory = atom<TaskStatusDetail[]>([]);
+  public taskHistory: TaskStatusDetail[] = [];
 
   // Task statistics
-  public readonly statistics = map<TaskStatistics>({
+  public statistics: TaskStatistics = {
     total: 0,
     pending: 0,
     running: 0,
@@ -67,16 +67,16 @@ export class TaskStore {
     attempting: 0,
     successRate: 0,
     averageTime: 0
-  });
+  };
 
   // Task operation state
-  public readonly isProcessingTasks = atom<boolean>(false);
-  public readonly lastTaskUpdate = atom<Date | null>(null);
+  public isProcessingTasks: boolean = false;
+  public lastTaskUpdate: Date | null = null;
 
   // Event emitters for coordination
-  public readonly onTaskStatusChange = atom<TaskStatusDetail | null>(null);
-  public readonly onTaskComplete = atom<TaskStatusDetail | null>(null);
-  public readonly onTaskError = atom<TaskStatusDetail | null>(null);
+  public onTaskStatusChange: TaskStatusDetail | null = null;
+  public onTaskComplete: TaskStatusDetail | null = null;
+  public onTaskError: TaskStatusDetail | null = null;
 
   private platformApi = getPlatformApi();
   private unsubscribeFunctions: (() => void)[] = [];
@@ -84,6 +84,33 @@ export class TaskStore {
   private maxTaskHistory: number = 1000;
 
   constructor() {
+    makeObservable(this, {
+      // Observable state
+      concurrentTasks: observable,
+      activeTasks: observable,
+      recentTasks: observable,
+      taskHistory: observable,
+      statistics: observable,
+      isProcessingTasks: observable,
+      lastTaskUpdate: observable,
+      onTaskStatusChange: observable,
+      onTaskComplete: observable,
+      onTaskError: observable,
+
+      // Actions
+      updateTaskStatus: action,
+      updateMultipleTaskStatuses: action,
+      completeTask: action,
+      errorTask: action,
+      markAllActiveTasksAsCompleted: action,
+      clearActiveTasks: action,
+      clearRecentTasks: action,
+      clearTaskHistory: action,
+      clearAllTasks: action,
+      updateConcurrentTasks: action,
+      updateStatistics: action
+    });
+
     this.initializeEventSubscriptions();
     this.setupTaskStatistics();
   }
@@ -135,57 +162,64 @@ export class TaskStore {
    * Setup reactive task statistics calculation
    */
   private setupTaskStatistics(): void {
-    const updateStatistics = () => {
-      const activeTasks = Object.values(this.activeTasks.get());
-      const recentTasks = this.recentTasks.get();
-      const allTasks = [...activeTasks, ...recentTasks];
+    reaction(
+      () => ({ activeTasks: this.activeTasks, recentTasks: this.recentTasks }),
+      () => this.updateStatistics()
+    );
+  }
 
-      const stats = allTasks.reduce(
-        (acc, task) => {
-          acc.total++;
-          acc[task.status]++;
-          return acc;
-        },
-        { 
-          total: 0, 
-          pending: 0, 
-          running: 0, 
-          success: 0, 
-          error: 0, 
-          stopped: 0, 
-          attempting: 0,
-          successRate: 0,
-          averageTime: 0
-        }
-      );
+  /**
+   * Update task statistics
+   */
+  @action
+  updateStatistics(): void {
+    const activeTasks = Object.values(this.activeTasks);
+    const recentTasks = this.recentTasks;
+    const allTasks = [...activeTasks, ...recentTasks];
 
-      // Calculate success rate
-      if (stats.total > 0) {
-        stats.successRate = Math.round((stats.success / stats.total) * 100);
+    const stats = allTasks.reduce(
+      (acc, task) => {
+        acc.total++;
+        acc[task.status]++;
+        return acc;
+      },
+      { 
+        total: 0, 
+        pending: 0, 
+        running: 0, 
+        success: 0, 
+        error: 0, 
+        stopped: 0, 
+        attempting: 0,
+        successRate: 0,
+        averageTime: 0
       }
+    );
 
-      // Calculate average completion time
-      const completedTasks = allTasks.filter(task => 
-        task.status === 'success' && task.startTime && task.endTime
+    // Calculate success rate
+    if (stats.total > 0) {
+      stats.successRate = Math.round((stats.success / stats.total) * 100);
+    }
+
+    // Calculate average completion time
+    const completedTasks = allTasks.filter(task => 
+      task.status === 'success' && task.startTime && task.endTime
+    );
+    
+    if (completedTasks.length > 0) {
+      const totalTime = completedTasks.reduce((sum, task) => 
+        sum + (task.endTime! - task.startTime!), 0
       );
-      
-      if (completedTasks.length > 0) {
-        const totalTime = completedTasks.reduce((sum, task) => 
-          sum + (task.endTime! - task.startTime!), 0
-        );
-        stats.averageTime = Math.round(totalTime / completedTasks.length);
-      }
+      stats.averageTime = Math.round(totalTime / completedTasks.length);
+    }
 
-      this.statistics.set(stats);
-    };
-
-    this.activeTasks.listen(updateStatistics);
-    this.recentTasks.listen(updateStatistics);
+    this.statistics = stats;
   }
 
   /**
    * Update status of a single task
    */
+  @action
   updateTaskStatus(taskId: string | number, statusData: any): void {
     const validStatus = this.validateTaskStatus(statusData.status);
     const timestamp = Date.now();
@@ -203,22 +237,19 @@ export class TaskStore {
 
     // Update active tasks
     if (this.isTaskActive(validStatus)) {
-      const activeTasks = { ...this.activeTasks.get() };
-      
       // Preserve original start time if task already exists
-      if (activeTasks[taskId]) {
-        taskDetail.startTime = activeTasks[taskId].startTime || taskDetail.startTime;
+      if (this.activeTasks[taskId]) {
+        taskDetail.startTime = this.activeTasks[taskId].startTime || taskDetail.startTime;
       }
       
-      activeTasks[taskId] = taskDetail;
-      this.activeTasks.set(activeTasks);
+      this.activeTasks[taskId] = taskDetail;
     } else {
       // Task is complete, move to recent tasks
       this.completeTask(taskId, taskDetail);
     }
 
-    this.lastTaskUpdate.set(new Date());
-    this.onTaskStatusChange.set(taskDetail);
+    this.lastTaskUpdate = new Date();
+    this.onTaskStatusChange = taskDetail;
 
     // Add to task history
     this.addToTaskHistory(taskDetail);
@@ -227,8 +258,8 @@ export class TaskStore {
   /**
    * Update multiple task statuses (for batch updates)
    */
+  @action
   updateMultipleTaskStatuses(taskStatuses: any[]): void {
-    const activeTasks = { ...this.activeTasks.get() };
     let hasChanges = false;
 
     taskStatuses.forEach(taskData => {
@@ -251,16 +282,16 @@ export class TaskStore {
 
       if (this.isTaskActive(validStatus)) {
         // Preserve original start time
-        if (activeTasks[taskId]) {
-          taskDetail.startTime = activeTasks[taskId].startTime || taskDetail.startTime;
+        if (this.activeTasks[taskId]) {
+          taskDetail.startTime = this.activeTasks[taskId].startTime || taskDetail.startTime;
         }
         
-        activeTasks[taskId] = taskDetail;
+        this.activeTasks[taskId] = taskDetail;
         hasChanges = true;
       } else {
         // Remove from active and add to recent
-        if (activeTasks[taskId]) {
-          delete activeTasks[taskId];
+        if (this.activeTasks[taskId]) {
+          delete this.activeTasks[taskId];
           hasChanges = true;
           this.addToRecentTasks(taskDetail);
         }
@@ -270,17 +301,16 @@ export class TaskStore {
     });
 
     if (hasChanges) {
-      this.activeTasks.set(activeTasks);
-      this.lastTaskUpdate.set(new Date());
+      this.lastTaskUpdate = new Date();
     }
   }
 
   /**
    * Mark task as completed
    */
+  @action
   completeTask(taskId: string | number, taskData?: any): void {
-    const activeTasks = { ...this.activeTasks.get() };
-    const existingTask = activeTasks[taskId];
+    const existingTask = this.activeTasks[taskId];
 
     const completedTask: TaskStatusDetail = {
       id: taskId,
@@ -294,23 +324,22 @@ export class TaskStore {
     };
 
     // Remove from active tasks
-    delete activeTasks[taskId];
-    this.activeTasks.set(activeTasks);
+    delete this.activeTasks[taskId];
 
     // Add to recent tasks
     this.addToRecentTasks(completedTask);
     this.addToTaskHistory(completedTask);
 
-    this.lastTaskUpdate.set(new Date());
-    this.onTaskComplete.set(completedTask);
+    this.lastTaskUpdate = new Date();
+    this.onTaskComplete = completedTask;
   }
 
   /**
    * Mark task as errored
    */
+  @action
   errorTask(taskId: string | number, errorData?: any): void {
-    const activeTasks = { ...this.activeTasks.get() };
-    const existingTask = activeTasks[taskId];
+    const existingTask = this.activeTasks[taskId];
 
     const erroredTask: TaskStatusDetail = {
       id: taskId,
@@ -324,52 +353,44 @@ export class TaskStore {
     };
 
     // Remove from active tasks
-    delete activeTasks[taskId];
-    this.activeTasks.set(activeTasks);
+    delete this.activeTasks[taskId];
 
     // Add to recent tasks
     this.addToRecentTasks(erroredTask);
     this.addToTaskHistory(erroredTask);
 
-    this.lastTaskUpdate.set(new Date());
-    this.onTaskError.set(erroredTask);
+    this.lastTaskUpdate = new Date();
+    this.onTaskError = erroredTask;
   }
 
   /**
    * Add task to recent tasks list
    */
   private addToRecentTasks(task: TaskStatusDetail): void {
-    const recentTasks = [...this.recentTasks.get()];
-    recentTasks.unshift(task);
+    this.recentTasks.unshift(task);
 
     // Maintain maximum recent tasks
-    if (recentTasks.length > this.maxRecentTasks) {
-      recentTasks.splice(this.maxRecentTasks);
+    if (this.recentTasks.length > this.maxRecentTasks) {
+      this.recentTasks.splice(this.maxRecentTasks);
     }
-
-    this.recentTasks.set(recentTasks);
   }
 
   /**
    * Add task to task history
    */
   private addToTaskHistory(task: TaskStatusDetail): void {
-    const history = [...this.taskHistory.get()];
-    
     // Check if task already exists in history (update instead of duplicate)
-    const existingIndex = history.findIndex(t => t.id === task.id);
+    const existingIndex = this.taskHistory.findIndex(t => t.id === task.id);
     if (existingIndex >= 0) {
-      history[existingIndex] = task;
+      this.taskHistory[existingIndex] = task;
     } else {
-      history.push(task);
+      this.taskHistory.push(task);
     }
 
     // Maintain maximum history size
-    if (history.length > this.maxTaskHistory) {
-      history.splice(0, history.length - this.maxTaskHistory);
+    if (this.taskHistory.length > this.maxTaskHistory) {
+      this.taskHistory.splice(0, this.taskHistory.length - this.maxTaskHistory);
     }
-
-    this.taskHistory.set(history);
   }
 
   /**
@@ -395,11 +416,11 @@ export class TaskStore {
   /**
    * Mark all active tasks as completed
    */
+  @action
   markAllActiveTasksAsCompleted(data?: any): void {
-    const activeTasks = { ...this.activeTasks.get() };
     const timestamp = Date.now();
 
-    Object.keys(activeTasks).forEach(taskId => {
+    Object.keys(this.activeTasks).forEach(taskId => {
       this.completeTask(taskId, {
         ...data,
         status: 'success',
@@ -412,28 +433,32 @@ export class TaskStore {
   /**
    * Clear all active tasks
    */
+  @action
   clearActiveTasks(): void {
-    this.activeTasks.set({});
-    this.lastTaskUpdate.set(new Date());
+    this.activeTasks = {};
+    this.lastTaskUpdate = new Date();
   }
 
   /**
    * Clear recent tasks
    */
+  @action
   clearRecentTasks(): void {
-    this.recentTasks.set([]);
+    this.recentTasks = [];
   }
 
   /**
    * Clear task history
    */
+  @action
   clearTaskHistory(): void {
-    this.taskHistory.set([]);
+    this.taskHistory = [];
   }
 
   /**
    * Clear all tasks
    */
+  @action
   clearAllTasks(): void {
     this.clearActiveTasks();
     this.clearRecentTasks();
@@ -445,21 +470,18 @@ export class TaskStore {
    */
   getTaskById(taskId: string | number): TaskStatusDetail | null {
     // Check active tasks first
-    const activeTasks = this.activeTasks.get();
-    if (activeTasks[taskId]) {
-      return activeTasks[taskId];
+    if (this.activeTasks[taskId]) {
+      return this.activeTasks[taskId];
     }
 
     // Check recent tasks
-    const recentTasks = this.recentTasks.get();
-    const recentTask = recentTasks.find(task => task.id === taskId);
+    const recentTask = this.recentTasks.find((task: TaskStatusDetail) => task.id === taskId);
     if (recentTask) {
       return recentTask;
     }
 
     // Check task history
-    const history = this.taskHistory.get();
-    const historyTask = history.find(task => task.id === taskId);
+    const historyTask = this.taskHistory.find((task: TaskStatusDetail) => task.id === taskId);
     return historyTask || null;
   }
 
@@ -467,36 +489,35 @@ export class TaskStore {
    * Get tasks by status
    */
   getTasksByStatus(status: TaskStatusDetail['status']): TaskStatusDetail[] {
-    const activeTasks = Object.values(this.activeTasks.get());
-    const recentTasks = this.recentTasks.get();
+    const activeTasks = Object.values(this.activeTasks);
     
-    return [...activeTasks, ...recentTasks].filter(task => task.status === status);
+    return [...activeTasks, ...this.recentTasks].filter((task: TaskStatusDetail) => task.status === status);
   }
 
   /**
    * Get active task count
    */
   getActiveTaskCount(): number {
-    return Object.keys(this.activeTasks.get()).length;
+    return Object.keys(this.activeTasks).length;
   }
 
   /**
    * Update concurrent crawling tasks
    */
+  @action
   updateConcurrentTasks(tasks: ConcurrentCrawlingTask[]): void {
-    this.concurrentTasks.set(tasks);
-    this.lastTaskUpdate.set(new Date());
+    this.concurrentTasks = tasks;
+    this.lastTaskUpdate = new Date();
   }
 
   /**
    * Get success rate for recent tasks
    */
   getRecentSuccessRate(): number {
-    const recentTasks = this.recentTasks.get();
-    if (recentTasks.length === 0) return 0;
+    if (this.recentTasks.length === 0) return 0;
 
-    const successCount = recentTasks.filter(task => task.status === 'success').length;
-    return Math.round((successCount / recentTasks.length) * 100);
+    const successCount = this.recentTasks.filter((task: TaskStatusDetail) => task.status === 'success').length;
+    return Math.round((successCount / this.recentTasks.length) * 100);
   }
 
   /**
@@ -512,12 +533,12 @@ export class TaskStore {
    */
   getDebugInfo(): object {
     return {
-      activeTasksCount: Object.keys(this.activeTasks.get()).length,
-      recentTasksCount: this.recentTasks.get().length,
-      taskHistoryCount: this.taskHistory.get().length,
-      statistics: this.statistics.get(),
-      isProcessingTasks: this.isProcessingTasks.get(),
-      lastTaskUpdate: this.lastTaskUpdate.get(),
+      activeTasksCount: Object.keys(this.activeTasks).length,
+      recentTasksCount: this.recentTasks.length,
+      taskHistoryCount: this.taskHistory.length,
+      statistics: this.statistics,
+      isProcessingTasks: this.isProcessingTasks,
+      lastTaskUpdate: this.lastTaskUpdate,
       subscriptionsCount: this.unsubscribeFunctions.length
     };
   }

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useEffect, useState } from "react";
+import { observer } from 'mobx-react-lite';
 import { BaseChart } from "./BaseChart";
 import type { ConcurrentCrawlingTask } from './types';
 import { TaskProgressIndicator } from "./components/TaskProgressIndicator";
@@ -22,7 +23,7 @@ export function Chart(props: ChartProps) {
 }
 
 // 동시 처리 작업 현황 시각화 컴포넌트
-export function ConcurrentTasksVisualizer() {
+export const ConcurrentTasksVisualizer = observer(() => {
   const { concurrentTasks, activeTasks } = useTaskStore();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [lastChangedTasks, setLastChangedTasks] = useState<(string | number)[]>([]);
@@ -141,4 +142,4 @@ export function ConcurrentTasksVisualizer() {
       })}
     </div>
   );
-}
+});

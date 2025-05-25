@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { observer } from 'mobx-react-lite';
 import { useApiInitialization } from './hooks/useApiInitialization';
 import { useLogStore } from './hooks/useLogStore';
 import { useUIStore } from './hooks/useUIStore';
@@ -10,7 +11,7 @@ import { CrawlingSettings } from './components/CrawlingSettings';
 import { LocalDBTab } from './components/LocalDBTab';
 import { AnalysisTab } from './components/AnalysisTab';
 
-function App() {
+const App = observer(() => {
   // Development mode detection
   const isDevelopment = import.meta.env.DEV || import.meta.env.NODE_ENV === 'development';
   
@@ -89,6 +90,6 @@ function App() {
       </div>
     </AppLayout>
   );
-}
+});
 
 export default App;

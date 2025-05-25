@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { observer } from 'mobx-react-lite';
 import { useLogStore } from '../hooks/useLogStore';
 
 /**
  * 배치 처리 UI 테스트 버튼 컴포넌트
  * 개발 모드에서만 표시되며, 배치 처리 UI를 테스트할 수 있는 버튼을 제공합니다.
  */
-export function BatchUITestButton() {
+export const BatchUITestButton = observer(() => {
   const [isRunning, setIsRunning] = useState(false);
   const [batchCount, setBatchCount] = useState(5);
   const [delayMs, setDelayMs] = useState(2000);
@@ -92,4 +93,4 @@ export function BatchUITestButton() {
       </p>
     </div>
   );
-}
+});

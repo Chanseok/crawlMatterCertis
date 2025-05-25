@@ -5,7 +5,6 @@
  * Provides access to UI state and actions with proper React integration
  */
 
-import { useStore } from '@nanostores/react';
 import { useEffect } from 'react';
 import { uiStore } from '../stores/domain/UIStore';
 import type { UIPreferences, ViewState } from '../stores/domain/UIStore';
@@ -15,18 +14,6 @@ import type { UIPreferences, ViewState } from '../stores/domain/UIStore';
  * Provides UI state and actions with proper React integration
  */
 export function useUIStore() {
-  const searchQuery = useStore(uiStore.searchQuery);
-  const filterBy = useStore(uiStore.filterBy);
-  const sortBy = useStore(uiStore.sortBy);
-  const sortOrder = useStore(uiStore.sortOrder);
-  const currentPage = useStore(uiStore.currentPage);
-  const preferences = useStore(uiStore.preferences);
-  const viewState = useStore(uiStore.viewState);
-  const deleteRange = useStore(uiStore.deleteRange);
-  const notifications = useStore(uiStore.notifications);
-  const onUIChange = useStore(uiStore.onUIChange);
-  const appMode = useStore(uiStore.appMode);
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -35,18 +22,18 @@ export function useUIStore() {
   }, []);
 
   return {
-    // State
-    searchQuery,
-    filterBy,
-    sortBy,
-    sortOrder,
-    currentPage,
-    preferences,
-    viewState,
-    deleteRange,
-    notifications,
-    onUIChange,
-    appMode,
+    // State - direct access to MobX store properties
+    searchQuery: uiStore.searchQuery,
+    filterBy: uiStore.filterBy,
+    sortBy: uiStore.sortBy,
+    sortOrder: uiStore.sortOrder,
+    currentPage: uiStore.currentPage,
+    preferences: uiStore.preferences,
+    viewState: uiStore.viewState,
+    deleteRange: uiStore.deleteRange,
+    notifications: uiStore.notifications,
+    onUIChange: uiStore.onUIChange,
+    appMode: uiStore.appMode,
 
     // App mode actions
     toggleAppMode: () => uiStore.toggleAppMode(),
@@ -83,7 +70,7 @@ export function useUIStore() {
     setTheme: (theme: UIPreferences['theme']) => uiStore.setTheme(theme),
     toggleSidebar: () => uiStore.toggleSidebar(),
     toggleAdvancedOptions: () => {
-      const current = uiStore.preferences.get();
+      const current = uiStore.preferences;
       uiStore.updatePreferences({ showAdvancedOptions: !current.showAdvancedOptions });
     },
     

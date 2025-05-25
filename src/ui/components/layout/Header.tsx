@@ -1,7 +1,8 @@
 import React from 'react';
+import { observer } from 'mobx-react-lite';
 import { useUIStore } from '../../hooks/useUIStore';
 
-export const Header: React.FC = () => {
+export const Header: React.FC = observer(() => {
   const { appMode, toggleAppMode } = useUIStore();
   
   return (
@@ -27,4 +28,4 @@ export const Header: React.FC = () => {
       </div>
     </header>
   );
-};
+});

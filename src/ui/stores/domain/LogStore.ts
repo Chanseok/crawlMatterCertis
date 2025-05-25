@@ -6,7 +6,7 @@
  * and log-related UI state.
  */
 
-import { atom, map } from 'nanostores';
+import { makeObservable, observable, action, reaction } from 'mobx';
 import type { LogEntry } from '../../types';
 
 /**
@@ -42,11 +42,11 @@ export interface LogExportOptions {
  */
 export class LogStore {
   // Core log data
-  public readonly logs = atom<LogEntry[]>([]);
-  public readonly filteredLogs = atom<LogEntry[]>([]);
+  public logs: LogEntry[] = [];
+  public filteredLogs: LogEntry[] = [];
 
   // Log filtering and display
-  public readonly filterState = map<LogFilterState>({
+  public filterState: LogFilterState = {
     showInfo: true,
     showSuccess: true,
     showWarning: true,
@@ -54,36 +54,63 @@ export class LogStore {
     searchQuery: '',
     maxEntries: 1000,
     autoScroll: true
-  });
+  };
 
   // Log statistics
-  public readonly statistics = map<{
+  public statistics: {
     total: number;
     info: number;
     success: number;
     warning: number;
     error: number;
     todayCount: number;
-  }>({
+  } = {
     total: 0,
     info: 0,
     success: 0,
     warning: 0,
     error: 0,
     todayCount: 0
-  });
+  };
 
   // Export state
-  public readonly isExporting = atom<boolean>(false);
-  public readonly exportProgress = atom<number>(0);
+  public isExporting: boolean = false;
+  public exportProgress: number = 0;
 
   // Event emitters for coordination
-  public readonly onNewLog = atom<LogEntry | null>(null);
-  public readonly onLogsClear = atom<boolean>(false);
+  public onNewLog: LogEntry | null = null;
+  public onLogsClear: boolean = false;
 
   private maxLogEntries: number = 1000;
 
   constructor() {
+    makeObservable(this, {
+      // Observable state
+      logs: observable,
+      filteredLogs: observable,
+      filterState: observable,
+      statistics: observable,
+      isExporting: observable,
+      exportProgress: observable,
+      onNewLog: observable,
+      onLogsClear: observable,
+
+      // Actions
+      addLog: action,
+      addLogs: action,
+      clearLogs: action,
+      clearLogsByType: action,
+      clearOldLogs: action,
+      setTypeFilter: action,
+      setSearchQuery: action,
+      setMaxEntries: action,
+      setAutoScroll: action,
+      resetFilters: action,
+      exportLogs: action,
+      updateStatistics: action,
+      updateFilteredLogs: action
+    });
+
     this.loadLogPreferences();
     this.setupLogFiltering();
   }
@@ -96,7 +123,7 @@ export class LogStore {
       const saved = localStorage.getItem('log-preferences');
       if (saved) {
         const prefs = JSON.parse(saved);
-        this.filterState.set({ ...this.filterState.get(), ...prefs });
+        this.filterState = { ...this.filterState, ...prefs };
       }
     } catch (error) {
       console.warn('Failed to load log preferences:', error);
@@ -108,7 +135,7 @@ export class LogStore {
    */
   private saveLogPreferences(): void {
     try {
-      localStorage.setItem('log-preferences', JSON.stringify(this.filterState.get()));
+      localStorage.setItem('log-preferences', JSON.stringify(this.filterState));
     } catch (error) {
       console.warn('Failed to save log preferences:', error);
     }
@@ -118,53 +145,60 @@ export class LogStore {
    * Setup reactive log filtering
    */
   private setupLogFiltering(): void {
-    // Update filtered logs when logs or filter state changes
-    const updateFilteredLogs = () => {
-      const allLogs = this.logs.get();
-      const filter = this.filterState.get();
-      
-      let filtered = allLogs.filter(log => {
-        // Type filtering
-        const typeVisible = (
-          (log.type === 'info' && filter.showInfo) ||
-          (log.type === 'success' && filter.showSuccess) ||
-          (log.type === 'warning' && filter.showWarning) ||
-          (log.type === 'error' && filter.showError)
-        );
+    // Use MobX reaction to update filtered logs when logs or filter state changes
+    reaction(
+      () => ({ logs: this.logs, filter: this.filterState }),
+      () => this.updateFilteredLogs()
+    );
+  }
 
-        if (!typeVisible) return false;
+  /**
+   * Update filtered logs based on current filter state
+   */
+  @action
+  updateFilteredLogs(): void {
+    const allLogs = this.logs;
+    const filter = this.filterState;
+    
+    let filtered = allLogs.filter((log: LogEntry) => {
+      // Type filtering
+      const typeVisible = (
+        (log.type === 'info' && filter.showInfo) ||
+        (log.type === 'success' && filter.showSuccess) ||
+        (log.type === 'warning' && filter.showWarning) ||
+        (log.type === 'error' && filter.showError)
+      );
 
-        // Search filtering
-        if (filter.searchQuery) {
-          return log.message.toLowerCase().includes(filter.searchQuery.toLowerCase());
-        }
+      if (!typeVisible) return false;
 
-        return true;
-      });
-
-      // Limit entries
-      if (filtered.length > filter.maxEntries) {
-        filtered = filtered.slice(-filter.maxEntries);
+      // Search filtering
+      if (filter.searchQuery) {
+        return log.message.toLowerCase().includes(filter.searchQuery.toLowerCase());
       }
 
-      this.filteredLogs.set(filtered);
-      this.updateStatistics();
-    };
+      return true;
+    });
 
-    this.logs.listen(updateFilteredLogs);
-    this.filterState.listen(updateFilteredLogs);
+    // Limit entries
+    if (filtered.length > filter.maxEntries) {
+      filtered = filtered.slice(-filter.maxEntries);
+    }
+
+    this.filteredLogs = filtered;
+    this.updateStatistics();
   }
 
   /**
    * Update log statistics
    */
-  private updateStatistics(): void {
-    const allLogs = this.logs.get();
+  @action
+  updateStatistics(): void {
+    const allLogs = this.logs;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const stats = allLogs.reduce(
-      (acc, log) => {
+      (acc, log: LogEntry) => {
         acc.total++;
         acc[log.type]++;
         
@@ -177,12 +211,13 @@ export class LogStore {
       { total: 0, info: 0, success: 0, warning: 0, error: 0, todayCount: 0 }
     );
 
-    this.statistics.set(stats);
+    this.statistics = stats;
   }
 
   /**
    * Add a new log entry
    */
+  @action
   addLog(message: string, type: LogEntry['type'] = 'info'): void {
     const logEntry: LogEntry = {
       timestamp: new Date(),
@@ -190,21 +225,21 @@ export class LogStore {
       type
     };
 
-    const currentLogs = this.logs.get();
-    let updatedLogs = [...currentLogs, logEntry];
+    let updatedLogs = [...this.logs, logEntry];
 
     // Maintain maximum log entries
     if (updatedLogs.length > this.maxLogEntries) {
       updatedLogs = updatedLogs.slice(-this.maxLogEntries);
     }
 
-    this.logs.set(updatedLogs);
-    this.onNewLog.set(logEntry);
+    this.logs = updatedLogs;
+    this.onNewLog = logEntry;
   }
 
   /**
    * Add multiple log entries
    */
+  @action
   addLogs(entries: Array<{ message: string; type: LogEntry['type'] }>): void {
     const timestamp = new Date();
     const newEntries: LogEntry[] = entries.map(entry => ({
@@ -212,78 +247,83 @@ export class LogStore {
       timestamp: new Date(timestamp.getTime() + Math.random() * 1000) // Slight offset for ordering
     }));
 
-    const currentLogs = this.logs.get();
-    let updatedLogs = [...currentLogs, ...newEntries];
+    let updatedLogs = [...this.logs, ...newEntries];
 
     // Maintain maximum log entries
     if (updatedLogs.length > this.maxLogEntries) {
       updatedLogs = updatedLogs.slice(-this.maxLogEntries);
     }
 
-    this.logs.set(updatedLogs);
+    this.logs = updatedLogs;
     
     // Emit last added log
     if (newEntries.length > 0) {
-      this.onNewLog.set(newEntries[newEntries.length - 1]);
+      this.onNewLog = newEntries[newEntries.length - 1];
     }
   }
 
   /**
    * Clear all logs
    */
+  @action
   clearLogs(): void {
-    this.logs.set([]);
-    this.onLogsClear.set(true);
-    setTimeout(() => this.onLogsClear.set(false), 100);
+    this.logs = [];
+    this.onLogsClear = true;
+    setTimeout(() => { this.onLogsClear = false; }, 100);
   }
 
   /**
    * Clear logs by type
    */
+  @action
   clearLogsByType(type: LogEntry['type']): void {
-    const currentLogs = this.logs.get();
-    const filteredLogs = currentLogs.filter(log => log.type !== type);
-    this.logs.set(filteredLogs);
+    const filteredLogs = this.logs.filter((log: LogEntry) => log.type !== type);
+    this.logs = filteredLogs;
   }
 
   /**
    * Clear logs older than specified time
    */
+  @action
   clearOldLogs(olderThan: Date): void {
-    const currentLogs = this.logs.get();
-    const filteredLogs = currentLogs.filter(log => log.timestamp >= olderThan);
-    this.logs.set(filteredLogs);
+    const filteredLogs = this.logs.filter((log: LogEntry) => log.timestamp >= olderThan);
+    this.logs = filteredLogs;
   }
 
   /**
    * Filter operations
    */
+  @action
   setTypeFilter(type: keyof Pick<LogFilterState, 'showInfo' | 'showSuccess' | 'showWarning' | 'showError'>, visible: boolean): void {
-    this.filterState.setKey(type, visible);
+    this.filterState = { ...this.filterState, [type]: visible };
     this.saveLogPreferences();
   }
 
+  @action
   setSearchQuery(query: string): void {
-    this.filterState.setKey('searchQuery', query);
+    this.filterState = { ...this.filterState, searchQuery: query };
     this.saveLogPreferences();
   }
 
+  @action
   setMaxEntries(max: number): void {
     this.maxLogEntries = max;
-    this.filterState.setKey('maxEntries', max);
+    this.filterState = { ...this.filterState, maxEntries: max };
     this.saveLogPreferences();
   }
 
+  @action
   setAutoScroll(autoScroll: boolean): void {
-    this.filterState.setKey('autoScroll', autoScroll);
+    this.filterState = { ...this.filterState, autoScroll };
     this.saveLogPreferences();
   }
 
   /**
    * Reset all filters
    */
+  @action
   resetFilters(): void {
-    this.filterState.set({
+    this.filterState = {
       showInfo: true,
       showSuccess: true,
       showWarning: true,
@@ -291,34 +331,35 @@ export class LogStore {
       searchQuery: '',
       maxEntries: 1000,
       autoScroll: true
-    });
+    };
     this.saveLogPreferences();
   }
 
   /**
    * Export logs
    */
+  @action
   async exportLogs(options: LogExportOptions): Promise<string> {
-    this.isExporting.set(true);
-    this.exportProgress.set(0);
+    this.isExporting = true;
+    this.exportProgress = 0;
 
     try {
-      let logsToExport = this.logs.get();
+      let logsToExport = this.logs;
 
       // Apply type filters
       if (options.filterTypes && options.filterTypes.length > 0) {
-        logsToExport = logsToExport.filter(log => options.filterTypes.includes(log.type));
+        logsToExport = logsToExport.filter((log: LogEntry) => options.filterTypes.includes(log.type));
       }
 
       // Apply date range filter
       if (options.dateRange) {
-        logsToExport = logsToExport.filter(log => 
+        logsToExport = logsToExport.filter((log: LogEntry) => 
           log.timestamp >= options.dateRange!.start && 
           log.timestamp <= options.dateRange!.end
         );
       }
 
-      this.exportProgress.set(30);
+      this.exportProgress = 30;
 
       let exportContent: string;
 
@@ -329,7 +370,7 @@ export class LogStore {
 
         case 'csv':
           const headers = ['Timestamp', 'Type', 'Message'].join(',');
-          const rows = logsToExport.map(log => [
+          const rows = logsToExport.map((log: LogEntry) => [
             options.includeTimestamp ? log.timestamp.toISOString() : '',
             options.includeType ? log.type : '',
             `"${log.message.replace(/"/g, '""')}"`
@@ -339,7 +380,7 @@ export class LogStore {
 
         case 'txt':
         default:
-          exportContent = logsToExport.map(log => {
+          exportContent = logsToExport.map((log: LogEntry) => {
             const parts = [];
             if (options.includeTimestamp) {
               parts.push(`[${log.timestamp.toLocaleString()}]`);
@@ -353,13 +394,13 @@ export class LogStore {
           break;
       }
 
-      this.exportProgress.set(100);
+      this.exportProgress = 100;
       return exportContent;
 
     } finally {
       setTimeout(() => {
-        this.isExporting.set(false);
-        this.exportProgress.set(0);
+        this.isExporting = false;
+        this.exportProgress = 0;
       }, 500);
     }
   }
@@ -368,14 +409,14 @@ export class LogStore {
    * Get logs by type
    */
   getLogsByType(type: LogEntry['type']): LogEntry[] {
-    return this.logs.get().filter(log => log.type === type);
+    return this.logs.filter((log: LogEntry) => log.type === type);
   }
 
   /**
    * Get recent logs (last N entries)
    */
   getRecentLogs(count: number): LogEntry[] {
-    const allLogs = this.logs.get();
+    const allLogs = this.logs;
     return allLogs.slice(-count);
   }
 
@@ -383,7 +424,7 @@ export class LogStore {
    * Get logs in date range
    */
   getLogsInRange(start: Date, end: Date): LogEntry[] {
-    return this.logs.get().filter(log => 
+    return this.logs.filter((log: LogEntry) => 
       log.timestamp >= start && log.timestamp <= end
     );
   }
@@ -393,7 +434,7 @@ export class LogStore {
    */
   searchLogs(query: string): LogEntry[] {
     const searchTerm = query.toLowerCase();
-    return this.logs.get().filter(log => 
+    return this.logs.filter((log: LogEntry) => 
       log.message.toLowerCase().includes(searchTerm)
     );
   }
@@ -410,12 +451,12 @@ export class LogStore {
    */
   getDebugInfo(): object {
     return {
-      totalLogs: this.logs.get().length,
-      filteredLogs: this.filteredLogs.get().length,
-      statistics: this.statistics.get(),
-      filterState: this.filterState.get(),
-      isExporting: this.isExporting.get(),
-      exportProgress: this.exportProgress.get()
+      totalLogs: this.logs.length,
+      filteredLogs: this.filteredLogs.length,
+      statistics: this.statistics,
+      filterState: this.filterState,
+      isExporting: this.isExporting,
+      exportProgress: this.exportProgress
     };
   }
 }

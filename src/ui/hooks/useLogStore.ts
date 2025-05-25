@@ -6,7 +6,6 @@
  * Consistent with other domain store hooks
  */
 
-import { useStore } from '@nanostores/react';
 import { useEffect } from 'react';
 import { logStore } from '../stores/domain/LogStore';
 import type { LogEntry } from '../types';
@@ -17,22 +16,6 @@ import type { LogFilterState, LogExportOptions } from '../stores/domain/LogStore
  * Provides log state and actions with proper React integration
  */
 export function useLogStore() {
-  // Log data
-  const logs = useStore(logStore.logs);
-  const filteredLogs = useStore(logStore.filteredLogs);
-  
-  // Log filtering and display options
-  const filterState = useStore(logStore.filterState);
-  const statistics = useStore(logStore.statistics);
-  
-  // Log operation state
-  const isExporting = useStore(logStore.isExporting);
-  const exportProgress = useStore(logStore.exportProgress);
-  
-  // Event notifications
-  const onNewLog = useStore(logStore.onNewLog);
-  const onLogsClear = useStore(logStore.onLogsClear);
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -42,14 +25,14 @@ export function useLogStore() {
 
   return {
     // Log data
-    logs,
-    filteredLogs,
-    filterState,
-    statistics,
-    isExporting,
-    exportProgress,
-    onNewLog,
-    onLogsClear,
+    logs: logStore.logs,
+    filteredLogs: logStore.filteredLogs,
+    filterState: logStore.filterState,
+    statistics: logStore.statistics,
+    isExporting: logStore.isExporting,
+    exportProgress: logStore.exportProgress,
+    onNewLog: logStore.onNewLog,
+    onLogsClear: logStore.onLogsClear,
 
     // Log management actions
     addLog: (message: string, type: LogEntry['type'] = 'info') => 

@@ -3,10 +3,9 @@
  * React hook for accessing the DatabaseStore domain store
  * 
  * Provides access to database operations and state with proper React integration
- * Uses same patterns as useDatabaseViewModel for consistency
+ * Uses MobX for reactive state management
  */
 
-import { useStore } from '@nanostores/react';
 import { useEffect, useCallback } from 'react';
 
 import type { MatterProduct } from '../../../types';
@@ -18,16 +17,8 @@ import { databaseStore } from '../stores/domain/DatabaseStore';
  * Provides database state and actions with proper error handling
  */
 export function useDatabaseStore() {
-  // Core database state
-  const products = useStore(databaseStore.products);
-  const summary = useStore(databaseStore.summary);
-  const pagination = useStore(databaseStore.pagination);
-  
-  // Operation status
-  const isLoading = useStore(databaseStore.isLoading);
-  const saving = useStore(databaseStore.saving);
-  const lastSaveResult = useStore(databaseStore.lastSaveResult);
-  const error = useStore(databaseStore.error);
+  // MobX store provides direct access to reactive properties
+  // No need for useStore() - MobX observer will handle reactivity
 
   // 메서드들을 useCallback으로 메모이제이션하여 불필요한 리렌더링 방지
   const loadAllProducts = useCallback(async (page: number = 1, limit: number = 100) => {
@@ -68,16 +59,16 @@ export function useDatabaseStore() {
   }, []);
 
   return {
-    // Database access state
-    products,
-    summary,
-    pagination,
+    // Database access state - Direct access to MobX store properties
+    products: databaseStore.products,
+    summary: databaseStore.summary,
+    pagination: databaseStore.pagination,
     
     // Operation status (matches DatabaseViewModel properties)
-    isSaving: saving,
-    saveResult: lastSaveResult,
-    isLoading,
-    error,
+    isSaving: databaseStore.saving,
+    saveResult: databaseStore.lastSaveResult,
+    isLoading: databaseStore.isLoading,
+    error: databaseStore.error,
     
     // Core database actions
     saveProducts: (products: MatterProduct[]) => databaseStore.saveProducts(products),
