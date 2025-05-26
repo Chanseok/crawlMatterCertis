@@ -19,7 +19,7 @@ export class AppStore {
   private static _instance: AppStore;
   
   // Core app state
-  @observable appMode: AppMode = 'development';
+  @observable accessor appMode: AppMode = 'development';
   
   // Root store instance (provides access to all domain stores)
   public readonly rootStore: RootStore;

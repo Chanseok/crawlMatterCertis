@@ -1,46 +1,53 @@
 /**
  * PageProgressDisplay.tsx
- * Clean Component: 페이지 진행률 표시 전용 컴포넌트
- * 
- * 책임:
- * - 페이지 진행률의 일관된 표시
- * - Domain Store에서 데이터 직접 참조
- * - UI 렌더링만 담당
+ * Clean Architecture Display Component
+ * Single Responsibility: Display page progress tracking
  */
 
 import React from 'react';
+import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 
-/**
- * 페이지 진행률 표시 컴포넌트
- * Domain Store의 크롤링 진행 상황을 기반으로 페이지 진행률 표시
- */
-export const PageProgressDisplay: React.FC = () => {
+export const PageProgressDisplay: React.FC = observer(() => {
   const { progress, status } = useCrawlingStore();
   
   const currentPage = progress?.currentPage || 0;
   const totalPages = progress?.totalPages || 0;
-  const percentage = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
+  const currentStage = progress?.currentStage || 0;
   
+  if (status === 'idle' || totalPages === 0) {
+    return null;
+  }
+
+  const percentage = totalPages > 0 ? (currentPage / totalPages) * 100 : 0;
+
   return (
-    <div className="space-y-2">
-      <div className="flex justify-between items-center">
+    <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+      <div className="flex justify-between items-center mb-2">
         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          페이지 진행률
+          페이지 진행률 ({currentStage}단계)
         </span>
         <span className="text-sm text-gray-500 dark:text-gray-400">
-          {currentPage} / {totalPages} ({percentage}%)
+          {currentPage} / {totalPages}
         </span>
       </div>
       
-      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-        <div 
+      <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+        <div
           className={`h-2 rounded-full transition-all duration-300 ${
-            status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
+            status === 'completed' ? 'bg-green-500' : 
+            status === 'error' ? 'bg-red-500' : 'bg-blue-500'
           }`}
-          style={{ width: `${percentage}%` }}
+          style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}
         />
+      </div>
+      
+      <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+        <span>{Math.round(percentage)}% 완료</span>
+        <span>
+          {totalPages - currentPage > 0 ? `${totalPages - currentPage}페이지 남음` : '완료'}
+        </span>
       </div>
     </div>
   );
-};
+});

@@ -1,45 +1,48 @@
-import { useCrawlingStore } from '../../hooks/useCrawlingStore';
+/**
+ * TimeDisplay.tsx
+ * Clean Architecture Display Component
+ * Single Responsibility: Display time-related information (elapsed/remaining)
+ */
 
-export function TimeDisplay() {
-  const { progress, status } = useCrawlingStore();
-  
-  const formatTime = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    
-    if (hours > 0) {
-      return `${hours}시간 ${minutes}분 ${secs}초`;
-    } else if (minutes > 0) {
-      return `${minutes}분 ${secs}초`;
-    } else {
-      return `${secs}초`;
-    }
-  };
+import React from 'react';
 
-  const elapsedTime = progress?.elapsedTime || 0;
-  const remainingTime = progress?.remainingTime || 0;
-  const remaining = Math.max(0, remainingTime / 1000);
+interface LocalTime {
+  elapsedTime: number;
+  remainingTime: number;
+}
 
+interface TimeDisplayProps {
+  localTime: LocalTime;
+  formatDuration: (ms: number) => string;
+  isBeforeStatusCheck: boolean;
+  isAfterStatusCheck: boolean;
+}
+
+export const TimeDisplay: React.FC<TimeDisplayProps> = ({
+  localTime,
+  formatDuration,
+  isBeforeStatusCheck,
+  isAfterStatusCheck
+}) => {
   return (
-    <div className="space-y-3">
-      <div className="flex justify-between items-center">
-        <span className="text-sm text-gray-600 dark:text-gray-400">경과 시간</span>
-        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-          {formatTime(elapsedTime / 1000)}
-        </span>
+    <div className="grid grid-cols-2 gap-3 mt-4">
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">경과 시간</div>
+        <div className="text-lg font-bold text-gray-800 dark:text-gray-200">
+          {isBeforeStatusCheck ? '00:00:00' : formatDuration(localTime.elapsedTime)}
+        </div>
       </div>
       
-      {status === 'running' && remaining > 0 && (
-        <div className="flex justify-between items-center">
-          <span className="text-sm text-gray-600 dark:text-gray-400">남은 시간</span>
-          <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-            약 {formatTime(remaining)}
-          </span>
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">예상 남은 시간</div>
+        <div className="text-lg font-bold text-gray-800 dark:text-gray-200">
+          {isBeforeStatusCheck ? '00:00:00' : 
+           isAfterStatusCheck ? '계산 중' :
+           formatDuration(localTime.remainingTime)}
         </div>
-      )}
+      </div>
     </div>
   );
-}
+};
 
 

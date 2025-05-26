@@ -1,11 +1,7 @@
 /**
  * StatusDisplay.tsx
- * Clean Component: 상태 표시 전용 컴포넌트
- * 
- * 책임:
- * - 크롤링 상태의 일관된 표시
- * - Domain Store에서 데이터 직접 참조
- * - UI 렌더링만 담당
+ * Clean Architecture Display Component
+ * Single Responsibility: Display current status indicators
  */
 
 import React from 'react';

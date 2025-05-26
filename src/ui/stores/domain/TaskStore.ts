@@ -78,7 +78,7 @@ export class TaskStore {
   public onTaskComplete: TaskStatusDetail | null = null;
   public onTaskError: TaskStatusDetail | null = null;
 
-  private platformApi = getPlatformApi();
+  private platformApi: any = null;
   private unsubscribeFunctions: (() => void)[] = [];
   private maxRecentTasks: number = 50;
   private maxTaskHistory: number = 1000;
@@ -111,8 +111,40 @@ export class TaskStore {
       updateStatistics: action
     });
 
-    this.initializeEventSubscriptions();
     this.setupTaskStatistics();
+    this.initializeApiSafely();
+  }
+
+  /**
+   * Safely initialize platform API with retry logic
+   */
+  private initializeApiSafely(): void {
+    const tryInitialize = () => {
+      try {
+        this.platformApi = getPlatformApi();
+        if (this.platformApi) {
+          // API 타입 체크 및 경고
+          const apiType = this.platformApi.constructor.name;
+          console.log(`[TaskStore] Initialized with API: ${apiType}`);
+          
+          if (apiType === 'MockApiAdapter') {
+            console.warn('⚠️ [TaskStore] MockApiAdapter detected - Settings will NOT persist!');
+            console.warn('⚠️ [TaskStore] Check if window.electron is properly initialized');
+          } else {
+            console.log('✅ [TaskStore] Using real Electron API - settings will persist.');
+          }
+          
+          this.initializeEventSubscriptions();
+          return;
+        }
+      } catch (error) {
+        console.log('[TaskStore] API not ready yet, retrying in 200ms...');
+      }
+      
+      setTimeout(tryInitialize, 200);
+    };
+
+    tryInitialize();
   }
 
   /**
