@@ -489,7 +489,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     retryStatusText = "제품 정보 재시도";
   }
 
-  // ViewModel이 remainingTimeDisplay를 제공하므로 이 코드는 더 이상 필요하지 않음
+  // MobX Store에서 진행 상태를 직접 계산
   // let remainingTimeDisplay: string;
   // if (isBeforeStatusCheck) {
   //   remainingTimeDisplay = "상태확인 전";
@@ -1238,5 +1238,5 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   );
 }
 
-// MobX observer로 감싸서 ViewModel 변경사항을 자동으로 감지
+// MobX observer로 감싸서 Domain Store 변경사항을 자동으로 감지
 export default observer(CrawlingDashboard);

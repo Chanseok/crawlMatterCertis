@@ -327,8 +327,6 @@ export interface CrawlerConfig {
     // 확장 속성 (새 필드 추가)
     requestTimeout?: number;
     validateSSL?: boolean;
-    enableBatchProcessing?: boolean;
-    batchSize?: number;
     maxBatchRetries?: number;
     productsPerPage: number;
     

@@ -2,15 +2,15 @@
 
 ## Overview
 
-This implementation provides React hooks that integrate with domain stores following the ViewModel pattern. These hooks enable React components to easily access and use domain stores with proper type safety and React integration.
+This implementation provides React hooks that integrate with MobX domain stores following a centralized state management pattern. These hooks enable React components to easily access and use domain stores with proper type safety and React integration.
 
 ## Hooks Structure
 
 All domain store hooks follow a consistent pattern:
 
-1. **State Access**: Provides reactive access to store state using nanostores' useStore
+1. **State Access**: Provides reactive access to store state using MobX observers
 2. **Action Methods**: Provides methods to interact with the domain store
-3. **Cleanup**: Includes cleanup logic when components unmount (if needed)
+3. **Automatic Reactivity**: Components automatically re-render when observed data changes
 
 ## Available Hooks
 
@@ -24,8 +24,9 @@ All domain store hooks follow a consistent pattern:
 
 ```tsx
 import { useDatabaseStore } from '../hooks';
+import { observer } from 'mobx-react-lite';
 
-function ProductList() {
+const ProductList = observer(() => {
   const { 
     products, 
     isLoading, 
@@ -35,7 +36,7 @@ function ProductList() {
   
   useEffect(() => {
     loadProducts({ page: 1, limit: 100 });
-  }, []);
+  }, [loadProducts]);
   
   return (
     <div>
@@ -50,14 +51,14 @@ function ProductList() {
       )}
     </div>
   );
-}
+});
 ```
 
 ## Migration Guide
 
-### Converting from Direct Store Access
+### Converting from Legacy Nanostores
 
-If your component currently uses the `useStore` hook to access the domain stores directly, follow these steps to migrate to the new hooks:
+If your component currently used the legacy nanostores implementation, follow these steps to migrate to the new MobX hooks:
 
 #### Before:
 
@@ -81,8 +82,9 @@ function MyComponent() {
 
 ```tsx
 import { useDatabaseStore } from '../hooks';
+import { observer } from 'mobx-react-lite';
 
-function MyComponent() {
+const MyComponent = observer(() => {
   const { products, isLoading, saveProducts } = useDatabaseStore();
   
   const handleSave = async () => {
@@ -90,7 +92,7 @@ function MyComponent() {
   };
   
   // ...
-}
+});
 ```
 
 ### Converting from Older ViewModels
@@ -113,27 +115,29 @@ function MyComponent() {
 
 ```tsx
 import { useDatabaseStore } from '../hooks';
+import { observer } from 'mobx-react-lite';
 
-function MyComponent() {
+const MyComponent = observer(() => {
   const { isSaving, saveResult, saveProducts } = useDatabaseStore();
   
   // ...
-}
+});
 ```
 
-Note that some property names may differ slightly between the ViewModel version and the domain store hook version.
+Note: All components using domain store hooks should be wrapped with `observer()` for automatic reactivity.
 
 ## Benefits
 
 1. **Unified Pattern**: All hooks follow the same structure and patterns
 2. **Type Safety**: Full TypeScript support with proper typing
-3. **Performance**: Only re-renders components when the used state changes
-4. **Testing**: Easy to mock for unit testing
-5. **Clean Components**: Separates UI from business logic
+3. **Automatic Reactivity**: Components automatically re-render when observed data changes
+4. **Performance**: Only re-renders components when the actually used state changes
+5. **Testing**: Easy to mock for unit testing
+6. **Clean Components**: Separates UI from business logic
 
 ## Design Philosophy
 
-These hooks implement the ViewModel pattern for React, using a similar structure to the DatabaseViewModel but with cleaner React integration.
+These hooks implement a centralized state management pattern using MobX, providing a clean interface between React components and business logic stores.
 
 ## Testing
 

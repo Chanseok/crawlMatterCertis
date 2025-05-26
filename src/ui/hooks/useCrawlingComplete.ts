@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { addLog } from '../stores';
+import { useLogStore } from './useLogStore';
 import { useMultipleEventSubscriptions, EventSubscription } from './useEventSubscription';
 import type { MatterProduct } from '../../../types';
 import { CrawlingCompleteData, DbSaveCompleteData, DbSaveSkippedData, FinalCrawlingResultData } from '../types/crawling';
@@ -10,6 +10,8 @@ import { useDebugLog } from './useDebugLog';
  * 이벤트 리스너를 등록하고 상태를 관리하여 UI에서 사용할 수 있게 함
  */
 export function useCrawlingComplete() {
+  const { addLog } = useLogStore();
+  
   // 상태 관리
   const [crawlingResults, setCrawlingResults] = useState<MatterProduct[]>([]);
   const [autoSavedToDb, setAutoSavedToDb] = useState<boolean | undefined>(undefined);

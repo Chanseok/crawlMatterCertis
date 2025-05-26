@@ -64,7 +64,7 @@ export function useDatabaseStore() {
     summary: databaseStore.summary,
     pagination: databaseStore.pagination,
     
-    // Operation status (matches DatabaseViewModel properties)
+    // Operation status (matches Domain Store properties)
     isSaving: databaseStore.saving,
     saveResult: databaseStore.lastSaveResult,
     isLoading: databaseStore.isLoading,

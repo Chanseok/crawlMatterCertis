@@ -92,4 +92,6 @@ const App = observer(() => {
   );
 });
 
+console.log('[App] Component definition completed');
+
 export default App;

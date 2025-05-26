@@ -1,9 +1,9 @@
 /**
  * hooks/index.ts
- * Central export point for all hooks
+ * Central export point for all Domain Store hooks
  */
 
-// Domain store hooks
+// Individual domain store hooks (primary pattern)
 export { useDatabaseStore } from './useDatabaseStore';
 export { useTaskStore } from './useTaskStore';
 export { useLogStore } from './useLogStore';
@@ -11,9 +11,9 @@ export { useUIStore } from './useUIStore';
 export { useCrawlingStore } from './useCrawlingStore';
 
 // Utility hooks
-export { usePageProgressCalculation } from './usePageProgressCalculation';
-export { useTabs } from './useTabs';
-export { useEventSubscription } from './useEventSubscription';
 export { useApiInitialization } from './useApiInitialization';
-export { useDebugLog } from './useDebugLog';
+export { useTabs } from './useTabs';
 export { useCrawlingComplete } from './useCrawlingComplete';
+export { useEventSubscription } from './useEventSubscription';
+export { usePageProgressCalculation } from './usePageProgressCalculation';
+export { useDebugLog } from './useDebugLog';

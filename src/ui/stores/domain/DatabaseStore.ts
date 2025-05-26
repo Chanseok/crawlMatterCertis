@@ -67,6 +67,7 @@ export class DatabaseStore {
       clearSaveResult: action,
       resetSearch: action,
       clearError: action,
+      destroy: action,
 
       // Computed properties
       isLoading: computed,

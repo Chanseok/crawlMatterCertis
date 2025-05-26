@@ -5,78 +5,141 @@ import { useTaskStore } from '../hooks/useTaskStore';
 import { useLogStore } from '../hooks/useLogStore';
 import { useUIStore } from '../hooks/useUIStore';
 import { useCrawlingStore } from '../hooks/useCrawlingStore';
-import { databaseStore } from '../stores/domain/DatabaseStore';
-import { taskStore } from '../stores/domain/TaskStore';
-import { logStore } from '../stores/domain/LogStore';
-import { uiStore } from '../stores/domain/UIStore';
-import { crawlingStore } from '../stores/domain/CrawlingStore';
 
-// Mock the domain stores
+// Mock the RootStore and domain stores for MobX
+vi.mock('../stores/RootStore', () => ({
+  RootStore: vi.fn().mockImplementation(() => ({
+    databaseStore: {
+      summary: null,
+      products: [],
+      loading: false,
+      saving: false,
+      lastSaveResult: null,
+      searchQuery: '',
+      currentPage: 1,
+      totalPages: 1,
+      loadSummary: vi.fn(),
+      loadProducts: vi.fn(),
+      saveProducts: vi.fn(),
+      searchProducts: vi.fn(),
+      deleteRecordsByPageRange: vi.fn(),
+      clearSaveResult: vi.fn(),
+      resetSearch: vi.fn(),
+    },
+    taskStore: {
+      activeTasks: {},
+      recentTasks: [],
+      taskHistory: [],
+      statistics: {
+        total: 0,
+        pending: 0,
+        running: 0,
+        success: 0,
+        error: 0,
+        stopped: 0,
+        attempting: 0,
+        successRate: 0,
+        averageTime: 0
+      },
+      isProcessingTasks: false,
+      lastTaskUpdate: null,
+      updateTaskStatus: vi.fn(),
+      updateMultipleTaskStatuses: vi.fn(),
+      completeTask: vi.fn(),
+      errorTask: vi.fn(),
+      markAllActiveTasksAsCompleted: vi.fn(),
+      getTaskById: vi.fn(),
+      getTasksByStatus: vi.fn(),
+      getActiveTaskCount: vi.fn(),
+      getRecentSuccessRate: vi.fn(),
+      clearActiveTasks: vi.fn(),
+      clearRecentTasks: vi.fn(),
+      clearTaskHistory: vi.fn(),
+      clearAllTasks: vi.fn(),
+    },
+    logStore: {
+      logs: [],
+      filteredLogs: [],
+      filterState: {
+        showInfo: true,
+        showSuccess: true,
+        showWarning: true,
+        showError: true,
+        searchQuery: '',
+        maxEntries: 1000,
+        autoScroll: true
+      },
+      addLog: vi.fn(),
+      clearLogs: vi.fn(),
+      setSearchQuery: vi.fn(),
+      setFilter: vi.fn(),
+      setMaxEntries: vi.fn(),
+      setAutoScroll: vi.fn(),
+    },
+    uiStore: {
+      searchQuery: '',
+      filterBy: 'all',
+      viewState: {
+        dbSectionExpanded: true,
+        productsSectionExpanded: true,
+        logsSectionExpanded: true,
+        settingsSectionExpanded: true,
+        deleteModalVisible: false,
+        settingsModalVisible: false,
+        exportModalVisible: false,
+        isRefreshing: false,
+        isExporting: false
+      },
+      setSearchQuery: vi.fn(),
+      showModal: vi.fn(),
+      hideModal: vi.fn(),
+      toggleSection: vi.fn(),
+    },
+    crawlingStore: {
+      config: {},
+      isRunning: false,
+      currentUrl: null,
+      progress: { current: 0, total: 0 },
+      lastResult: null,
+      loadConfig: vi.fn(),
+      saveConfig: vi.fn(),
+      startCrawling: vi.fn(),
+      stopCrawling: vi.fn(),
+      updateProgress: vi.fn(),
+    }
+  }))
+}));
+
+// Mock individual domain stores directly
 vi.mock('../stores/domain/DatabaseStore', () => ({
   databaseStore: {
-    summary: { get: vi.fn(), subscribe: vi.fn() },
-    products: { get: vi.fn(), subscribe: vi.fn() },
-    loading: { get: vi.fn(), subscribe: vi.fn() },
-    saving: { get: vi.fn(), subscribe: vi.fn() },
-    lastSaveResult: { get: vi.fn(), subscribe: vi.fn() },
-    searchQuery: { get: vi.fn(), subscribe: vi.fn() },
-    currentPage: { get: vi.fn(), subscribe: vi.fn() },
-    totalPages: { get: vi.fn(), subscribe: vi.fn() },
+    summary: { totalProducts: 100 },
+    products: [],
+    loading: false,
     loadSummary: vi.fn(),
     loadProducts: vi.fn(),
-    saveProducts: vi.fn(),
-    searchProducts: vi.fn(),
-    deleteRecordsByPageRange: vi.fn(),
-    clearSaveResult: vi.fn(),
-    resetSearch: vi.fn(),
   }
-}));
-
-vi.mock('../stores/domain/TaskStore', () => ({
-  taskStore: {
-    activeTasks: { get: vi.fn(), subscribe: vi.fn() },
-    recentTasks: { get: vi.fn(), subscribe: vi.fn() },
-    taskHistory: { get: vi.fn(), subscribe: vi.fn() },
-    statistics: { get: vi.fn(), subscribe: vi.fn() },
-    isProcessingTasks: { get: vi.fn(), subscribe: vi.fn() },
-    lastTaskUpdate: { get: vi.fn(), subscribe: vi.fn() },
-    onTaskStatusChange: { get: vi.fn(), subscribe: vi.fn() },
-    onTaskComplete: { get: vi.fn(), subscribe: vi.fn() },
-    onTaskError: { get: vi.fn(), subscribe: vi.fn() },
-    updateTaskStatus: vi.fn(),
-    updateMultipleTaskStatuses: vi.fn(),
-    completeTask: vi.fn(),
-    errorTask: vi.fn(),
-    markAllActiveTasksAsCompleted: vi.fn(),
-    getTaskById: vi.fn(),
-    getTasksByStatus: vi.fn(),
-    getActiveTaskCount: vi.fn(),
-    getRecentSuccessRate: vi.fn(),
-    clearActiveTasks: vi.fn(),
-    clearRecentTasks: vi.fn(),
-    clearTaskHistory: vi.fn(),
-    clearAllTasks: vi.fn(),
-  }
-}));
-
-vi.mock('@nanostores/react', () => ({
-  useStore: vi.fn().mockImplementation((store) => store.get ? store.get() : store)
 }));
 
 describe('Domain Store Hooks', () => {
+  let mockStores;
+
+  beforeEach(() => {
+    // Create mock stores object for test compatibility
+    mockStores = {
+      database: require('../stores/domain/DatabaseStore').databaseStore,
+      crawling: require('../stores/domain/CrawlingStore').crawlingStore,
+      log: require('../stores/domain/LogStore').logStore,
+      ui: require('../stores/domain/UIStore').uiStore,
+      task: require('../stores/domain/TaskStore').taskStore,
+    };
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
   });
 
   describe('useDatabaseStore', () => {
-    beforeEach(() => {
-      databaseStore.loading.get.mockReturnValue(false);
-      databaseStore.saving.get.mockReturnValue(false);
-      databaseStore.products.get.mockReturnValue([]);
-      databaseStore.summary.get.mockReturnValue(null);
-      databaseStore.lastSaveResult.get.mockReturnValue(null);
-    });
-
     it('should return the correct state and actions', () => {
       const { result } = renderHook(() => useDatabaseStore());
       
@@ -99,27 +162,11 @@ describe('Domain Store Hooks', () => {
         result.current.saveProducts(mockProducts);
       });
       
-      expect(databaseStore.saveProducts).toHaveBeenCalledWith(mockProducts);
+      expect(mockStores.databaseStore.saveProducts).toHaveBeenCalledWith(mockProducts);
     });
   });
 
   describe('useTaskStore', () => {
-    beforeEach(() => {
-      taskStore.activeTasks.get.mockReturnValue({});
-      taskStore.recentTasks.get.mockReturnValue([]);
-      taskStore.statistics.get.mockReturnValue({
-        total: 0,
-        pending: 0,
-        running: 0,
-        success: 0,
-        error: 0,
-        stopped: 0,
-        attempting: 0,
-        successRate: 0,
-        averageTime: 0
-      });
-    });
-
     it('should return the correct state and actions', () => {
       const { result } = renderHook(() => useTaskStore());
       
@@ -139,25 +186,11 @@ describe('Domain Store Hooks', () => {
         result.current.completeTask('task-1', { message: 'Test completed' });
       });
       
-      expect(taskStore.completeTask).toHaveBeenCalledWith('task-1', { message: 'Test completed' });
+      expect(mockStores.taskStore.completeTask).toHaveBeenCalledWith('task-1', { message: 'Test completed' });
     });
   });
 
   describe('useLogStore', () => {
-    beforeEach(() => {
-      logStore.logs.get.mockReturnValue([]);
-      logStore.filteredLogs.get.mockReturnValue([]);
-      logStore.filterState.get.mockReturnValue({
-        showInfo: true,
-        showSuccess: true,
-        showWarning: true,
-        showError: true,
-        searchQuery: '',
-        maxEntries: 1000,
-        autoScroll: true
-      });
-    });
-
     it('should return the correct state and actions', () => {
       const { result } = renderHook(() => useLogStore());
       
@@ -176,27 +209,11 @@ describe('Domain Store Hooks', () => {
         result.current.addLog('Test log message', 'info');
       });
       
-      expect(logStore.addLog).toHaveBeenCalledWith('Test log message', 'info');
+      expect(mockStores.logStore.addLog).toHaveBeenCalledWith('Test log message', 'info');
     });
   });
 
   describe('useUIStore', () => {
-    beforeEach(() => {
-      uiStore.searchQuery.get.mockReturnValue('');
-      uiStore.filterBy.get.mockReturnValue('all');
-      uiStore.viewState.get.mockReturnValue({
-        dbSectionExpanded: true,
-        productsSectionExpanded: true,
-        logsSectionExpanded: true,
-        settingsSectionExpanded: true,
-        deleteModalVisible: false,
-        settingsModalVisible: false,
-        exportModalVisible: false,
-        isRefreshing: false,
-        isExporting: false
-      });
-    });
-
     it('should return the correct state and actions', () => {
       const { result } = renderHook(() => useUIStore());
       
@@ -215,7 +232,7 @@ describe('Domain Store Hooks', () => {
         result.current.setSearchQuery('test query');
       });
       
-      expect(uiStore.setSearchQuery).toHaveBeenCalledWith('test query');
+      expect(mockStores.uiStore.setSearchQuery).toHaveBeenCalledWith('test query');
     });
   });
 });

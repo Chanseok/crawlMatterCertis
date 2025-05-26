@@ -2,26 +2,18 @@
  * AppStore.ts
  * Top-level Application Store Coordinator
  * 
- * Centralizes access to all domain stores and provides unified state management
- * for the entire application. Acts as the single entry point for components
- * to access domain-specific stores and coordinated actions.
+ * Centralizes access to all domain stores through RootStore and provides 
+ * unified state management for the entire application. Acts as the coordination
+ * layer between RootStore and the UI.
  */
 
 import { makeObservable, observable, action, reaction } from 'mobx';
 import type { AppMode } from '../types';
-
-// Domain Store Imports
-import { CrawlingStore, crawlingStore } from './domain/CrawlingStore';
-
-import { UIStore, uiStore } from './domain/UIStore';
-import { LogStore, logStore } from './domain/LogStore';
-import { TaskStore, taskStore } from './domain/TaskStore';
-import { databaseStore, DatabaseStore } from './domain/DatabaseStore';
-
+import { rootStore, RootStore } from './RootStore';
 
 /**
  * Top-level Application Store
- * Coordinates all domain stores and provides unified application state management
+ * Coordinates RootStore and provides application-level state management
  */
 export class AppStore {
   private static _instance: AppStore;
@@ -29,12 +21,8 @@ export class AppStore {
   // Core app state
   @observable appMode: AppMode = 'development';
   
-  // Domain stores
-  public readonly crawling: CrawlingStore;
-  public readonly database: DatabaseStore;
-  public readonly ui: UIStore;
-  public readonly logs: LogStore;
-  public readonly tasks: TaskStore;
+  // Root store instance (provides access to all domain stores)
+  public readonly rootStore: RootStore;
 
   constructor() {
     makeObservable(this, {
@@ -42,11 +30,7 @@ export class AppStore {
       toggleAppMode: action,
     });
 
-    this.crawling = crawlingStore;
-    this.database = databaseStore;
-    this.ui = uiStore;
-    this.logs = logStore;
-    this.tasks = taskStore;
+    this.rootStore = rootStore;
     
     // Initialize store coordination
     this.initializeStoreCoordination();
@@ -63,6 +47,15 @@ export class AppStore {
     }
     return AppStore._instance;
   }
+
+  /**
+   * Convenience getters for domain stores (through RootStore)
+   */
+  get crawling() { return this.rootStore.crawling; }
+  get database() { return this.rootStore.database; }
+  get ui() { return this.rootStore.ui; }
+  get logs() { return this.rootStore.log; }
+  get tasks() { return this.rootStore.task; }
 
   /**
    * Initialize coordination between stores
@@ -128,29 +121,19 @@ export class AppStore {
   }
 
   /**
-   * Graceful shutdown - cleanup all stores
+   * Graceful shutdown - cleanup all stores through RootStore
    */
   async shutdown(): Promise<void> {
-    await this.crawling.cleanup();
-    // DatabaseStore doesn't have cleanup method
-    await this.ui.cleanup();
-    await this.logs.cleanup();
-    await this.tasks.cleanup();
+    await this.rootStore.cleanup();
   }
 
   /**
-   * Debug info for all stores
+   * Debug info for all stores through RootStore
    */
   getDebugInfo(): object {
     return {
       appMode: this.appMode,
-      stores: {
-        crawling: this.crawling.getDebugInfo(),
-        database: (this.database as any).getDebugInfo?.() || 'getDebugInfo not implemented',
-        ui: this.ui.getDebugInfo(),
-        logs: this.logs.getDebugInfo(),
-        tasks: this.tasks.getDebugInfo()
-      }
+      rootStore: this.rootStore.getDebugInfo()
     };
   }
 }

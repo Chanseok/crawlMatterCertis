@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { initPlatformApi } from './platform/api'
 import { initializeServices } from './services/initialization'
 
@@ -12,13 +13,17 @@ initializeServices().then(() => {
   console.log('[App] Service layer initialized successfully');
   
   createRoot(document.getElementById('root')!).render(
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   );
 }).catch((error) => {
   console.error('[App] Failed to initialize services:', error);
   
   // 서비스 초기화 실패 시에도 앱을 시작하되 경고 표시
   createRoot(document.getElementById('root')!).render(
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   );
 });

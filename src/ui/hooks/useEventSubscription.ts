@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { getPlatformApi } from '../platform/api';
-import { addLog } from '../stores';
+import { useLogStore } from './useLogStore';
 import type { EventPayloadMapping } from '../../../types';
 
 // Extended version of EventPayloadMapping that allows string keys
@@ -22,6 +22,8 @@ export function useEventSubscription<K extends ExtendedEventKey>(
   callback: EventCallback<EventPayload<K>>, 
   errorHandler?: (error: unknown) => void
 ) {
+  const { addLog } = useLogStore();
+  
   useEffect(() => {
     try {
       const api = getPlatformApi();
@@ -39,7 +41,7 @@ export function useEventSubscription<K extends ExtendedEventKey>(
         errorHandler(err);
       }
     }
-  }, [eventName, callback, errorHandler]);
+  }, [eventName, callback, errorHandler, addLog]);
 }
 
 /**
@@ -55,6 +57,7 @@ export function useMultipleEventSubscriptions(
   errorHandler?: (error: unknown) => void
 ) {
   const unsubscribeFunctions = useRef<(() => void)[]>([]);
+  const { addLog } = useLogStore();
   
   useEffect(() => {
     try {
@@ -85,5 +88,5 @@ export function useMultipleEventSubscriptions(
       unsubscribeFunctions.current.forEach(unsubscribe => unsubscribe());
       unsubscribeFunctions.current = [];
     };
-  }, [subscriptions, errorHandler]);
+  }, [subscriptions, errorHandler, addLog]);
 }

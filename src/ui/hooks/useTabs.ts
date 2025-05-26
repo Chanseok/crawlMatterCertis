@@ -1,10 +1,13 @@
 import { useState, useCallback } from 'react';
-import { addLog, loadConfig } from '../stores';
+import { useLogStore } from './useLogStore';
+import { useCrawlingStore } from './useCrawlingStore';
 
 type TabId = 'status' | 'settings' | 'localDB' | 'analysis';
 
 export function useTabs(defaultTab: TabId = 'status') {
   const [activeTab, setActiveTab] = useState<TabId>(defaultTab);
+  const { addLog } = useLogStore();
+  const { loadConfig } = useCrawlingStore();
 
   const handleTabChange = useCallback((tabId: string) => {
     if (isValidTab(tabId)) {
@@ -18,7 +21,7 @@ export function useTabs(defaultTab: TabId = 'status') {
       setActiveTab(tabId);
       console.log(`Tab changed to: ${tabId}`);
     }
-  }, [activeTab]);
+  }, [activeTab, addLog, loadConfig]);
 
   const isValidTab = (tabId: string): tabId is TabId => {
     return ['status', 'settings', 'localDB', 'analysis'].includes(tabId);

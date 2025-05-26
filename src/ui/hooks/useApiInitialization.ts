@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { initializeApiSubscriptions, addLog } from '../stores';
 import { useCrawlingStore } from './useCrawlingStore';
+import { useLogStore } from './useLogStore';
 
 export function useApiInitialization() {
   const [isInitialized, setIsInitialized] = useState(false);
   const { loadConfig } = useCrawlingStore();
+  const { addLog } = useLogStore();
   
   useEffect(() => {
     const init = async () => {
@@ -13,7 +14,7 @@ export function useApiInitialization() {
         await loadConfig();
         console.log('Configuration loaded successfully');
         
-        initializeApiSubscriptions();
+        // initializeApiSubscriptions는 각 Domain Store에서 자동으로 처리됨
         addLog('API 초기화 완료', 'info');
         setIsInitialized(true);
       } catch (error) {
