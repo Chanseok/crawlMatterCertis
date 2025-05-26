@@ -6,7 +6,7 @@
  * and log-related UI state.
  */
 
-import { makeObservable, observable, action, reaction } from 'mobx';
+import { makeObservable, action, reaction } from 'mobx';
 import type { LogEntry } from '../../types';
 
 /**
@@ -84,32 +84,8 @@ export class LogStore {
   private maxLogEntries: number = 1000;
 
   constructor() {
-    makeObservable(this, {
-      // Observable state
-      logs: observable,
-      filteredLogs: observable,
-      filterState: observable,
-      statistics: observable,
-      isExporting: observable,
-      exportProgress: observable,
-      onNewLog: observable,
-      onLogsClear: observable,
-
-      // Actions
-      addLog: action,
-      addLogs: action,
-      clearLogs: action,
-      clearLogsByType: action,
-      clearOldLogs: action,
-      setTypeFilter: action,
-      setSearchQuery: action,
-      setMaxEntries: action,
-      setAutoScroll: action,
-      resetFilters: action,
-      exportLogs: action,
-      updateStatistics: action,
-      updateFilteredLogs: action
-    });
+    // When using decorators, makeObservable should not have a second argument
+    makeObservable(this);
 
     this.loadLogPreferences();
     this.setupLogFiltering();

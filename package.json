@@ -51,6 +51,8 @@
     "zod": "^3.24.3"
   },
   "devDependencies": {
+    "@babel/plugin-proposal-decorators": "^7.27.1",
+    "@babel/plugin-transform-class-properties": "^7.27.1",
     "@eslint/js": "^9.22.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.17",

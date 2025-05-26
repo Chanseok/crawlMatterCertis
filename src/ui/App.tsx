@@ -1,77 +1,107 @@
-import { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
-import { useApiInitialization } from './hooks/useApiInitialization';
-import { useLogStore } from './hooks/useLogStore';
-import { useUIStore } from './hooks/useUIStore';
-import { useTabs } from './hooks/useTabs';
-import { useCrawlingComplete } from './hooks/useCrawlingComplete';
 import { AppLayout } from './components/AppLayout';
-import CrawlingDashboard from './components/CrawlingDashboard';
 import { CrawlingSettings } from './components/CrawlingSettings';
+import { StatusTab } from './components/tabs/StatusTab';
 import { LocalDBTab } from './components/LocalDBTab';
-import { AnalysisTab } from './components/AnalysisTab';
+import { AnalysisTab } from './components/tabs/AnalysisTab';
+import { useLogStore } from './hooks/useLogStore';
+import { useCrawlingStore } from './hooks/useCrawlingStore';
+import { useDatabaseStore } from './hooks/useDatabaseStore';
 
-const App = observer(() => {
-  // Development mode detection
-  const isDevelopment = import.meta.env.DEV || import.meta.env.NODE_ENV === 'development';
+const App: React.FC = observer(() => {
+  console.log('[App] Rendering App component');
   
-  // API 초기화 (앱 시작 시 한 번만 수행)
-  useApiInitialization();
-  
-  // Domain Store Hooks 사용
+  // Domain Store Hooks
   const { addLog } = useLogStore();
-  const { searchQuery } = useUIStore();
+  const { 
+    status: crawlingStatus, 
+    startCrawling, 
+    stopCrawling, 
+    checkStatus 
+  } = useCrawlingStore();
+  const { products, exportToExcel } = useDatabaseStore();
   
-  // 커스텀 훅을 통한 탭 관리
-  const { activeTab, handleTabChange } = useTabs('status'); // 기본 탭을 'status'로 설정
+  // Local state
+  const [activeTab, setActiveTab] = useState('status');
+  const [statusExpanded, setStatusExpanded] = useState(true);
+  const [isStatusChecking, setIsStatusChecking] = useState(false);
+  const [compareExpandedInApp, setCompareExpandedInApp] = useState(false);
   
-  // 크롤링 완료 관련 데이터 훅
-  const { error, isSavingToDb } = useCrawlingComplete();
+  // Add a test log entry
+  React.useEffect(() => {
+    addLog('App component loaded successfully!', 'success');
+  }, [addLog]);
   
-  // CrawlingDashboard에 필요한 상태
-  const [appCompareExpanded, setAppCompareExpanded] = useState(false);
+  const handleTabChange = useCallback((tab: string) => {
+    setActiveTab(tab);
+    addLog(`Switched to tab: ${tab}`, 'info');
+  }, [addLog]);
 
-  // searchQuery 변경 시에만 검색 실행 (초기 로드 분리)
-  useEffect(() => {
-    if (searchQuery && searchQuery.trim()) {
-      console.log('Searching products with query:', searchQuery);
-      // 검색은 각 탭 컴포넌트에서 필요시 수행
-    }
-  }, [searchQuery]);
+  const handleToggleStatus = useCallback(() => {
+    setStatusExpanded(!statusExpanded);
+  }, [statusExpanded]);
 
-  // 에러 처리
-  useEffect(() => {
-    if (error) {
-      addLog(`크롤링 결과 처리 오류: ${error}`, 'error');
+  const handleCheckStatus = useCallback(async () => {
+    setIsStatusChecking(true);
+    try {
+      await checkStatus();
+      addLog('Status check completed', 'success');
+    } catch (error) {
+      addLog(`Status check failed: ${error}`, 'error');
+    } finally {
+      setIsStatusChecking(false);
     }
-  }, [error, addLog]);
-  
-  // DB 저장 상태 모니터링
-  useEffect(() => {
-    if (isSavingToDb) {
-      addLog('크롤링된 제품 정보를 DB에 저장하는 중...', 'info');
-    }
-  }, [isSavingToDb, addLog]);
+  }, [checkStatus, addLog]);
 
-  // 탭 컨텐츠 렌더링 함수
+  const handleCrawlToggle = useCallback(async () => {
+    try {
+      if (crawlingStatus === 'running') {
+        await stopCrawling();
+        addLog('Crawling stopped', 'info');
+      } else {
+        await startCrawling();
+        addLog('Crawling started', 'success');
+      }
+    } catch (error) {
+      addLog(`Crawling toggle failed: ${error}`, 'error');
+    }
+  }, [crawlingStatus, startCrawling, stopCrawling, addLog]);
+
+  const handleExport = useCallback(async () => {
+    try {
+      await exportToExcel();
+      addLog('Export completed successfully', 'success');
+    } catch (error) {
+      addLog(`Export failed: ${error}`, 'error');
+    }
+  }, [exportToExcel, addLog]);
+
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'status':
-        return <CrawlingDashboard 
-          appCompareExpanded={appCompareExpanded}
-          setAppCompareExpanded={setAppCompareExpanded}
-        />;
       case 'settings':
         return <CrawlingSettings />;
+      case 'status':
+        return (
+          <StatusTab
+            statusExpanded={statusExpanded}
+            onToggleStatus={handleToggleStatus}
+            isStatusChecking={isStatusChecking}
+            compareExpandedInApp={compareExpandedInApp}
+            setCompareExpandedInApp={setCompareExpandedInApp}
+            onCheckStatus={handleCheckStatus}
+            onCrawlToggle={handleCrawlToggle}
+            onExport={handleExport}
+            crawlingStatus={crawlingStatus}
+            productsLength={products.length}
+          />
+        );
       case 'localDB':
         return <LocalDBTab />;
       case 'analysis':
         return <AnalysisTab />;
       default:
-        return <CrawlingDashboard 
-          appCompareExpanded={appCompareExpanded}
-          setAppCompareExpanded={setAppCompareExpanded}
-        />;
+        return <div>Tab not found</div>;
     }
   };
 
@@ -79,19 +109,13 @@ const App = observer(() => {
     <AppLayout 
       activeTab={activeTab} 
       onTabChange={handleTabChange}
-      isDevelopment={isDevelopment}
+      isDevelopment={true}
     >
-      <div className="h-full">
+      <div className="p-6">
         {renderTabContent()}
-        
-        {/* 개발 모드에서만 디버그 패널 표시 */}
-        {/* 개발 모드에서만 디버그 패널 표시 */}
-        {/* Debug panel component not available */}
       </div>
     </AppLayout>
   );
 });
-
-console.log('[App] Component definition completed');
 
 export default App;

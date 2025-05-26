@@ -6,7 +6,7 @@
  * view states, and user interface interactions.
  */
 
-import { makeObservable, observable, action, computed } from 'mobx';
+import { makeObservable, observable, action } from 'mobx';
 import type { AppMode } from '../../types';
 
 /**
@@ -157,10 +157,9 @@ export class UIStore {
       clearAllNotifications: action,
       resetSearchAndFilters: action,
       toggleAppMode: action,
-      cleanup: action,
+      cleanup: action
 
-      // Computed properties
-      getSearchFilterState: computed
+      // Computed properties - none currently
     });
 
     this.loadUIPreferences();
