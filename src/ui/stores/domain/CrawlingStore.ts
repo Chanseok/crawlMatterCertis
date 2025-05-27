@@ -215,9 +215,16 @@ export class CrawlingStore {
       this.clearError();
       this.setStatus('running');
 
-      const success = await this.ipcService.startCrawling({
-        config: this.config
-      });
+      // 직렬화 가능한 깔끔한 config 객체 생성
+      const serializedConfig = {
+        pageRangeLimit: this.config.pageRangeLimit,
+        productListRetryCount: this.config.productListRetryCount,
+        productDetailRetryCount: this.config.productDetailRetryCount,
+        productsPerPage: this.config.productsPerPage,
+        autoAddToLocalDB: this.config.autoAddToLocalDB
+      };
+
+      const success = await this.ipcService.startCrawling(serializedConfig);
 
       if (!success) {
         this.setStatus('error');

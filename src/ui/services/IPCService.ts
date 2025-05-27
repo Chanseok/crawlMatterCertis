@@ -150,6 +150,7 @@ export class IPCService {
     }
 
     try {
+      // config가 이미 직렬화된 깔끔한 객체로 전달됨
       await window.electron.startCrawling(config);
       console.log('[IPCService] Crawling started successfully');
       return true;
