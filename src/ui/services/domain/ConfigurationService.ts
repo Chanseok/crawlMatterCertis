@@ -105,6 +105,25 @@ export class ConfigurationService {
   }
 
   /**
+   * Get configuration file path
+   */
+  public async getConfigPath(): Promise<string> {
+    try {
+      // Call IPC to get configuration file path from ConfigManager
+      const result = await this.ipcService.getConfigPath();
+      
+      if (result.success && result.configPath) {
+        return result.configPath;
+      } else {
+        throw new Error(result.error || 'Failed to get configuration path');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to get configuration path: ${errorMessage}`);
+    }
+  }
+
+  /**
    * Validate complete configuration (throws on error)
    */
   public validateConfigComplete(config: CrawlerConfig): void {

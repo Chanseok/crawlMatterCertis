@@ -10,12 +10,17 @@ import type {
 function createSubscriptionHandler<K extends keyof EventPayloadMapping>(channel: K) {
     return (callback: (data: EventPayloadMapping[K]) => void) => {
         // 이벤트 리스너 등록
-        const subscription = (_event: Electron.IpcRendererEvent, data: EventPayloadMapping[K]) => callback(data);
+        const subscription = (_event: Electron.IpcRendererEvent, data: EventPayloadMapping[K]) => {
+            console.log(`[Preload] Received IPC event: ${String(channel)}`, data);
+            callback(data);
+        };
         ipcRenderer.on(channel as string, subscription);
+        console.log(`[Preload] Subscribed to IPC channel: ${String(channel)}`);
         
         // 구독 해제 함수 반환
         return () => {
             ipcRenderer.removeListener(channel as string, subscription);
+            console.log(`[Preload] Unsubscribed from IPC channel: ${String(channel)}`);
         };
     };
 }
@@ -53,6 +58,7 @@ const electronAPI: IElectronAPI = {
     subscribeCrawlingFailedPages: createSubscriptionHandler('crawlingFailedPages'),
     subscribeDbSummary: createSubscriptionHandler('dbSummary'),
     subscribeProducts: createSubscriptionHandler('products'),
+    subscribeCrawlingStatusSummary: createSubscriptionHandler('crawlingStatusSummary'),
     
     // 메서드 호출 API
     invokeMethod: <K extends keyof MethodParamsMapping, R = MethodReturnMapping[K]>(
@@ -77,8 +83,12 @@ const electronAPI: IElectronAPI = {
     
     // 설정 관련 API 추가
     getConfig: () => ipcRenderer.invoke('crawler:get-config'),
-    updateConfig: (config: any) => ipcRenderer.invoke('crawler:update-config', config),
+    updateConfig: (config: any) => {
+        console.log('[Preload] Invoking updateConfig with:', config);
+        return ipcRenderer.invoke('crawler:update-config', config);
+    },
     resetConfig: () => ipcRenderer.invoke('crawler:reset-config'),
+    getConfigPath: () => ipcRenderer.invoke('crawler:get-config-path'),
     
     // 레코드 삭제 API 추가
     deleteRecordsByPageRange: createMethodHandler('deleteRecordsByPageRange'),

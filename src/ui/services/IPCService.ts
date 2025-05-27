@@ -121,19 +121,60 @@ export class IPCService {
   }
 
   /**
+   * 크롤링 상태 요약 이벤트 구독 
+   * 사이트 로컬 비교 패널을 위한 정보 수신
+   */
+  public subscribeCrawlingStatusSummary(handler: IPCEventHandler): IPCUnsubscribeFunction {
+    if (!this.isElectronAvailable) {
+      console.warn('[IPCService] Cannot subscribe to crawling status summary - Electron not available');
+      return () => {};
+    }
+
+    try {
+      console.log('[IPCService] Setting up crawlingStatusSummary subscription...');
+      const unsubscribe = window.electron.subscribeCrawlingStatusSummary((data) => {
+        console.log('[IPCService] ✅ Raw crawlingStatusSummary event received!', data);
+        handler(data);
+      });
+      console.log('[IPCService] Successfully subscribed to crawling status summary events');
+      return unsubscribe;
+    } catch (error) {
+      console.error('[IPCService] Failed to subscribe to crawling status summary:', error);
+      return () => {};
+    }
+  }
+
+  /**
    * 초기 크롤링 상태 조회
    */
   public async checkCrawlingStatus(): Promise<any> {
     if (!this.isElectronAvailable) {
+      console.warn('[IPCService] 🚫 checkCrawlingStatus called but Electron not available');
       return null;
     }
 
     try {
-      const status = await window.electron.checkCrawlingStatus();
-      console.log('[IPCService] Initial crawling status retrieved:', status);
-      return status;
+      console.log('[IPCService] 🔍 checkCrawlingStatus - calling window.electron.checkCrawlingStatus()...');
+      const result = await window.electron.checkCrawlingStatus();
+      console.log('[IPCService] ✅ checkCrawlingStatus response received:', result);
+      console.log('[IPCService] Result type:', typeof result);
+      console.log('[IPCService] Result keys:', result ? Object.keys(result) : 'null/undefined');
+      
+      if (result && result.success && result.status) {
+        const status = result.status;
+        console.log('[IPCService] Status details:');
+        console.log('[IPCService] - dbProductCount:', status.dbProductCount);
+        console.log('[IPCService] - siteProductCount:', status.siteProductCount);
+        console.log('[IPCService] - needCrawling:', status.needCrawling);
+        console.log('[IPCService] - diff:', status.diff);
+        console.log('[IPCService] 🎯 Returning status object:', status);
+        return status; // Return the actual status object, not the wrapped result
+      } else {
+        console.log('[IPCService] ❌ Invalid result structure or failed status check');
+        return null;
+      }
     } catch (error) {
-      console.error('[IPCService] Failed to check crawling status:', error);
+      console.error('[IPCService] 💥 Failed to check crawling status:', error);
       return null;
     }
   }
@@ -250,7 +291,10 @@ export class IPCService {
     }
 
     try {
-      return await window.electron.updateConfig(config);
+      console.log('[IPCService] Updating config with:', config);
+      const result = await window.electron.updateConfig(config);
+      console.log('[IPCService] Update config result:', result);
+      return result;
     } catch (error) {
       console.error('[IPCService] Failed to update config:', error);
       throw error;
@@ -269,6 +313,22 @@ export class IPCService {
       return await window.electron.resetConfig();
     } catch (error) {
       console.error('[IPCService] Failed to reset config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 설정 파일 경로 조회
+   */
+  public async getConfigPath(): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.getConfigPath();
+    } catch (error) {
+      console.error('[IPCService] Failed to get config path:', error);
       throw error;
     }
   }

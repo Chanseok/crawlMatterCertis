@@ -10,24 +10,28 @@
 
 @keyframes airplane-fly {
   0% { 
-    transform: translateX(-100px) translateY(10px) rotate(-10deg);
+    transform: translate(-60px, 100px) rotate(-5deg) scale(1);
     opacity: 0.7;
   }
-  25% { 
-    transform: translateX(-30px) translateY(-5px) rotate(5deg);
+  20% { 
+    transform: translate(120px, 40px) rotate(0deg) scale(0.95);
     opacity: 1;
   }
-  50% { 
-    transform: translateX(30px) translateY(-10px) rotate(-5deg);
+  40% { 
+    transform: translate(240px, -20px) rotate(5deg) scale(0.9);
     opacity: 1;
   }
-  75% { 
-    transform: translateX(80px) translateY(5px) rotate(10deg);
-    opacity: 0.8;
+  60% { 
+    transform: translate(360px, -60px) rotate(10deg) scale(0.8);
+    opacity: 0.9;
+  }
+  80% { 
+    transform: translate(480px, -100px) rotate(15deg) scale(0.7);
+    opacity: 0.6;
   }
   100% { 
-    transform: translateX(150px) translateY(15px) rotate(-5deg);
-    opacity: 0.4;
+    transform: translate(600px, -140px) rotate(20deg) scale(0.5);
+    opacity: 0;
   }
 }
 
@@ -73,45 +77,63 @@
 
 .status-check-animation-sequence {
   position: relative;
-  width: 300px;
-  height: 120px;
+  width: 100%;
+  max-width: 400px;
+  height: 150px;
   margin-bottom: 20px;
-  overflow: hidden;
+  overflow: visible; /* 중요: 넘치는 콘텐츠가 보이도록 변경 */
 }
 
 /* 1단계: 비행기 애니메이션 */
-.airplane-stage {
+.airplane-container {
   position: absolute;
   width: 100%;
   height: 100%;
-  opacity: 0;
-  transition: opacity 0.5s ease-in-out;
+  display: none; /* 처음에는 보이지 않음, JS에서 표시 */
+  z-index: 200;
+  overflow: visible;
+  pointer-events: none;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 
-.airplane-stage.active {
-  opacity: 1;
+.clouds-background {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.fly-animation .airplane {
+  animation: airplane-fly 3s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
 }
 
 .airplane {
   position: absolute;
-  font-size: 2.5rem;
-  top: 40px;
-  left: 50px;
-  animation: airplane-fly 3s ease-in-out infinite;
+  font-size: 2rem;
+  bottom: 10px;
+  left: 10px;
+  z-index: 100; /* 모든 요소 위에 표시 */
   filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
+  transform-origin: center center;
 }
 
 .flight-path {
   position: absolute;
-  top: 50px;
+  top: 50%;
   left: 0;
   right: 0;
   height: 2px;
+  transform: rotate(-30deg);
+  transform-origin: left center;
   background: linear-gradient(90deg, 
     transparent 0%, 
-    rgba(59, 130, 246, 0.3) 20%, 
-    rgba(59, 130, 246, 0.6) 50%, 
-    rgba(59, 130, 246, 0.3) 80%, 
+    rgba(59, 130, 246, 0.2) 20%, 
+    rgba(59, 130, 246, 0.4) 50%, 
+    rgba(59, 130, 246, 0.2) 80%, 
     transparent 100%
   );
   border-radius: 1px;
@@ -125,25 +147,26 @@
 
 .cloud {
   position: absolute;
-  font-size: 1.5rem;
-  opacity: 0.7;
+  font-size: 1.2rem;
+  opacity: 0.5;
+  z-index: 40;
 }
 
 .cloud1 {
-  top: 10px;
-  left: 20px;
+  top: 60px;
+  left: 50px;
   animation: cloud-float 4s ease-in-out infinite;
 }
 
 .cloud2 {
-  top: 80px;
-  right: 40px;
-  animation: cloud-float 3s ease-in-out infinite reverse;
+  top: 30px;
+  left: 200px;
+  animation: cloud-float 3.5s ease-in-out infinite reverse;
 }
 
 .cloud3 {
-  top: 30px;
-  right: 100px;
+  top: 10px;
+  left: 350px;
   animation: cloud-float 5s ease-in-out infinite;
   animation-delay: -1s;
 }

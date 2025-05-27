@@ -148,6 +148,17 @@ export class CrawlingStore {
       this.setStatus('idle');
     });
     this.unsubscribeFunctions.push(unsubStopped);
+
+    // Crawling status summary (for 사이트 로컬 비교 panel)
+    console.log('[CrawlingStore] Setting up crawlingStatusSummary subscription...');
+    const unsubStatusSummary = this.ipcService.subscribeCrawlingStatusSummary((statusSummary: any) => {
+      console.log('[CrawlingStore] ✅ Received status summary event!', statusSummary);
+      console.log('[CrawlingStore] Status summary type:', typeof statusSummary);
+      console.log('[CrawlingStore] Status summary keys:', Object.keys(statusSummary || {}));
+      this.setStatusSummary(statusSummary);
+    });
+    this.unsubscribeFunctions.push(unsubStatusSummary);
+    console.log('[CrawlingStore] crawlingStatusSummary subscription set up successfully');
   }
 
   // Action methods
@@ -164,11 +175,20 @@ export class CrawlingStore {
   };
 
   setStatusSummary = (summary: CrawlingSummary) => {
+    console.log('[CrawlingStore] 🔄 setStatusSummary() called with:', summary);
+    console.log('[CrawlingStore] Summary type:', typeof summary);
+    console.log('[CrawlingStore] Summary keys:', summary ? Object.keys(summary) : 'null/undefined');
+    
     // Store previous summary
     if (this.statusSummary && Object.keys(this.statusSummary).length > 0) {
       this.lastStatusSummary = this.statusSummary;
+      console.log('[CrawlingStore] Previous statusSummary moved to lastStatusSummary:', this.lastStatusSummary);
     }
+    
+    console.log('[CrawlingStore] Before assignment - this.statusSummary:', this.statusSummary);
     this.statusSummary = summary;
+    console.log('[CrawlingStore] After assignment - this.statusSummary:', this.statusSummary);
+    console.log('[CrawlingStore] ✅ setStatusSummary() completed');
   };
 
   setConfig = (config: CrawlerConfig) => {
@@ -262,24 +282,37 @@ export class CrawlingStore {
    */
   async checkStatus(): Promise<void> {
     try {
+      console.log('[CrawlingStore] 🔍 checkStatus() called - starting status check...');
       this.setCheckingStatus(true);
       
       // Save previous status
       if (this.statusSummary && Object.keys(this.statusSummary).length > 0) {
         this.lastStatusSummary = this.statusSummary;
+        console.log('[CrawlingStore] Previous status saved:', this.lastStatusSummary);
       }
 
+      console.log('[CrawlingStore] 📡 Calling ipcService.checkCrawlingStatus()...');
       const status = await this.ipcService.checkCrawlingStatus();
+      console.log('[CrawlingStore] 📨 Received status from IPC:', status);
+      console.log('[CrawlingStore] Status type:', typeof status);
+      console.log('[CrawlingStore] Status keys:', status ? Object.keys(status) : 'null/undefined');
 
       if (status) {
+        console.log('[CrawlingStore] ✅ Setting status summary via setStatusSummary()...');
+        console.log('[CrawlingStore] Before setStatusSummary - current statusSummary:', this.statusSummary);
         this.setStatusSummary(status);
+        console.log('[CrawlingStore] After setStatusSummary - new statusSummary:', this.statusSummary);
+        console.log('[CrawlingStore] 🎯 Status summary update completed!');
       } else {
+        console.log('[CrawlingStore] ❌ No status received from IPC');
         throw new Error('상태 체크 실패');
       }
     } catch (error) {
+      console.error('[CrawlingStore] 💥 Error in checkStatus():', error);
       this.setError(error instanceof Error ? error.message : '상태 체크에 실패했습니다.');
       throw error;
     } finally {
+      console.log('[CrawlingStore] 🏁 checkStatus() completed, setting isCheckingStatus to false');
       this.setCheckingStatus(false);
     }
   }
@@ -291,14 +324,26 @@ export class CrawlingStore {
     try {
       console.log('CrawlingStore.updateConfig called with:', newConfig);
       const updatedConfig = { ...this.config, ...newConfig };
+      console.log('CrawlingStore.updateConfig merged config:', updatedConfig);
       
       // Update memory state
       this.setConfig(updatedConfig);
+      console.log('CrawlingStore memory state updated');
       
       // Save to configuration service (if available)
       try {
-        await this.ipcService.updateConfig(updatedConfig);
-        console.log('Configuration saved to file:', updatedConfig);
+        console.log('CrawlingStore attempting to save config to file');
+        const result = await this.ipcService.updateConfig(updatedConfig);
+        console.log('Configuration saved to file result:', result);
+        
+        // Verify the saved config matches what we sent
+        if (result.success && result.config) {
+          console.log('Saved config from response:', result.config);
+          // Update memory state again with the config from the main process
+          this.setConfig(result.config);
+        } else {
+          console.warn('Config save response indicates failure:', result);
+        }
       } catch (saveError) {
         console.warn('Failed to save config to file, but memory state updated:', saveError);
       }
@@ -316,7 +361,36 @@ export class CrawlingStore {
   loadConfig = async (): Promise<CrawlerConfig> => {
     try {
       console.log('CrawlingStore.loadConfig called');
-      const config = await this.ipcService.getConfig();
+      
+      // Check if IPC service is available
+      if (!this.ipcService) {
+        console.error('IPC service is not available');
+        throw new Error('IPC service is not available');
+      }
+      
+      // Attempt to get the configuration
+      console.log('Calling this.ipcService.getConfig()');
+      const result = await this.ipcService.getConfig();
+      console.log('Raw response from getConfig:', result);
+      
+      // Check if we have a proper config object
+      let config: CrawlerConfig;
+      if (result && typeof result === 'object') {
+        if (result.success && result.config) {
+          // Standard success response format
+          config = result.config;
+        } else if (Object.prototype.hasOwnProperty.call(result, 'pageRangeLimit')) {
+          // Direct config object (not wrapped)
+          config = result as unknown as CrawlerConfig;
+        } else {
+          console.error('Invalid config format received:', result);
+          throw new Error('Invalid configuration format received');
+        }
+      } else {
+        console.error('Invalid response received:', result);
+        throw new Error('Invalid response received from configuration service');
+      }
+      
       console.log('Configuration loaded from file:', config);
       
       // Update store state

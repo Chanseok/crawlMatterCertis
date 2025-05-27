@@ -403,6 +403,7 @@ export type EventPayloadMapping = {
     dbSaveComplete: { success: boolean; added?: number; updated?: number; unchanged?: number; failed?: number; }; 
     dbSaveSkipped: any; // <-- Add this if you use 'dbSaveSkipped' elsewhere
     finalCrawlingResult: FinalCrawlingResult; // 최종 크롤링 결과 추가
+    crawlingStatusSummary: CrawlingStatusSummary; // 크롤링 상태 요약 정보
 };
 
 // 메서드 매개변수 맵핑
@@ -430,6 +431,8 @@ export type MethodParamsMapping = {
     'getVendors': void;
     // 배치 UI 테스트 관련 메서드
     'testBatchUI': { batchCount?: number; delayMs?: number };
+    // 설정 파일 경로 조회 메서드
+    'getConfigPath': void;
 };
 
 // 메서드 반환값 맵핑
@@ -478,6 +481,12 @@ export type MethodReturnMapping = {
         message?: string;
         error?: string;
     };
+    // 설정 파일 경로 조회 메서드 반환 타입
+    'getConfigPath': {
+        success: boolean;
+        configPath?: string;
+        error?: string;
+    };
 };
 
 // Vendor 타입 정의
@@ -517,6 +526,7 @@ export interface IElectronAPI extends IPlatformAPI {
     subscribeCrawlingFailedPages: (callback: (failedPages: EventPayloadMapping['crawlingFailedPages']) => void) => UnsubscribeFunction;
     subscribeDbSummary: (callback: (data: DatabaseSummary) => void) => UnsubscribeFunction;
     subscribeProducts: (callback: (products: MatterProduct[]) => void) => UnsubscribeFunction;
+    subscribeCrawlingStatusSummary: (callback: (data: EventPayloadMapping['crawlingStatusSummary']) => void) => UnsubscribeFunction;
     
     // 호출 메서드
     getStaticData: () => Promise<StaticData>;
@@ -534,6 +544,7 @@ export interface IElectronAPI extends IPlatformAPI {
     getConfig: () => Promise<MethodReturnMapping['crawler:get-config']>;
     updateConfig: (config: MethodParamsMapping['crawler:update-config']) => Promise<MethodReturnMapping['crawler:update-config']>;
     resetConfig: () => Promise<MethodReturnMapping['crawler:reset-config']>;
+    getConfigPath: () => Promise<MethodReturnMapping['getConfigPath']>;
     
     // 레코드 삭제 API
     deleteRecordsByPageRange: (params: MethodParamsMapping['deleteRecordsByPageRange']) => Promise<MethodReturnMapping['deleteRecordsByPageRange']>;

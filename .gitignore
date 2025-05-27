@@ -14,6 +14,7 @@ dist-electron
 dist-output
 dist-scripts
 data-for-dev
+data
 test-results
 .obsidian
 *.local

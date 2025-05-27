@@ -97,20 +97,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = observer(({
     exportToExcel();
   }, []);
 
-  // 크롤링 상태 체크 핸들러 
-  const handleCheckStatus = useCallback(async () => {
-    setCompareExpandedInApp(true);
-    setIsStatusChecking(true);
-    try {
-      await loadConfig();
-      await checkStatus();
-    } catch (error) {
-      addLog(`상태 체크 중 오류 발생: ${error instanceof Error ? error.message : String(error)}`, 'error');
-    } finally {
-      setIsStatusChecking(false);
-    }
-  }, []);
-
   return (
     <>
       <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">크롤링 제어</h2>
@@ -130,19 +116,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = observer(({
       {/* 버튼 그룹을 한 줄로 배치 */}
       <div className="flex justify-between mb-4">
         <button
-          onClick={handleCheckStatus}
-          className="flex-1 py-2 px-2 mr-2 rounded-md text-white font-medium bg-gray-500 hover:bg-gray-600 
-          disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-all duration-200
-          shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow border border-gray-600
-          focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50"
-          disabled={crawlingStatus === 'running' || isStatusChecking}
-        >
-          {isStatusChecking ? '체크 중...' : '상태 체크'}
-        </button>
-        
-        <button
           onClick={handleCrawlToggle}
-          className={`flex-1 py-2 px-2 mx-2 rounded-md text-white font-medium transition-all duration-200
+          className={`flex-1 py-2 px-2 mr-2 rounded-md text-white font-medium transition-all duration-200
           shadow-md hover:shadow-lg active:translate-y-0.5 active:shadow focus:outline-none
           focus:ring-2 focus:ring-opacity-50 ${
             crawlingStatus === 'running'

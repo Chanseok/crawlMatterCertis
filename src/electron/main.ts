@@ -56,6 +56,7 @@ const IPC_CHANNELS = {
     
     // 설정 관련 채널 추가
     GET_CONFIG: 'crawler:get-config',
+    GET_CONFIG_PATH: 'crawler:get-config-path',
     UPDATE_CONFIG: 'crawler:update-config',
     RESET_CONFIG: 'crawler:reset-config',
     
@@ -419,6 +420,12 @@ app.on('ready', async () => {
         log.info('[IPC] checkCrawlingStatus called');
         try {
             const status = await checkCrawlingStatus(); // await 추가하여 Promise가 resolve되도록 수정
+            
+            // 상태 정보가 UI로 전송될 수 있도록 이벤트 발생
+            // 이 이벤트는 UI에서 사이트 로컬 비교 패널 업데이트에 사용됨
+            crawlerEvents.emit('crawlingStatusSummary', status);
+            log.info('[IPC] crawlingStatusSummary event emitted with status:', JSON.stringify(status));
+            
             return { success: true, status };
         } catch (error) {
             log.error('[IPC] Error checking crawling status:', error);
@@ -439,12 +446,36 @@ app.on('ready', async () => {
     });
 
     ipcMain.handle(IPC_CHANNELS.UPDATE_CONFIG, async (_event, partialConfig) => {
-        log.info('[IPC] updateConfig called with:', partialConfig);
+        log.info('[IPC] updateConfig called with:', JSON.stringify(partialConfig, null, 2));
         try {
+            // 입력 검증
+            if (!partialConfig || typeof partialConfig !== 'object') {
+                throw new Error('Invalid config data: must be an object');
+            }
+            
+            // 설정 업데이트 전에 현재 설정 로깅
+            const beforeConfig = configManager.getConfig();
+            log.info('[IPC] Current config before update:', JSON.stringify(beforeConfig, null, 2));
+            
+            // 설정 업데이트 수행
             const updatedConfig = configManager.updateConfig(partialConfig);
+            
+            // 업데이트 후 설정 로깅
+            log.info('[IPC] Config updated successfully:', JSON.stringify(updatedConfig, null, 2));
+            
+            // 특정 중요 설정 변경사항 로깅
+            const changedKeys = Object.keys(partialConfig);
+            log.info(`[IPC] Changed config keys: ${changedKeys.join(', ')}`);
+            
+            // autoAddToLocalDB 설정 변경 시 특별 로깅
+            if ('autoAddToLocalDB' in partialConfig) {
+                log.info(`[IPC] autoAddToLocalDB setting updated: ${beforeConfig.autoAddToLocalDB} -> ${updatedConfig.autoAddToLocalDB}`);
+            }
+            
             return { success: true, config: updatedConfig };
         } catch (error) {
             log.error('[IPC] Error updating config:', error);
+            log.error('[IPC] Partial config that caused error:', JSON.stringify(partialConfig, null, 2));
             return { success: false, error: String(error) };
         }
     });
@@ -456,6 +487,17 @@ app.on('ready', async () => {
             return { success: true, config: resetConfig };
         } catch (error) {
             log.error('[IPC] Error resetting config:', error);
+            return { success: false, error: String(error) };
+        }
+    });
+
+    ipcMain.handle(IPC_CHANNELS.GET_CONFIG_PATH, async () => {
+        log.info('[IPC] getConfigPath called');
+        try {
+            const configPath = configManager.getConfigPath();
+            return { success: true, configPath };
+        } catch (error) {
+            log.error('[IPC] Error getting config path:', error);
             return { success: false, error: String(error) };
         }
     });
@@ -642,6 +684,12 @@ function setupCrawlerEvents(mainWindow: BrowserWindow): void {
     crawlerEvents.on('dbSaveSkipped', (data: any) => {
         log.info('[MAIN] DB Save Skipped event received:', data);
         mainWindow.webContents.send('dbSaveSkipped', data);
+    });
+    
+    // 크롤링 상태 요약 이벤트 (사이트 로컬 비교 패널용)
+    crawlerEvents.on('crawlingStatusSummary', (statusSummary: any) => {
+        log.info('[MAIN] Crawling Status Summary event received:', statusSummary);
+        mainWindow.webContents.send('crawlingStatusSummary', statusSummary);
     });
 }
 

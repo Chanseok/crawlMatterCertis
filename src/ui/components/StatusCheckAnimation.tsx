@@ -21,7 +21,7 @@ export const StatusCheckAnimation: React.FC<StatusCheckAnimationProps> = ({
     // 애니메이션 순서와 타이밍 설정
     const stages = [
       { stage: 1, delay: 100 },   // 날아가기
-      { stage: 2, delay: 1500 },  // 웹사이트 도착
+      { stage: 2, delay: 1600 },  // 웹사이트 도착 (비행기 애니메이션이 끝난 후)
       { stage: 3, delay: 2500 },  // 캐비넷 열기
       { stage: 4, delay: 3000 },  // 폴더 열기
       { stage: 5, delay: 3800 },  // 페이지 넘기기

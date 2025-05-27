@@ -56,6 +56,11 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     error,
     clearError
   } = useCrawlingStore();
+
+  // === DEBUG: Log statusSummary changes ===
+  useEffect(() => {
+    console.log('[CrawlingDashboard] statusSummary changed:', statusSummary);
+  }, [statusSummary]);
   
   const { concurrentTasks } = useTaskStore();
 
@@ -640,7 +645,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           </div>
         }
       >
-        {Object.keys(statusSummary || {}).length === 0 ? (
+        {!statusSummary || (statusSummary.dbProductCount === undefined && statusSummary.siteProductCount === undefined) ? (
           <div className="flex flex-col items-center justify-center h-20">
             <p className="text-center text-gray-600 dark:text-gray-400">
               사이트와 로컬 DB 정보를 비교하려면<br/>"상태 체크" 버튼을 클릭하세요.
@@ -664,35 +669,35 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">DB 제품 수:</span>
               <span className={`font-medium ${isValueChanged('dbProductCount') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                {statusSummary.dbProductCount?.toLocaleString()}개
+                {statusSummary.dbProductCount !== undefined ? statusSummary.dbProductCount.toLocaleString() : '?'}개
               </span>
             </div>
 
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">사이트 페이지 수:</span>
               <span className={`font-medium ${isValueChanged('siteTotalPages') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                {statusSummary.siteTotalPages?.toLocaleString()}페이지
+                {statusSummary.siteTotalPages !== undefined ? statusSummary.siteTotalPages.toLocaleString() : '?'}페이지
               </span>
             </div>
 
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">사이트 제품 수:</span>
               <span className={`font-medium ${isValueChanged('siteProductCount') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                {statusSummary.siteProductCount?.toLocaleString()}개
+                {statusSummary.siteProductCount !== undefined ? statusSummary.siteProductCount.toLocaleString() : '?'}개
               </span>
             </div>
 
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">차이:</span>
-              <span className={`font-medium ${isValueChanged('diff') ? 'text-yellow-600 dark:text-yellow-400' : statusSummary.diff > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                {statusSummary.diff > 0 ? '+' : ''}{statusSummary.diff?.toLocaleString()}개
+              <span className={`font-medium ${isValueChanged('diff') ? 'text-yellow-600 dark:text-yellow-400' : (statusSummary.diff !== undefined && statusSummary.diff > 0) ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                {statusSummary.diff !== undefined ? `${statusSummary.diff > 0 ? '+' : ''}${statusSummary.diff.toLocaleString()}개` : '?개'}
               </span>
             </div>
 
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">크롤링 필요:</span>
               <span className={`font-medium ${isValueChanged('needCrawling') ? 'text-yellow-600 dark:text-yellow-400' : statusSummary.needCrawling ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                {statusSummary.needCrawling ? '예' : '아니오'}
+                {statusSummary.needCrawling !== undefined ? (statusSummary.needCrawling ? '예' : '아니오') : '?'}
               </span>
             </div>
 

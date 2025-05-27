@@ -8,9 +8,13 @@ import { AnalysisTab } from './components/tabs/AnalysisTab';
 import { useLogStore } from './hooks/useLogStore';
 import { useCrawlingStore } from './hooks/useCrawlingStore';
 import { useDatabaseStore } from './hooks/useDatabaseStore';
+import { useApiInitialization } from './hooks/useApiInitialization';
 
 const App: React.FC = observer(() => {
   console.log('[App] Rendering App component');
+  
+  // API Initialization
+  const { isInitialized } = useApiInitialization();
   
   // Domain Store Hooks
   const { addLog } = useLogStore();
@@ -104,6 +108,18 @@ const App: React.FC = observer(() => {
         return <div>Tab not found</div>;
     }
   };
+
+  // API 초기화 상태에 따라 로딩 표시 또는 실제 콘텐츠 반환
+  if (!isInitialized) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4"></div>
+          <p className="font-medium text-blue-700">설정을 로드하는 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AppLayout 

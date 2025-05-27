@@ -236,6 +236,21 @@ export class CrawlingService extends BaseService {
   }
 
   /**
+   * 크롤링 상태 요약 구독
+   * 사이트 로컬 비교 패널을 위한 정보 수신
+   */
+  subscribeCrawlingStatusSummary(callback: (summary: any) => void): () => void {
+    if (!this.isIPCAvailable()) {
+      this.log('IPC not available for status summary subscription');
+      return () => {};
+    }
+
+    const unsubscribe = this.ipcService.subscribeCrawlingStatusSummary(callback);
+    this.eventSubscriptions.push(unsubscribe);
+    return unsubscribe;
+  }
+
+  /**
    * 크롤링 작업 상태 확인
    */
   async isRunning(): Promise<ServiceResult<boolean>> {

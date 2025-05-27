@@ -1,30 +1,63 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './StatusCheckLoadingAnimation.css';
 
 const StatusCheckLoadingAnimation: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
-
+  const airplaneRef = useRef<HTMLDivElement>(null);
+  const airplaneElementRef = useRef<HTMLDivElement>(null);
+  const animationStartedRef = useRef(false);
+  
+  // 첫 렌더링 시에만 비행기 애니메이션 실행
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentStep(prev => (prev + 1) % 3); // 0, 1, 2 순환
-    }, 3000); // 3초마다 단계 변경
-
-    return () => clearInterval(timer);
+    if (animationStartedRef.current) return;
+    
+    // 애니메이션 시작 상태로 표시
+    animationStartedRef.current = true;
+    
+    // 처음 비행기 애니메이션 시작
+    setTimeout(() => {
+      if (airplaneRef.current) {
+        // 비행기 컨테이너를 보이게 설정
+        airplaneRef.current.style.display = 'block';
+        
+        // 비행기 애니메이션 트리거
+        if (airplaneElementRef.current) {
+          airplaneElementRef.current.style.opacity = '1'; 
+          airplaneRef.current.classList.add('fly-animation');
+        }
+      }
+      
+      // 비행기 애니메이션 끝난 후 다음 단계로 이동
+      setTimeout(() => {
+        setCurrentStep(1);
+        
+        // 이후 단계 순환
+        const interval = setInterval(() => {
+          setCurrentStep(prev => (prev === 1) ? 2 : 1);
+        }, 3000);
+        
+        return () => clearInterval(interval);
+      }, 3000);  // 비행기 애니메이션 시간
+    }, 100);
   }, []);
 
   return (
     <div className="status-check-loading-container">
       <div className="status-check-animation-sequence">
         
-        {/* 1단계: 비행기가 날아가는 애니메이션 */}
-        <div className={`airplane-stage ${currentStep === 0 ? 'active' : ''}`}>
-          <div className="airplane">✈️</div>
-          <div className="flight-path"></div>
-          <div className="clouds">
-            <div className="cloud cloud1">☁️</div>
-            <div className="cloud cloud2">☁️</div>
-            <div className="cloud cloud3">☁️</div>
-          </div>
+        {/* 비행기 애니메이션 - 분리된 엘리먼트로 관리 */}
+        <div 
+          ref={airplaneRef} 
+          className="airplane-container"
+        >
+          <div ref={airplaneElementRef} className="airplane">✈️</div>
+        </div>
+        
+        {/* 구름 배경은 항상 표시 */}
+        <div className="clouds-background">
+          <div className="cloud cloud1">☁️</div>
+          <div className="cloud cloud2">☁️</div>
+          <div className="cloud cloud3">☁️</div>
         </div>
 
         {/* 2단계: 캐비넷을 여는 애니메이션 */}
