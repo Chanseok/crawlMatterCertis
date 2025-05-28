@@ -59,7 +59,12 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
 
   // === DEBUG: Log statusSummary changes ===
   useEffect(() => {
-    console.log('[CrawlingDashboard] statusSummary changed:', statusSummary);
+    console.log('[CrawlingDashboard] 🔍 statusSummary changed:', statusSummary);
+    console.log('[CrawlingDashboard] 🔍 statusSummary keys:', statusSummary ? Object.keys(statusSummary) : 'null/undefined');
+    console.log('[CrawlingDashboard] 🔍 dbProductCount:', statusSummary?.dbProductCount);
+    console.log('[CrawlingDashboard] 🔍 siteProductCount:', statusSummary?.siteProductCount);
+    console.log('[CrawlingDashboard] 🔍 diff:', statusSummary?.diff);
+    console.log('[CrawlingDashboard] 🔍 needCrawling:', statusSummary?.needCrawling);
   }, [statusSummary]);
   
   const { concurrentTasks } = useTaskStore();
@@ -318,6 +323,18 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
       }
     };
   }, [viewModel]);
+
+  // === TEMPORARY DEBUG: Auto-trigger status check to test the functionality and see debug output ===
+  useEffect(() => {
+    const autoTriggerStatusCheck = async () => {
+      console.log('[CrawlingDashboard] 🚀 Auto-triggering status check for debugging...');
+      await handleCheckStatus();
+    };
+
+    // Auto-trigger after 2 seconds delay
+    const timer = setTimeout(autoTriggerStatusCheck, 2000);
+    return () => clearTimeout(timer);
+  }, []); // Only run once on mount
 
   // === RENDER ===
   return (
@@ -645,7 +662,16 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           </div>
         }
       >
-        {!statusSummary || (statusSummary.dbProductCount === undefined && statusSummary.siteProductCount === undefined) ? (
+        {(() => {
+          const showLoadingState = !statusSummary || (statusSummary.dbProductCount === undefined && statusSummary.siteProductCount === undefined);
+          console.log('[CrawlingDashboard] 🔍 Show loading state check:', {
+            hasStatusSummary: !!statusSummary,
+            dbProductCountUndefined: statusSummary?.dbProductCount === undefined,
+            siteProductCountUndefined: statusSummary?.siteProductCount === undefined,
+            showLoadingState
+          });
+          return showLoadingState;
+        })() ? (
           <div className="flex flex-col items-center justify-center h-20">
             <p className="text-center text-gray-600 dark:text-gray-400">
               사이트와 로컬 DB 정보를 비교하려면<br/>"상태 체크" 버튼을 클릭하세요.

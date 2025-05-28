@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, SetStateAction } from 'react';
 import { observer } from 'mobx-react-lite';
 import { ExpandableSection } from '../ExpandableSection';
 import CrawlingDashboard from '../CrawlingDashboard';
 import PageProgressDisplay from '../PageProgressDisplay';
 import { ConcurrentTasksVisualizer } from '../../Charts';
 import StatusCheckAnimation from '../StatusCheckAnimation';
-import { SetStateAction } from 'react';
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 
 interface StatusTabProps {

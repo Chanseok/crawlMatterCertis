@@ -155,7 +155,9 @@ export class CrawlingStore {
       console.log('[CrawlingStore] ✅ Received status summary event!', statusSummary);
       console.log('[CrawlingStore] Status summary type:', typeof statusSummary);
       console.log('[CrawlingStore] Status summary keys:', Object.keys(statusSummary || {}));
+      console.log('[CrawlingStore] About to call setStatusSummary...');
       this.setStatusSummary(statusSummary);
+      console.log('[CrawlingStore] setStatusSummary call completed');
     });
     this.unsubscribeFunctions.push(unsubStatusSummary);
     console.log('[CrawlingStore] crawlingStatusSummary subscription set up successfully');
@@ -188,6 +190,11 @@ export class CrawlingStore {
     console.log('[CrawlingStore] Before assignment - this.statusSummary:', this.statusSummary);
     this.statusSummary = summary;
     console.log('[CrawlingStore] After assignment - this.statusSummary:', this.statusSummary);
+    console.log('[CrawlingStore] 🔍 Assigned summary properties:');
+    console.log('[CrawlingStore] - dbProductCount:', this.statusSummary?.dbProductCount);
+    console.log('[CrawlingStore] - siteProductCount:', this.statusSummary?.siteProductCount);
+    console.log('[CrawlingStore] - diff:', this.statusSummary?.diff);
+    console.log('[CrawlingStore] - needCrawling:', this.statusSummary?.needCrawling);
     console.log('[CrawlingStore] ✅ setStatusSummary() completed');
   };
 

@@ -132,9 +132,21 @@ export class IPCService {
 
     try {
       console.log('[IPCService] Setting up crawlingStatusSummary subscription...');
+      
+      // Test if the preload API is available
+      if (!window.electron || !window.electron.subscribeCrawlingStatusSummary) {
+        console.error('[IPCService] window.electron.subscribeCrawlingStatusSummary is not available!');
+        console.log('[IPCService] Available electron methods:', Object.keys(window.electron || {}));
+        return () => {};
+      }
+      
       const unsubscribe = window.electron.subscribeCrawlingStatusSummary((data) => {
         console.log('[IPCService] ✅ Raw crawlingStatusSummary event received!', data);
+        console.log('[IPCService] Event data type:', typeof data);
+        console.log('[IPCService] Event data keys:', data ? Object.keys(data) : 'null/undefined');
+        console.log('[IPCService] Calling handler with data...');
         handler(data);
+        console.log('[IPCService] Handler called successfully');
       });
       console.log('[IPCService] Successfully subscribed to crawling status summary events');
       return unsubscribe;
