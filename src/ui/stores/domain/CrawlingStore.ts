@@ -6,7 +6,7 @@
  * and crawling operations. Encapsulates crawling business logic.
  */
 
-import { makeObservable, observable, action, computed } from 'mobx';
+import { makeObservable, observable, action, computed, toJS } from 'mobx';
 import type { CrawlingProgress, CrawlingStatus, CrawlerConfig } from '../../../../types';
 import type { CrawlingSummary } from '../../../electron/crawler/utils/types';
 import { IPCService } from '../../services/IPCService';
@@ -340,7 +340,10 @@ export class CrawlingStore {
       // Save to configuration service (if available)
       try {
         console.log('CrawlingStore attempting to save config to file');
-        const result = await this.ipcService.updateConfig(updatedConfig);
+        // Convert MobX observable to plain object before IPC transmission
+        const plainConfig = toJS(updatedConfig);
+        console.log('CrawlingStore plainConfig for IPC:', plainConfig);
+        const result = await this.ipcService.updateConfig(plainConfig);
         console.log('Configuration saved to file result:', result);
         
         // Verify the saved config matches what we sent

@@ -1,4 +1,4 @@
-import { IPCService } from '../IPCService';
+import { BaseService } from '../core/BaseService';
 import type { CrawlerConfig } from '../../../../types';
 
 /**
@@ -10,15 +10,14 @@ import type { CrawlerConfig } from '../../../../types';
  * - Resetting configuration to defaults
  * - Configuration validation and type checking
  * 
- * Uses direct IPC communication without ServiceResult wrapper.
+ * Uses safe IPC communication through BaseService.
  */
-export class ConfigurationService {
+export class ConfigurationService extends BaseService {
   private static instance: ConfigurationService;
   private currentConfig?: CrawlerConfig;
-  private ipcService: IPCService;
 
   private constructor() {
-    this.ipcService = IPCService.getInstance();
+    super();
   }
 
   /**
@@ -36,16 +35,20 @@ export class ConfigurationService {
    */
   public async getConfig(): Promise<CrawlerConfig> {
     try {
+      this.logDebug('getConfig', 'Fetching configuration from backend');
+      
       // Call IPC to get configuration from ConfigManager
-      const result = await this.ipcService.getConfig();
+      const result = await this.callIPC<any>('getConfig');
       
       if (result.success && result.config) {
         this.currentConfig = result.config;
+        this.logDebug('getConfig', 'Configuration retrieved successfully');
         return result.config;
       } else {
         throw new Error(result.error || 'Failed to get configuration');
       }
     } catch (error) {
+      this.logError('getConfig', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to get configuration: ${errorMessage}`);
     }
@@ -56,22 +59,27 @@ export class ConfigurationService {
    */
   public async updateConfig(config: Partial<CrawlerConfig>): Promise<CrawlerConfig> {
     try {
+      this.logDebug('updateConfig', 'Updating configuration', { configKeys: Object.keys(config) });
+      
       // Validate the configuration update
       this.validateConfigUpdate(config);
 
       // Call IPC to update configuration in ConfigManager
-      const result = await this.ipcService.updateConfig(config);
+      // BaseService.callIPC automatically handles MobX observable conversion
+      const result = await this.callIPC<any>('updateConfig', config);
       
       if (result.success && result.config) {
         // Validate the complete configuration returned from backend
         this.validateConfigComplete(result.config);
 
         this.currentConfig = result.config;
+        this.logDebug('updateConfig', 'Configuration updated successfully');
         return result.config;
       } else {
         throw new Error(result.error || 'Failed to update configuration');
       }
     } catch (error) {
+      this.logError('updateConfig', error, { configKeys: Object.keys(config) });
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to update configuration: ${errorMessage}`);
     }
@@ -82,16 +90,20 @@ export class ConfigurationService {
    */
   public async resetConfig(): Promise<CrawlerConfig> {
     try {
+      this.logDebug('resetConfig', 'Resetting configuration to defaults');
+      
       // Call IPC to reset configuration in ConfigManager
-      const result = await this.ipcService.resetConfig();
+      const result = await this.callIPC<any>('resetConfig');
       
       if (result.success && result.config) {
         this.currentConfig = result.config;
+        this.logDebug('resetConfig', 'Configuration reset successfully');
         return result.config;
       } else {
         throw new Error(result.error || 'Failed to reset configuration');
       }
     } catch (error) {
+      this.logError('resetConfig', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to reset configuration: ${errorMessage}`);
     }
