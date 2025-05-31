@@ -1,39 +1,64 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
-import { useConfigurationViewModel, useCrawlingWorkflowViewModel } from '../providers/ViewModelProvider';
+import { useCrawlingStore } from '../hooks/useCrawlingStore';
+import { useConfigurationViewModel } from '../providers/ViewModelProvider';
+import { serviceFactory } from '../services/ServiceFactory';
 import type { CrawlerConfig } from '../../../types';
-import { WorkflowStage } from '../viewmodels/CrawlingWorkflowViewModel';
 
 /**
  * CrawlingSettings Component
- * ConfigurationViewModel을 사용한 설정 관리 컴포넌트
+ * ConfigurationViewModel을 사용한 크롤링 설정 컴포넌트
  */
-function CrawlingSettingsComponent() {
+export function CrawlingSettings() {
+  const { status } = useCrawlingStore();
   const configurationViewModel = useConfigurationViewModel();
-  const crawlingWorkflowViewModel = useCrawlingWorkflowViewModel();
+  
+  // 설정 파일 경로 상태
+  const [configPath, setConfigPath] = useState<string>('');
+  const [configPathError, setConfigPathError] = useState<string>('');
 
-  // 컴포넌트 마운트 시 초기화
+  // 컴포넌트 마운트 시 설정 초기화
   useEffect(() => {
-    const initialize = async () => {
+    const initializeConfig = async () => {
       try {
-        await configurationViewModel.loadConfiguration();
+        await configurationViewModel.initialize();
       } catch (error) {
         console.error('Failed to initialize configuration:', error);
       }
     };
 
-    initialize();
+    initializeConfig();
   }, [configurationViewModel]);
+
+  // 설정 파일 경로 가져오기
+  useEffect(() => {
+    const loadConfigPath = async () => {
+      try {
+        const configService = serviceFactory.getConfigurationService();
+        const path = await configService.getConfigPath();
+        setConfigPath(path);
+        setConfigPathError('');
+      } catch (err) {
+        console.error('Failed to load config path:', err);
+        setConfigPathError('설정 파일 경로를 가져올 수 없습니다.');
+      }
+    };
+
+    loadConfigPath();
+  }, []);
 
   // 크롤링 상태에 따른 설정 잠금 관리
   useEffect(() => {
-    const isRunning = crawlingWorkflowViewModel.workflowState.stage !== WorkflowStage.IDLE;
-    configurationViewModel.setConfigurationLocked(isRunning);
-  }, [crawlingWorkflowViewModel.workflowState.stage, configurationViewModel]);
+    if (status === 'running') {
+      configurationViewModel.setConfigurationLocked(true);
+    } else {
+      configurationViewModel.setConfigurationLocked(false);
+    }
+  }, [status, configurationViewModel]);
 
   const handleSave = async () => {
     try {
-      await configurationViewModel.saveConfiguration();
+      await configurationViewModel.saveConfig();
     } catch (err) {
       console.error('설정 저장 실패:', err);
     }
@@ -41,7 +66,7 @@ function CrawlingSettingsComponent() {
 
   const handleReset = async () => {
     try {
-      await configurationViewModel.resetConfiguration();
+      await configurationViewModel.discardChanges();
     } catch (err) {
       console.error('설정 초기화 실패:', err);
     }
@@ -54,17 +79,13 @@ function CrawlingSettingsComponent() {
     configurationViewModel.updateConfigurationField(field, value);
   };
 
-  const handleDiscardChanges = () => {
-    configurationViewModel.discardChanges();
-  };
-
   const isDisabled = configurationViewModel.isConfigurationLocked;
 
   return (
     <div className="p-6 bg-white rounded-lg shadow-md">
       <h2 className="text-xl font-semibold mb-4">크롤링 설정</h2>
       
-      {/* 세션 상태 표시 */}
+      {/* 설정 상태 표시 */}
       <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-blue-800">설정 상태</span>
@@ -95,17 +116,17 @@ function CrawlingSettingsComponent() {
 
       {/* 설정 파일 정보 섹션 */}
       <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">설정 상태 정보</h3>
-        <div className="text-sm text-gray-600">
-          <div className="grid grid-cols-2 gap-2">
-            <span>설정 로드됨:</span>
-            <span>{Object.keys(configurationViewModel.config).length > 0 ? '예' : '아니오'}</span>
-            <span>마지막 저장:</span>
-            <span>{configurationViewModel.lastSaved ? configurationViewModel.lastSaved.toLocaleString() : '없음'}</span>
-            <span>변경사항:</span>
-            <span>{configurationViewModel.hasChanges ? '있음' : '없음'}</span>
+        <h3 className="text-sm font-medium text-gray-700 mb-2">설정 파일 정보</h3>
+        {configPathError ? (
+          <div className="text-red-600 text-sm">{configPathError}</div>
+        ) : (
+          <div className="text-sm text-gray-600">
+            <span className="font-medium">설정 파일 위치:</span>
+            <div className="mt-1 font-mono text-xs bg-white p-2 rounded border break-all">
+              {configPath || '로딩 중...'}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* 저장 상태 메시지 */}
@@ -119,7 +140,7 @@ function CrawlingSettingsComponent() {
         </div>
       )}
 
-      {configurationViewModel.config && Object.keys(configurationViewModel.config).length > 0 && (
+      {configurationViewModel.config && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -193,7 +214,7 @@ function CrawlingSettingsComponent() {
           초기화
         </button>
         <button
-          onClick={handleDiscardChanges}
+          onClick={() => configurationViewModel.discardChanges()}
           disabled={isDisabled || !configurationViewModel.isDirty}
           className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
@@ -218,10 +239,10 @@ function CrawlingSettingsComponent() {
         </button>
       </div>
 
-      {/* 세션 디버그 정보 (개발 모드에서만) */}
+      {/* 디버그 정보 (개발 모드에서만) */}
       {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
         <div className="mt-6 p-4 bg-gray-100 rounded-lg border">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">설정 디버그 정보</h4>
+          <h4 className="text-sm font-medium text-gray-700 mb-2">디버그 정보</h4>
           <pre className="text-xs text-gray-600 whitespace-pre-wrap">
             {JSON.stringify(configurationViewModel.getSessionStatus(), null, 2)}
           </pre>
@@ -232,7 +253,4 @@ function CrawlingSettingsComponent() {
 }
 
 // Wrap with MobX observer for reactive state updates
-const CrawlingSettings = observer(CrawlingSettingsComponent);
-
-export { CrawlingSettings };
-export default CrawlingSettings;
+export default observer(CrawlingSettings);

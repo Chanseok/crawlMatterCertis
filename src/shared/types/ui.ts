@@ -3,7 +3,7 @@
  * 사용자 인터페이스, 상태 관리, 이벤트 등에 관련된 타입들
  */
 
-import { Status } from './common';
+import { Status } from './common.js';
 
 /**
  * UI 테마 설정

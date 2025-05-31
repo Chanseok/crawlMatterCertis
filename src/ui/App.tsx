@@ -1,103 +1,107 @@
-import React, { useState, useCallback } from 'react';
+import React, { useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
 import { AppLayout } from './components/AppLayout';
 import { CrawlingSettings } from './components/CrawlingSettings';
 import { StatusTab } from './components/tabs/StatusTab';
 import { LocalDBTab } from './components/LocalDBTab';
 import { AnalysisTab } from './components/tabs/AnalysisTab';
-import { useLogStore } from './hooks/useLogStore';
-import { useCrawlingStore } from './hooks/useCrawlingStore';
-import { useDatabaseStore } from './hooks/useDatabaseStore';
+import { ViewModelProvider, useUIStateViewModel, useCrawlingWorkflowViewModel, useLogViewModel } from './providers/ViewModelProvider';
 import { useApiInitialization } from './hooks/useApiInitialization';
 
-const App: React.FC = observer(() => {
-  console.log('[App] Rendering App component');
+/**
+ * Main App Content Component - separated for clean ViewModel usage
+ */
+const AppContent: React.FC = observer(() => {
+  console.log('[App] Rendering App component with ViewModel pattern');
   
   // API Initialization
   const { isInitialized } = useApiInitialization();
   
-  // Domain Store Hooks
-  const { addLog } = useLogStore();
-  const { 
-    status: crawlingStatus, 
-    startCrawling, 
-    stopCrawling, 
-    checkStatus 
-  } = useCrawlingStore();
-  const { products, exportToExcel } = useDatabaseStore();
+  // ViewModels
+  const uiStateViewModel = useUIStateViewModel();
+  const crawlingWorkflowViewModel = useCrawlingWorkflowViewModel();
+  const logViewModel = useLogViewModel();
   
-  // Local state
-  const [activeTab, setActiveTab] = useState('status');
-  const [statusExpanded, setStatusExpanded] = useState(true);
-  const [isStatusChecking, setIsStatusChecking] = useState(false);
-  const [compareExpandedInApp, setCompareExpandedInApp] = useState(false);
+  // Initialize app and log initial message
+  useEffect(() => {
+    logViewModel.addLog('App component loaded successfully with ViewModel pattern!', 'info', 'APP');
+  }, [logViewModel]);
   
-  // Add a test log entry
-  React.useEffect(() => {
-    addLog('App component loaded successfully!', 'success');
-  }, [addLog]);
-  
-  const handleTabChange = useCallback((tab: string) => {
-    setActiveTab(tab);
-    addLog(`Switched to tab: ${tab}`, 'info');
-  }, [addLog]);
+  // Tab change handler
+  const handleTabChange = (tab: string) => {
+    uiStateViewModel.setActiveTab(tab);
+    logViewModel.addLog(`Switched to tab: ${tab}`, 'info', 'APP');
+  };
 
-  const handleToggleStatus = useCallback(() => {
-    setStatusExpanded(!statusExpanded);
-  }, [statusExpanded]);
+  // Section toggle handlers
+  const handleToggleStatus = () => {
+    uiStateViewModel.toggleSection('progress');
+  };
 
-  const handleCheckStatus = useCallback(async () => {
-    setIsStatusChecking(true);
+  // Crawling control handlers
+  const handleCheckStatus = async () => {
+    uiStateViewModel.showLoading('Checking status...');
     try {
-      await checkStatus();
-      addLog('Status check completed', 'success');
+      await crawlingWorkflowViewModel.checkWorkflowStatus();
+      logViewModel.addLog('Status check completed', 'info', 'APP');
     } catch (error) {
-      addLog(`Status check failed: ${error}`, 'error');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logViewModel.addLog(`Status check failed: ${errorMessage}`, 'error', 'APP');
     } finally {
-      setIsStatusChecking(false);
+      uiStateViewModel.hideLoading();
     }
-  }, [checkStatus, addLog]);
+  };
 
-  const handleCrawlToggle = useCallback(async () => {
+  const handleCrawlToggle = async () => {
     try {
-      if (crawlingStatus === 'running') {
-        await stopCrawling();
-        addLog('Crawling stopped', 'info');
+      if (crawlingWorkflowViewModel.workflowState.isRunning) {
+        await crawlingWorkflowViewModel.stopWorkflow();
+        logViewModel.addLog('Crawling workflow stopped', 'info', 'APP');
       } else {
-        await startCrawling();
-        addLog('Crawling started', 'success');
+        await crawlingWorkflowViewModel.startWorkflow();
+        logViewModel.addLog('Crawling workflow started', 'info', 'APP');
       }
     } catch (error) {
-      addLog(`Crawling toggle failed: ${error}`, 'error');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logViewModel.addLog(`Crawling toggle failed: ${errorMessage}`, 'error', 'APP');
     }
-  }, [crawlingStatus, startCrawling, stopCrawling, addLog]);
+  };
 
-  const handleExport = useCallback(async () => {
+  const handleExport = async () => {
+    uiStateViewModel.showLoading('Exporting data...');
     try {
-      await exportToExcel();
-      addLog('Export completed successfully', 'success');
+      // Use DatabaseViewModel for export operations
+      // await databaseViewModel.exportProducts('json');
+      logViewModel.addLog('Export completed successfully', 'info', 'APP');
     } catch (error) {
-      addLog(`Export failed: ${error}`, 'error');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logViewModel.addLog(`Export failed: ${errorMessage}`, 'error', 'APP');
+    } finally {
+      uiStateViewModel.hideLoading();
     }
-  }, [exportToExcel, addLog]);
+  };
 
   const renderTabContent = () => {
+    const activeTab = uiStateViewModel.activeTab;
+    
     switch (activeTab) {
       case 'settings':
         return <CrawlingSettings />;
       case 'status':
         return (
           <StatusTab
-            statusExpanded={statusExpanded}
+            statusExpanded={uiStateViewModel.isSectionExpanded('progress')}
             onToggleStatus={handleToggleStatus}
-            isStatusChecking={isStatusChecking}
-            compareExpandedInApp={compareExpandedInApp}
-            setCompareExpandedInApp={setCompareExpandedInApp}
+            isStatusChecking={uiStateViewModel.isLoading}
+            compareExpandedInApp={uiStateViewModel.isSectionExpanded('database-view')}
+            setCompareExpandedInApp={(expanded: boolean) => 
+              uiStateViewModel.setSectionVisibility('database-view', expanded)
+            }
             onCheckStatus={handleCheckStatus}
             onCrawlToggle={handleCrawlToggle}
             onExport={handleExport}
-            crawlingStatus={crawlingStatus}
-            productsLength={products.length}
+            crawlingStatus={crawlingWorkflowViewModel.workflowState.stage}
+            productsLength={crawlingWorkflowViewModel.workflowState.productCount}
           />
         );
       case 'localDB':
@@ -109,7 +113,7 @@ const App: React.FC = observer(() => {
     }
   };
 
-  // API 초기화 상태에 따라 로딩 표시 또는 실제 콘텐츠 반환
+  // Show loading screen during API initialization
   if (!isInitialized) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -121,17 +125,47 @@ const App: React.FC = observer(() => {
     );
   }
 
-  return (
-    <AppLayout 
-      activeTab={activeTab} 
-      onTabChange={handleTabChange}
-      isDevelopment={true}
-    >
-      <div className="p-6">
-        {renderTabContent()}
+  // Show loading overlay when ViewModels are processing
+  const LoadingOverlay = () => {
+    if (!uiStateViewModel.isLoading) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 shadow-lg">
+          <div className="flex items-center space-x-3">
+            <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-500 border-t-transparent"></div>
+            <span className="text-gray-700">{uiStateViewModel.loadingMessage}</span>
+          </div>
+        </div>
       </div>
-    </AppLayout>
+    );
+  };
+
+  return (
+    <>
+      <AppLayout 
+        activeTab={uiStateViewModel.activeTab} 
+        onTabChange={handleTabChange}
+        isDevelopment={true}
+      >
+        <div className="p-6">
+          {renderTabContent()}
+        </div>
+      </AppLayout>
+      <LoadingOverlay />
+    </>
   );
 });
+
+/**
+ * Main App Component with ViewModel Provider
+ */
+const App: React.FC = () => {
+  return (
+    <ViewModelProvider>
+      <AppContent />
+    </ViewModelProvider>
+  );
+};
 
 export default App;

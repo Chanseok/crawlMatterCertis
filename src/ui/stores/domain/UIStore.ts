@@ -120,6 +120,11 @@ export class UIStore {
   // Event emitters for UI coordination
   public onUIChange: { type: string; data?: any } | null = null;
 
+  /**
+   * UI state management for ViewModels
+   */
+  private uiStateStorage: Map<string, any> = new Map();
+
   constructor() {
     makeObservable(this, {
       // Observable state
@@ -157,7 +162,9 @@ export class UIStore {
       clearAllNotifications: action,
       resetSearchAndFilters: action,
       toggleAppMode: action,
-      cleanup: action
+      cleanup: action,
+      setUIState: action,
+      getUIState: action
 
       // Computed properties - none currently
     });
@@ -356,6 +363,41 @@ export class UIStore {
       sortOrder: this.sortOrder,
       currentPage: this.currentPage
     };
+  }
+
+  /**
+   * UI state management for ViewModels
+   */
+  setUIState(key: string, state: any): void {
+    this.uiStateStorage.set(key, state);
+    
+    // Optionally persist to localStorage
+    try {
+      localStorage.setItem(`ui-state-${key}`, JSON.stringify(state));
+    } catch (error) {
+      console.warn(`Failed to persist UI state for key ${key}:`, error);
+    }
+  }
+
+  getUIState(key: string): any {
+    // Try to get from memory first
+    if (this.uiStateStorage.has(key)) {
+      return this.uiStateStorage.get(key);
+    }
+    
+    // Fallback to localStorage
+    try {
+      const stored = localStorage.getItem(`ui-state-${key}`);
+      if (stored) {
+        const state = JSON.parse(stored);
+        this.uiStateStorage.set(key, state);
+        return state;
+      }
+    } catch (error) {
+      console.warn(`Failed to load UI state for key ${key}:`, error);
+    }
+    
+    return null;
   }
 
   /**

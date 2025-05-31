@@ -21,12 +21,8 @@ export type {
 };
 
 // UI 전용 타입 정의
-// 로그 항목 타입 (UI 전용)
-export interface LogEntry {
-  timestamp: Date;
-  message: string;
-  type: 'info' | 'warning' | 'error' | 'success';
-}
+// 로그 항목 타입 (UI 전용) - import from shared types
+export type { LogEntry } from '../shared/types/ui.js';
 
 // 사이트 상태 정보 타입
 export interface StatusStore {

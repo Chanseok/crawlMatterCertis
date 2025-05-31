@@ -81,6 +81,9 @@ export class LogStore {
   public onNewLog: LogEntry | null = null;
   public onLogsClear: boolean = false;
 
+  // Log change listeners
+  private logChangeListeners: Array<() => void> = [];
+
   private maxLogEntries: number = 1000;
 
   constructor() {
@@ -194,11 +197,13 @@ export class LogStore {
    * Add a new log entry
    */
   @action
-  addLog(message: string, type: LogEntry['type'] = 'info'): void {
+  addLog(message: string, type: LogEntry['type'] = 'info', source?: string): void {
     const logEntry: LogEntry = {
+      id: crypto.randomUUID(),
       timestamp: new Date(),
       message,
-      type
+      type,
+      source
     };
 
     let updatedLogs = [...this.logs, logEntry];
@@ -210,17 +215,23 @@ export class LogStore {
 
     this.logs = updatedLogs;
     this.onNewLog = logEntry;
+    
+    // Notify listeners of log change
+    this.notifyLogChange();
   }
 
   /**
    * Add multiple log entries
    */
   @action
-  addLogs(entries: Array<{ message: string; type: LogEntry['type'] }>): void {
+  addLogs(entries: Array<{ message: string; type: LogEntry['type']; source?: string }>): void {
     const timestamp = new Date();
-    const newEntries: LogEntry[] = entries.map(entry => ({
-      ...entry,
-      timestamp: new Date(timestamp.getTime() + Math.random() * 1000) // Slight offset for ordering
+    const newEntries: LogEntry[] = entries.map((entry, index) => ({
+      id: crypto.randomUUID(),
+      message: entry.message,
+      type: entry.type,
+      timestamp: new Date(timestamp.getTime() + index), // Slight offset for ordering
+      source: entry.source
     }));
 
     let updatedLogs = [...this.logs, ...newEntries];
@@ -236,6 +247,9 @@ export class LogStore {
     if (newEntries.length > 0) {
       this.onNewLog = newEntries[newEntries.length - 1];
     }
+    
+    // Notify listeners of log change
+    this.notifyLogChange();
   }
 
   /**
@@ -246,6 +260,9 @@ export class LogStore {
     this.logs = [];
     this.onLogsClear = true;
     setTimeout(() => { this.onLogsClear = false; }, 100);
+    
+    // Notify listeners of log change
+    this.notifyLogChange();
   }
 
   /**
@@ -292,6 +309,23 @@ export class LogStore {
   setAutoScroll(autoScroll: boolean): void {
     this.filterState = { ...this.filterState, autoScroll };
     this.saveLogPreferences();
+  }
+
+  /**
+   * Set maximum log entries
+   */
+  @action
+  setMaxLogs(maxLogs: number): void {
+    if (maxLogs > 0 && maxLogs <= 10000) {
+      this.maxLogEntries = maxLogs;
+      this.filterState = { ...this.filterState, maxEntries: maxLogs };
+      this.saveLogPreferences();
+      
+      // Trim existing logs if needed
+      if (this.logs.length > maxLogs) {
+        this.logs = this.logs.slice(-maxLogs);
+      }
+    }
   }
 
   /**
@@ -416,10 +450,43 @@ export class LogStore {
   }
 
   /**
+   * Register a listener for log changes
+   */
+  onLogsChanged(callback: () => void): () => void {
+    this.logChangeListeners.push(callback);
+    
+    // Return unsubscribe function
+    return () => {
+      const index = this.logChangeListeners.indexOf(callback);
+      if (index > -1) {
+        this.logChangeListeners.splice(index, 1);
+      }
+    };
+  }
+
+  /**
+   * Notify all log change listeners
+   */
+  private notifyLogChange(): void {
+    this.logChangeListeners.forEach(callback => {
+      try {
+        callback();
+      } catch (error) {
+        console.warn('Error in log change listener:', error);
+      }
+    });
+  }
+
+
+
+
+
+  /**
    * Cleanup
    */
   async cleanup(): Promise<void> {
     this.saveLogPreferences();
+    this.logChangeListeners = [];
   }
 
   /**

@@ -122,7 +122,7 @@ export class ConfigurationService extends BaseService {
   public async getConfigPath(): Promise<string> {
     try {
       // Call IPC to get configuration file path from ConfigManager
-      const result = await this.ipcService.getConfigPath();
+      const result = await this.callIPC<any>('getConfigPath');
       
       if (result.success && result.configPath) {
         return result.configPath;

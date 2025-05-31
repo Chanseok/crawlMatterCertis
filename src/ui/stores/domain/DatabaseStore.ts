@@ -63,6 +63,7 @@ export class DatabaseStore {
       saveProducts: action,
       searchProducts: action,
       deleteRecordsByPageRange: action,
+      clearDatabase: action,
       exportToExcel: action,
       clearSaveResult: action,
       resetSearch: action,
@@ -335,6 +336,29 @@ export class DatabaseStore {
       this.searchQuery = '';
       this.currentPage = 1;
     });
+  }
+
+  /**
+   * Clear all data from database
+   */
+  async clearDatabase(): Promise<void> {
+    try {
+      const result = await this.databaseService.clearDatabase();
+      if (result.success) {
+        // Refresh data after successful clearing
+        await this.loadSummary();
+        await this.loadProducts('', 1, 50); // Reset to empty search and page 1
+        runInAction(() => {
+          this.currentPage = 1;
+          this.searchQuery = '';
+        });
+      } else {
+        throw new Error(result.error?.message || 'Failed to clear database');
+      }
+    } catch (error) {
+      console.error('Failed to clear database:', error);
+      throw error;
+    }
   }
 
   /**

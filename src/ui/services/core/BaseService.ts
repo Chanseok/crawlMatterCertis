@@ -1,12 +1,23 @@
 import { IPCService } from './IPCService';
 
 /**
+ * Service operation result interface
+ */
+export interface ServiceResult<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  timestamp?: Date;
+}
+
+/**
  * Base Service Class
  * 
  * Provides common functionality for all service classes including:
  * - Safe IPC communication
  * - Error handling
  * - Logging
+ * - Consistent result patterns
  */
 export abstract class BaseService {
   protected ipcService = IPCService.getInstance();
@@ -60,5 +71,52 @@ export abstract class BaseService {
    */
   protected logDebug(method: string, message: string, data?: any): void {
     console.log(`🔧 ${this.constructor.name}.${method}: ${message}`, data);
+  }
+  
+  /**
+   * Execute operation with consistent result handling
+   */
+  protected async executeOperation<T>(
+    operation: () => Promise<T>,
+    operationName: string
+  ): Promise<ServiceResult<T>> {
+    try {
+      this.logDebug(operationName, 'Starting operation');
+      const result = await operation();
+      this.logDebug(operationName, 'Operation completed successfully');
+      
+      return {
+        success: true,
+        data: result,
+        timestamp: new Date()
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logError(operationName, error);
+      
+      return {
+        success: false,
+        error: errorMessage,
+        timestamp: new Date()
+      };
+    }
+  }
+  
+  /**
+   * Execute operation without result wrapping (for internal use)
+   */
+  protected async executeOperationRaw<T>(
+    operation: () => Promise<T>,
+    operationName: string
+  ): Promise<T> {
+    try {
+      this.logDebug(operationName, 'Starting operation');
+      const result = await operation();
+      this.logDebug(operationName, 'Operation completed successfully');
+      return result;
+    } catch (error) {
+      this.logError(operationName, error);
+      throw error;
+    }
   }
 }

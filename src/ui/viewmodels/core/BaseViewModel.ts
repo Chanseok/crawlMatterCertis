@@ -1,18 +1,38 @@
-import { makeAutoObservable, toJS } from 'mobx';
+import { toJS } from 'mobx';
 
 /**
  * Base ViewModel Class
  * 
  * Provides common functionality for all ViewModel classes including:
- * - MobX observable setup
  * - Safe data conversion for service calls
  * - Error handling
+ * - Lifecycle management
+ * 
+ * Note: Subclasses must call makeObservable(this) in their constructor
+ * instead of makeAutoObservable to work with inheritance.
  */
 export abstract class BaseViewModel {
   constructor() {
-    makeAutoObservable(this);
+    // Note: MobX observability is handled by subclasses
+    // Each subclass must call makeObservable(this) with appropriate configuration
   }
   
+  /**
+   * Initialize the ViewModel (called after construction)
+   * Subclasses should override this for async initialization
+   */
+  async initialize(): Promise<void> {
+    // Default implementation does nothing
+  }
+
+  /**
+   * Cleanup resources when ViewModel is disposed
+   * Subclasses should override this for cleanup
+   */
+  dispose(): void {
+    // Default implementation does nothing
+  }
+
   /**
    * Observable 데이터를 서비스로 안전하게 전달하기 위한 변환
    */
@@ -60,11 +80,18 @@ export abstract class BaseViewModel {
     // 서브클래스에서 오버라이드 가능한 에러 처리
     this.onError(method, error, context);
   }
+
+  /**
+   * 에러 처리 헬퍼 (레거시 호환성)
+   */
+  protected logError(method: string, error: any, context?: any): void {
+    this.handleError(method, error, context);
+  }
   
   /**
    * 에러 발생 시 호출되는 훅 (서브클래스에서 오버라이드)
    */
-  protected onError(method: string, error: any, context?: any): void {
+  protected onError(_method: string, _error: any, _context?: any): void {
     // 기본 구현은 비어있음 - 서브클래스에서 필요에 따라 구현
   }
   
