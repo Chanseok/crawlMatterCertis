@@ -351,7 +351,8 @@ export class CrawlingStore {
       try {
         console.log('CrawlingStore attempting to save config to file');
         // Convert MobX observable to plain object before IPC transmission
-        const plainConfig = toJS(updatedConfig);
+        // (toJS만으로는 Proxy가 남을 수 있으므로 JSON.stringify/parse로 완전한 plain object 보장)
+        const plainConfig = JSON.parse(JSON.stringify(toJS(updatedConfig)));
         console.log('CrawlingStore plainConfig for IPC:', plainConfig);
         const result = await this.ipcService.updateConfig(plainConfig);
         console.log('Configuration saved to file result:', result);

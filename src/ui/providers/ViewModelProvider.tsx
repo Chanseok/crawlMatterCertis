@@ -4,6 +4,7 @@ import { ConfigurationViewModel } from '../viewmodels/ConfigurationViewModel';
 import { DatabaseViewModel } from '../viewmodels/DatabaseViewModel';
 import { LogViewModel } from '../viewmodels/LogViewModel';
 import { UIStateViewModel } from '../viewmodels/UIStateViewModel';
+import { StatusTabViewModel } from '../viewmodels/StatusTabViewModel';
 
 import { logStore } from '../stores/domain/LogStore';
 import { databaseStore } from '../stores/domain/DatabaseStore';
@@ -18,6 +19,7 @@ export interface ViewModels {
   databaseViewModel: DatabaseViewModel;
   logViewModel: LogViewModel;
   uiStateViewModel: UIStateViewModel;
+  statusTabViewModel: StatusTabViewModel;
 }
 
 /**
@@ -48,12 +50,16 @@ export const ViewModelProvider: React.FC<ViewModelProviderProps> = ({ children }
       databaseStore,
       logStore
     );
-    const uiStateViewModel = new UIStateViewModel(uiStore);      return {
+    const uiStateViewModel = new UIStateViewModel(uiStore);
+    const statusTabViewModel = new StatusTabViewModel();
+
+    return {
         crawlingWorkflowViewModel,
         configurationViewModel,
         databaseViewModel,
         logViewModel,
-        uiStateViewModel
+        uiStateViewModel,
+        statusTabViewModel
       };
     }, []); // Empty dependency array since stores are singletons
 
@@ -69,6 +75,7 @@ export const ViewModelProvider: React.FC<ViewModelProviderProps> = ({ children }
           viewModels.databaseViewModel.initialize(),
           viewModels.logViewModel.initialize(),
           viewModels.uiStateViewModel.initialize()
+          // StatusTabViewModel doesn't need initialization
         ]);
         
         console.log('[ViewModelProvider] All ViewModels initialized successfully');
@@ -136,4 +143,9 @@ export const useLogViewModel = () => {
 export const useUIStateViewModel = () => {
   const { uiStateViewModel } = useViewModels();
   return uiStateViewModel;
+};
+
+export const useStatusTabViewModel = () => {
+  const { statusTabViewModel } = useViewModels();
+  return statusTabViewModel;
 };

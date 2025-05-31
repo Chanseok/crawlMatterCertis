@@ -21,7 +21,7 @@ export { ValidationResultsPanel } from './ValidationResultsPanel';
 export * from './demo';
 
 // Sub-directory components
-export * from './control';
+// export * from './control';
 export * from './debug';
 export * from './displays';
 export * from './layout';

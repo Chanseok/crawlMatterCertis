@@ -5,9 +5,6 @@ import { observer, useLocalObservable } from 'mobx-react-lite';
 import { CrawlingStageDisplay } from './displays/CrawlingStageDisplay';
 import { CrawlingControlsDisplay } from './displays/CrawlingControlsDisplay';
 import { CrawlingMetricsDisplay } from './displays/CrawlingMetricsDisplay';
-import { CollectionStatusDisplay } from './displays/CollectionStatusDisplay';
-import { ProgressBarDisplay } from './displays/ProgressBarDisplay';
-import { StatusDisplay } from './displays/StatusDisplay';
 import { PageProgressDisplay } from './displays/PageProgressDisplay';
 import { TimeDisplay } from './displays/TimeDisplay';
 
@@ -133,10 +130,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   }, [checkStatus, setAppCompareExpanded]);
 
   // === UI STATE METHODS (Using ViewModel) ===
-  const collectionStatusText = useMemo(() => viewModel.collectionStatusText, [viewModel]);
-
-  const retryStatusText = useMemo(() => viewModel.retryStatusText, [viewModel]);
-
   const getStageBadge = useCallback(() => {
     const stageInfo = viewModel.stageInfo;
     return (
@@ -342,8 +335,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     <>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-4">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-800 dark:text-white">크롤링 상태</h2>
-          <StatusDisplay />
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-white">수집 상태</h2>
         </div>
 
         {/* Error Display */}
@@ -370,35 +362,13 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           onStopCrawling={stopCrawling}
         />
 
-        {/* Current Status */}
-        <div className="bg-gray-50 rounded p-4 mb-4">
-          <div className="flex items-center space-x-2">
-            <span className="font-medium">현재 상태:</span>
-            <span className={`
-              px-3 py-1 rounded-full text-sm font-medium
-              ${status === 'running' ? 'bg-green-100 text-green-800' :
-                status === 'error' ? 'bg-red-100 text-red-800' :
-                status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                'bg-gray-100 text-gray-800'
-              }
-            `}>
-              {status === 'running' ? '실행 중' :
-               status === 'error' ? '오류' :
-               status === 'completed' ? '완료' :
-               status === 'paused' ? '일시정지' :
-               '대기 중'}
-            </span>
-          </div>
-        </div>
+
 
         {/* Stage Information */}
         <CrawlingStageDisplay 
           getStageBadge={getStageBadge}
           currentStep={progress.currentStep}
         />
-
-        {/* Progress Display */}
-        <ProgressBarDisplay />
 
         {/* Stage Transition Indicator */}
         <StageTransitionIndicator 
@@ -408,14 +378,10 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
 
         {/* Metrics Display */}
         <CrawlingMetricsDisplay 
-          collectionStatusText={collectionStatusText}
-          retryStatusText={retryStatusText}
           progress={progress}
-          targetPageCount={targetPageCount}
           calculatedPercentage={calculatedPercentage}
           animatedValues={viewModel.animatedValues}
           animatedDigits={animatedDigits}
-          concurrentTasks={concurrentTasks}
         />
 
         {/* Time Information Display */}
@@ -426,11 +392,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           isAfterStatusCheck={isAfterStatusCheck}
         />
 
-        {/* Collection Status Display */}
-        <div className="mt-4 inline-block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-          <CollectionStatusDisplay />
-        </div>
-        
         {/* Page Progress Display */}
         <PageProgressDisplay />
 

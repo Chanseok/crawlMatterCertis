@@ -26,34 +26,28 @@ interface AnimatedDigits {
 }
 
 interface CrawlingMetricsDisplayProps {
-  collectionStatusText: string;
-  retryStatusText: string;
   progress: any;
-  targetPageCount: number;
   calculatedPercentage: number;
   animatedValues: AnimatedValues;
   animatedDigits: AnimatedDigits;
-  concurrentTasks: any[];
 }
 
 export const CrawlingMetricsDisplay: React.FC<CrawlingMetricsDisplayProps> = ({
-  collectionStatusText,
-  retryStatusText,
   progress,
-  targetPageCount,
   calculatedPercentage,
   animatedValues,
-  animatedDigits,
-  concurrentTasks
+  animatedDigits
 }) => {
   const renderMetricItem = (label: string, value: any, unit: string = '', isAnimated: boolean = false) => (
     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
-      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</div>
-      <div className={`text-lg font-bold text-gray-800 dark:text-gray-200 transition-all duration-300 ${
-        isAnimated ? 'animate-flip' : ''
-      }`}>
-        {typeof value === 'number' ? Math.round(value).toLocaleString() : value}
-        {unit && <span className="text-sm text-gray-500 ml-1">{unit}</span>}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-500 dark:text-gray-400">{label}: </span>
+        <span className={`text-lg font-bold text-gray-800 dark:text-gray-200 transition-all duration-300 ${
+          isAnimated ? 'animate-flip' : ''
+        }`}>
+          {typeof value === 'number' ? Math.round(value).toLocaleString() : value}
+          {unit && <span className="text-sm text-gray-500 ml-1">{unit}</span>}
+        </span>
       </div>
     </div>
   );
@@ -61,7 +55,7 @@ export const CrawlingMetricsDisplay: React.FC<CrawlingMetricsDisplayProps> = ({
   return (
     <div className="space-y-4">
       {/* Current Status Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {renderMetricItem('진행률', calculatedPercentage, '%')}
         {renderMetricItem('현재 페이지', animatedValues.currentPage, '페이지', animatedDigits.currentPage)}
         {renderMetricItem('처리된 항목', animatedValues.processedItems, '개', animatedDigits.processedItems)}
@@ -73,32 +67,6 @@ export const CrawlingMetricsDisplay: React.FC<CrawlingMetricsDisplayProps> = ({
         <div className="grid grid-cols-2 gap-3">
           {renderMetricItem('신규 항목', animatedValues.newItems, '개', animatedDigits.newItems)}
           {renderMetricItem('업데이트 항목', animatedValues.updatedItems, '개', animatedDigits.updatedItems)}
-        </div>
-      )}
-
-      {/* Collection Status */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
-        <div className="text-sm font-medium text-blue-800 dark:text-blue-300">
-          {collectionStatusText}
-        </div>
-        {retryStatusText && (
-          <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-            {retryStatusText}
-          </div>
-        )}
-      </div>
-
-      {/* Target Information */}
-      {targetPageCount > 0 && (
-        <div className="text-sm text-gray-600 dark:text-gray-400">
-          목표 페이지: {targetPageCount.toLocaleString()}페이지
-        </div>
-      )}
-
-      {/* Concurrent Tasks Info */}
-      {concurrentTasks.length > 0 && (
-        <div className="text-xs text-gray-500 dark:text-gray-400">
-          동시 작업: {concurrentTasks.length}개
         </div>
       )}
     </div>

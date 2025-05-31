@@ -9,7 +9,7 @@ import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 
 export const CollectionStatusDisplay: React.FC = observer(() => {
-  const { progress, status, statusSummary } = useCrawlingStore();
+  const { progress, status } = useCrawlingStore();
   
   const currentStage = progress?.currentStage || 0;
   const currentStep = progress?.currentStep || '';
@@ -44,18 +44,6 @@ export const CollectionStatusDisplay: React.FC = observer(() => {
       {total > 0 && (
         <div className="text-sm text-gray-600 dark:text-gray-400">
           수집 현황: {processed.toLocaleString()} / {total.toLocaleString()}
-        </div>
-      )}
-      
-      {statusSummary?.needCrawling !== undefined && (
-        <div className="text-xs">
-          <span className={`px-2 py-1 rounded ${
-            statusSummary.needCrawling 
-              ? 'bg-orange-100 text-orange-800' 
-              : 'bg-green-100 text-green-800'
-          }`}>
-            {statusSummary.needCrawling ? '수집 필요' : '수집 불필요'}
-          </span>
         </div>
       )}
     </div>

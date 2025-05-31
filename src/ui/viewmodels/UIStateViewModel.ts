@@ -95,7 +95,7 @@ export class UIStateViewModel extends BaseViewModel {
 
   public _sections: Map<string, SectionState> = new Map([
     ['configuration', { id: 'configuration', isExpanded: true, isVisible: true }],
-    ['progress', { id: 'progress', isExpanded: true, isVisible: true }],
+    ['progress', { id: 'progress', isExpanded: false, isVisible: true }],
     ['controls', { id: 'controls', isExpanded: true, isVisible: true }],
     ['database-view', { id: 'database-view', isExpanded: true, isVisible: true }],
     ['log-viewer', { id: 'log-viewer', isExpanded: true, isVisible: true }]

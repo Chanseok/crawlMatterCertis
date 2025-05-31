@@ -211,8 +211,8 @@ export class ConfigManager {
       console.error(`[ConfigManager] 저장 실패한 설정:`, JSON.stringify(this.config, null, 2));
       // 저장 실패 시에도 메모리의 설정은 유지하지만 에러를 로그에 남김
     }
-    
-    return { ...this.config };
+    // structured clone 안전성을 위해 plain object로 반환
+    return JSON.parse(JSON.stringify(this.config));
   }
 
   /**

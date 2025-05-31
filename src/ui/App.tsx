@@ -42,47 +42,47 @@ const AppContent: React.FC = observer(() => {
   };
 
   // Crawling control handlers
-  const handleCheckStatus = async () => {
-    uiStateViewModel.showLoading('Checking status...');
-    try {
-      await crawlingWorkflowViewModel.checkWorkflowStatus();
-      logViewModel.addLog('Status check completed', 'info', 'APP');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logViewModel.addLog(`Status check failed: ${errorMessage}`, 'error', 'APP');
-    } finally {
-      uiStateViewModel.hideLoading();
-    }
-  };
+  // const handleCheckStatus = async () => {
+  //   uiStateViewModel.showLoading('Checking status...');
+  //   try {
+  //     await crawlingWorkflowViewModel.checkWorkflowStatus();
+  //     logViewModel.addLog('Status check completed', 'info', 'APP');
+  //   } catch (error) {
+  //     const errorMessage = error instanceof Error ? error.message : String(error);
+  //     logViewModel.addLog(`Status check failed: ${errorMessage}`, 'error', 'APP');
+  //   } finally {
+  //     uiStateViewModel.hideLoading();
+  //   }
+  // };
 
-  const handleCrawlToggle = async () => {
-    try {
-      if (crawlingWorkflowViewModel.workflowState.isRunning) {
-        await crawlingWorkflowViewModel.stopWorkflow();
-        logViewModel.addLog('Crawling workflow stopped', 'info', 'APP');
-      } else {
-        await crawlingWorkflowViewModel.startWorkflow();
-        logViewModel.addLog('Crawling workflow started', 'info', 'APP');
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logViewModel.addLog(`Crawling toggle failed: ${errorMessage}`, 'error', 'APP');
-    }
-  };
+  // const handleCrawlToggle = async () => {
+  //   try {
+  //     if (crawlingWorkflowViewModel.workflowState.isRunning) {
+  //       await crawlingWorkflowViewModel.stopWorkflow();
+  //       logViewModel.addLog('Crawling workflow stopped', 'info', 'APP');
+  //     } else {
+  //       await crawlingWorkflowViewModel.startWorkflow();
+  //       logViewModel.addLog('Crawling workflow started', 'info', 'APP');
+  //     }
+  //   } catch (error) {
+  //     const errorMessage = error instanceof Error ? error.message : String(error);
+  //     logViewModel.addLog(`Crawling toggle failed: ${errorMessage}`, 'error', 'APP');
+  //   }
+  // };
 
-  const handleExport = async () => {
-    uiStateViewModel.showLoading('Exporting data...');
-    try {
-      // Use DatabaseViewModel for export operations
-      // await databaseViewModel.exportProducts('json');
-      logViewModel.addLog('Export completed successfully', 'info', 'APP');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logViewModel.addLog(`Export failed: ${errorMessage}`, 'error', 'APP');
-    } finally {
-      uiStateViewModel.hideLoading();
-    }
-  };
+  // const handleExport = async () => {
+  //   uiStateViewModel.showLoading('Exporting data...');
+  //   try {
+  //     // Use DatabaseViewModel for export operations
+  //     // await databaseViewModel.exportProducts('json');
+  //     logViewModel.addLog('Export completed successfully', 'info', 'APP');
+  //   } catch (error) {
+  //     const errorMessage = error instanceof Error ? error.message : String(error);
+  //     logViewModel.addLog(`Export failed: ${errorMessage}`, 'error', 'APP');
+  //   } finally {
+  //     uiStateViewModel.hideLoading();
+  //   }
+  // };
 
   const renderTabContent = () => {
     const activeTab = uiStateViewModel.activeTab;
@@ -96,14 +96,10 @@ const AppContent: React.FC = observer(() => {
           <StatusTab
             statusExpanded={uiStateViewModel.isSectionExpanded('progress')}
             onToggleStatus={handleToggleStatus}
-            isStatusChecking={uiStateViewModel.isLoading}
             compareExpandedInApp={uiStateViewModel.isSectionExpanded('database-view')}
             setCompareExpandedInApp={(expanded: boolean) => 
               uiStateViewModel.setSectionVisibility('database-view', expanded)
             }
-            onCheckStatus={handleCheckStatus}
-            onCrawlToggle={handleCrawlToggle}
-            onExport={handleExport}
             crawlingStatus={crawlingWorkflowViewModel.workflowState.stage}
             productsLength={crawlingWorkflowViewModel.workflowState.productCount}
           />
