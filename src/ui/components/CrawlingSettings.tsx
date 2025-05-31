@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useConfigurationViewModel, useCrawlingWorkflowViewModel } from '../providers/ViewModelProvider';
+import { BatchProcessingSettings } from './BatchProcessingSettings';
 import type { CrawlerConfig } from '../../../types';
 import { WorkflowStage } from '../viewmodels/CrawlingWorkflowViewModel';
 
@@ -59,6 +60,8 @@ function CrawlingSettingsComponent() {
   };
 
   const isDisabled = configurationViewModel.isConfigurationLocked;
+
+  const BATCH_THRESHOLD = 10;
 
   return (
     <div className="p-6 bg-white rounded-lg shadow-md">
@@ -181,6 +184,20 @@ function CrawlingSettingsComponent() {
             </label>
           </div>
         </div>
+      )}
+
+      {/* 배치 처리 설정 (페이지 범위가 임계값을 초과할 때만 표시) */}
+      {configurationViewModel.getEffectiveValue('pageRangeLimit')! > BATCH_THRESHOLD && (
+        <BatchProcessingSettings
+          enableBatchProcessing={!!configurationViewModel.getEffectiveValue('enableBatchProcessing')}
+          setEnableBatchProcessing={(enable) => configurationViewModel.updateConfigurationField('enableBatchProcessing', enable)}
+          batchSize={configurationViewModel.getEffectiveValue('batchSize') || 10}
+          setBatchSize={(size) => configurationViewModel.updateConfigurationField('batchSize', size)}
+          batchDelayMs={configurationViewModel.getEffectiveValue('batchDelayMs') || 1000}
+          setBatchDelayMs={(delay) => configurationViewModel.updateConfigurationField('batchDelayMs', delay)}
+          batchRetryLimit={configurationViewModel.getEffectiveValue('batchRetryLimit') || 3}
+          setBatchRetryLimit={(limit) => configurationViewModel.updateConfigurationField('batchRetryLimit', limit)}
+        />
       )}
 
       {/* 저장 버튼 */}
