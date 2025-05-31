@@ -1,4 +1,4 @@
-import { makeObservable, computed, action } from 'mobx';
+import { makeObservable, computed, action, observable } from 'mobx';
 import { BaseViewModel } from './core/BaseViewModel';
 import { UIStore } from '../stores/domain/UIStore';
 
@@ -84,16 +84,16 @@ export class UIStateViewModel extends BaseViewModel {
   // Domain Store reference
   private uiStore: UIStore;
 
-  // Observable state
-  private _activeTab: string = 'settings';
-  private _tabs: TabConfig[] = [
+  // Observable state - made public for MobX observability
+  public _activeTab: string = 'status';
+  public _tabs: TabConfig[] = [
     { id: 'settings', label: '설정', icon: 'settings' },
     { id: 'status', label: '상태 & 제어', icon: 'status' },
     { id: 'localDB', label: '로컬DB', icon: 'database' },
     { id: 'analysis', label: '분석', icon: 'chart' }
   ];
 
-  private _sections: Map<string, SectionState> = new Map([
+  public _sections: Map<string, SectionState> = new Map([
     ['configuration', { id: 'configuration', isExpanded: true, isVisible: true }],
     ['progress', { id: 'progress', isExpanded: true, isVisible: true }],
     ['controls', { id: 'controls', isExpanded: true, isVisible: true }],
@@ -101,7 +101,7 @@ export class UIStateViewModel extends BaseViewModel {
     ['log-viewer', { id: 'log-viewer', isExpanded: true, isVisible: true }]
   ]);
 
-  private _layout: LayoutConfig = {
+  public _layout: LayoutConfig = {
     sidebarWidth: 250,
     bottomPanelHeight: 300,
     rightPanelWidth: 350,
@@ -112,7 +112,7 @@ export class UIStateViewModel extends BaseViewModel {
     density: 'comfortable'
   };
 
-  private _navigation: NavigationState = {
+  public _navigation: NavigationState = {
     currentRoute: '/',
     previousRoute: null,
     breadcrumbs: [],
@@ -120,16 +120,29 @@ export class UIStateViewModel extends BaseViewModel {
     canGoForward: false
   };
 
-  private _modals: Map<string, ModalState> = new Map();
-  private _notifications: Map<string, NotificationState> = new Map();
-  private _isLoading: boolean = false;
-  private _loadingMessage: string = '';
+  public _modals: Map<string, ModalState> = new Map();
+  public _notifications: Map<string, NotificationState> = new Map();
+  public _isLoading: boolean = false;
+  public _loadingMessage: string = '';
 
   constructor(uiStore: UIStore) {
     super();
     this.uiStore = uiStore;
 
+    // Make specific fields and methods observable/computed/action
     makeObservable(this, {
+      // Observable state fields (now public)
+      _activeTab: observable,
+      _tabs: observable,
+      _sections: observable,
+      _layout: observable,
+      _navigation: observable,
+      _modals: observable,
+      _notifications: observable,
+      _isLoading: observable,
+      _loadingMessage: observable,
+      
+      // Computed properties (getters)
       activeTab: computed,
       tabs: computed,
       activeTabConfig: computed,
@@ -148,6 +161,8 @@ export class UIStateViewModel extends BaseViewModel {
       hasNotifications: computed,
       isLoading: computed,
       loadingMessage: computed,
+      
+      // Actions (methods that modify state)
       setActiveTab: action,
       addTab: action,
       removeTab: action,
@@ -175,6 +190,9 @@ export class UIStateViewModel extends BaseViewModel {
       setLoading: action,
       showLoading: action,
       hideLoading: action
+    }, {
+      // Options for makeObservable - make all fields deep observables by default
+      deep: true
     });
     
     // Load persisted state
@@ -294,10 +312,18 @@ export class UIStateViewModel extends BaseViewModel {
   // ================================
 
   setActiveTab(tabId: string): void {
+    console.log(`[UIStateViewModel] setActiveTab called with: ${tabId}`);
+    console.log(`[UIStateViewModel] Current activeTab: ${this._activeTab}`);
+    console.log(`[UIStateViewModel] Available tabs:`, this._tabs.map(t => t.id));
+    
     const tab = this._tabs.find(t => t.id === tabId);
     if (tab && !tab.disabled) {
+      console.log(`[UIStateViewModel] Tab found and enabled, switching from ${this._activeTab} to ${tabId}`);
       this._activeTab = tabId;
       this.persistState();
+      console.log(`[UIStateViewModel] Tab switched successfully to: ${this._activeTab}`);
+    } else {
+      console.warn(`[UIStateViewModel] Tab not found or disabled:`, { tabId, tab, disabled: tab?.disabled });
     }
   }
 

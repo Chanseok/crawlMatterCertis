@@ -29,7 +29,10 @@ const AppContent: React.FC = observer(() => {
   
   // Tab change handler
   const handleTabChange = (tab: string) => {
+    console.log(`[App] handleTabChange called with: ${tab}`);
+    console.log(`[App] Current activeTab before change: ${uiStateViewModel.activeTab}`);
     uiStateViewModel.setActiveTab(tab);
+    console.log(`[App] Current activeTab after change: ${uiStateViewModel.activeTab}`);
     logViewModel.addLog(`Switched to tab: ${tab}`, 'info', 'APP');
   };
 
@@ -83,6 +86,7 @@ const AppContent: React.FC = observer(() => {
 
   const renderTabContent = () => {
     const activeTab = uiStateViewModel.activeTab;
+    console.log(`[App] renderTabContent called with activeTab: ${activeTab}`);
     
     switch (activeTab) {
       case 'settings':
