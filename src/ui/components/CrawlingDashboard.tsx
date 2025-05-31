@@ -319,16 +319,16 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   }, [viewModel]);
 
   // === TEMPORARY DEBUG: Auto-trigger status check to test the functionality and see debug output ===
-  useEffect(() => {
-    const autoTriggerStatusCheck = async () => {
-      console.log('[CrawlingDashboard] 🚀 Auto-triggering status check for debugging...');
-      await handleCheckStatus();
-    };
+  // useEffect(() => {
+  //   const autoTriggerStatusCheck = async () => {
+  //     console.log('[CrawlingDashboard] 🚀 Auto-triggering status check for debugging...');
+  //     await handleCheckStatus();
+  //   };
 
-    // Auto-trigger after 2 seconds delay
-    const timer = setTimeout(autoTriggerStatusCheck, 2000);
-    return () => clearTimeout(timer);
-  }, []); // Only run once on mount
+  //   // Auto-trigger after 2 seconds delay
+  //   const timer = setTimeout(autoTriggerStatusCheck, 2000);
+  //   return () => clearTimeout(timer);
+  // }, []); // Only run once on mount
 
   // === RENDER ===
   return (

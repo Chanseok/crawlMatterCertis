@@ -144,21 +144,44 @@ export class StatusTabViewModel {
 
   // Auto status check logic
   @action
-  performAutoStatusCheck(): void {
-    // Always fetch the latest config value directly
-    const autoStatusCheck = this.configurationService.getConfigValue('autoStatusCheck');
-    if (!autoStatusCheck) return;
+  async performAutoStatusCheck(): Promise<void> {
+    // 항상 최신 config를 비동기로 fetch해서 확인
+    const config = await this.configurationService.getConfig();
+    const autoStatusCheck = !!config?.autoStatusCheck; // boolean 강제 변환
+    console.debug('[StatusTabViewModel] performAutoStatusCheck called', {
+      config,
+      autoStatusCheck,
+      hasAutoChecked: this.hasAutoChecked,
+      isRunning: this.isRunning,
+      isStatusChecking: this.isStatusChecking,
+      showAnimation: this.showAnimation
+    });
+    if (!autoStatusCheck) {
+      // 디버깅 로그 추가
+      console.debug('[StatusTabViewModel] 자동 상태 체크 비활성화 상태, performAutoStatusCheck 중단');
+      return;
+    }
     if (
       !this.hasAutoChecked &&
       !this.isRunning &&
       !this.isStatusChecking &&
       !this.showAnimation
     ) {
+      console.debug('[StatusTabViewModel] 조건 만족: 자동 상태 체크 실행');
       this.setHasAutoChecked(true);
-      // Small delay to ensure the tab is fully rendered
+      // 1. 상태 체크 먼저 트리거
+      this.checkStatus();
+      // 2. 애니메이션 실행
       setTimeout(() => {
         this.setShowAnimation(true);
-      }, 500);
+      }, 200); // 약간의 딜레이로 UI가 자연스럽게 보이도록
+    } else {
+      console.debug('[StatusTabViewModel] 조건 불충분: 자동 상태 체크 미실행', {
+        hasAutoChecked: this.hasAutoChecked,
+        isRunning: this.isRunning,
+        isStatusChecking: this.isStatusChecking,
+        showAnimation: this.showAnimation
+      });
     }
   }
 

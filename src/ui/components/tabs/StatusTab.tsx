@@ -58,7 +58,9 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
 
   // Auto status check on first visit
   useEffect(() => {
-    statusTabViewModel.performAutoStatusCheck();
+    if (!statusTabViewModel.hasAutoChecked) {
+      statusTabViewModel.performAutoStatusCheck();
+    }
   }, [statusTabViewModel]);
 
   // 애니메이션 완료 후 실제 상태 체크 함수 호출
