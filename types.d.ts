@@ -366,6 +366,21 @@ export interface CrawlerConfig {
     maxRetryDelayMs?: number;  // 재시도 시 최대 지연 시간 (지수 백오프용)
     baseRetryDelayMs?: number; // 재시도 시 기본 지연 시간 (지수 백오프용)
     axiosTimeoutMs?: number;   // Axios 요청 타임아웃
+    
+    // 로깅 설정
+    logging?: {
+        level?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+        components?: {
+            CrawlerState?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+            CrawlerEngine?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+            ProductListCollector?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+            ProductDetailCollector?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+            PageCrawler?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+            BrowserManager?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+        };
+        enableStackTrace?: boolean;
+        enableTimestamp?: boolean;
+    };
 }
 
 // 동시 처리 작업 상태 타입

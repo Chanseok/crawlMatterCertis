@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { useConfigurationViewModel, useCrawlingWorkflowViewModel } from '../providers/ViewModelProvider';
 import { BatchProcessingSettings } from './BatchProcessingSettings';
 import { ExpandableSection } from './ExpandableSection';
+import { LoggingSettings } from './LoggingSettings';
 import type { CrawlerConfig } from '../../../types';
 import { WorkflowStage } from '../viewmodels/CrawlingWorkflowViewModel';
 
@@ -14,6 +15,7 @@ function CrawlingSettingsComponent() {
   const configurationViewModel = useConfigurationViewModel();
   const crawlingWorkflowViewModel = useCrawlingWorkflowViewModel();
   const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
+  const [isLoggingExpanded, setIsLoggingExpanded] = useState(false);
 
   // 컴포넌트 마운트 시 초기화
   useEffect(() => {
@@ -235,6 +237,13 @@ function CrawlingSettingsComponent() {
           setBatchRetryLimit={(limit) => configurationViewModel.updateConfigurationField('batchRetryLimit', limit)}
         />
       )}
+
+      {/* 로깅 설정 */}
+      <LoggingSettings
+        isExpanded={isLoggingExpanded}
+        onToggle={() => setIsLoggingExpanded(!isLoggingExpanded)}
+        disabled={isDisabled}
+      />
 
       {/* 저장 버튼 */}
       <div className="mt-6 flex justify-end space-x-3">

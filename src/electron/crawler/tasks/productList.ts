@@ -11,8 +11,8 @@ import {
 
 import type { CrawlResult, CrawlError } from '../utils/types.js';
 import type { Product, PageProcessingStatusItem, PageProcessingStatusValue } from '../../../../types.js';
-import { debugLog } from '../../util.js';
 import { type CrawlerConfig } from '../core/config.js';
+import { logger } from '../../../shared/utils/Logger.js';
 import { crawlerEvents, updateRetryStatus } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';
 import { BrowserManager } from '../browser/BrowserManager.js';
@@ -324,15 +324,15 @@ export class ProductListCollector {
   } | null> {
     try {
       const { totalPages, lastPageProductCount } = await this.fetchTotalPagesCached(false);
-      debugLog(`[ProductListCollector] Site total pages: ${totalPages}, Last page product count: ${lastPageProductCount}`);
+      logger.debug(`Site total pages: ${totalPages}, Last page product count: ${lastPageProductCount}`, 'ProductListCollector');
 
       const { startPage, endPage } = await PageIndexManager.calculateCrawlingRange(
         totalPages, lastPageProductCount, userPageLimit
       );
-      debugLog(`[ProductListCollector] Crawling range (db pageId): ${startPage} to ${endPage}`);
+      logger.debug(`Crawling range (db pageId): ${startPage} to ${endPage}`, 'ProductListCollector');
 
       const pageNumbersToCrawl = Array.from({ length: startPage - endPage + 1 }, (_, i) => endPage + i).reverse();
-      debugLog(`[ProductListCollector] DB Page numbers to crawl: ${pageNumbersToCrawl.join(', ')}`);
+      logger.debug(`DB Page numbers to crawl: ${pageNumbersToCrawl.join(', ')}`, 'ProductListCollector');
 
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'list-range',
@@ -389,7 +389,7 @@ export class ProductListCollector {
     const allPageErrors: Record<string, CrawlError[]> = {};
     const initialAttemptNumber = 1;
 
-    debugLog(`[ProductListCollector] Starting initial crawl for ${pageNumbersToCrawl.length} pages.`);
+    logger.info(`Starting initial crawl for ${pageNumbersToCrawl.length} pages.`, 'ProductListCollector');
 
     pageNumbersToCrawl.forEach(pNum => {
       this._updatePageStatusInternal(pNum, 'attempting', initialAttemptNumber);
@@ -454,7 +454,7 @@ export class ProductListCollector {
       }
     });
     
-    debugLog(`[_processBatchResultsAndUpdateStatus attempt ${attemptNumber}] Processed ${results.length} results. ${incompletePageListToPopulate.length} pages currently marked as incomplete/failed.`);
+    logger.debug(`Processed ${results.length} results. ${incompletePageListToPopulate.length} pages currently marked as incomplete/failed (attempt ${attemptNumber}).`);
   }
 
   /**
@@ -821,7 +821,7 @@ export class ProductListCollector {
         pagesToActuallyRetry.map(p => p.toString())
       );
       
-      debugLog(`[RETRY] Product list cycle ${this.currentStageRetryCount}/${productListRetryCount} for pages: ${pagesToActuallyRetry.join(', ')}`);
+      logger.info(`Product list retry cycle ${this.currentStageRetryCount}/${productListRetryCount} for pages: ${pagesToActuallyRetry.join(', ')}`);
 
       // 실제 재시도 실행
       const { results: retryBatchResults } = await this.executeParallelCrawling(
@@ -863,7 +863,7 @@ export class ProductListCollector {
 
       // 모든 페이지가 완전해지면 종료
       if (currentIncompletePages.length === 0) {
-        debugLog(`[RETRY] 모든 제품 목록 페이지가 재시도 사이클 ${this.currentStageRetryCount} 후 완전해짐.`);
+        logger.info(`모든 제품 목록 페이지가 재시도 사이클 ${this.currentStageRetryCount} 후 완전해짐.`);
         crawlerEvents.emit('crawlingTaskStatus', {
           taskId: 'list-retry', 
           status: 'success',
@@ -902,7 +902,7 @@ export class ProductListCollector {
         `페이지 ${info.pageNumber}: ${info.currentProductCount}/${info.expectedProductCount} 제품${info.isLastPage ? ' (마지막 페이지)' : ''}`
       ).join(', ');
       
-      debugLog(`[RETRY] ${this.currentStageRetryCount}번의 재시도 후에도 ${currentIncompletePages.length}개 페이지가 불완전함: ${incompleteDetailsSummary}`);
+      logger.warn(`${this.currentStageRetryCount}번의 재시도 후에도 ${currentIncompletePages.length}개 페이지가 불완전함: ${incompleteDetailsSummary}`);
       
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'list-retry', 
@@ -917,7 +917,7 @@ export class ProductListCollector {
       });
     } else {
       if (this.currentStageRetryCount > 0) {
-        debugLog(`[RETRY] 모든 제품 목록 페이지가 ${this.currentStageRetryCount}번의 재시도 내에 완전히 수집됨.`);
+        logger.info(`모든 제품 목록 페이지가 ${this.currentStageRetryCount}번의 재시도 내에 완전히 수집됨.`);
         
         crawlerEvents.emit('crawlingTaskStatus', {
           taskId: 'list-retry', 
@@ -961,7 +961,7 @@ export class ProductListCollector {
     const allPageErrors: Record<string, CrawlError[]> = {};
     const initialAttemptNumber = 1;
     
-    debugLog(`[ProductListCollector] Starting crawl for ${pageNumbersToCrawl.length} pages.`);
+    logger.info(`Starting crawl for ${pageNumbersToCrawl.length} pages.`);
     
     pageNumbersToCrawl.forEach(pNum => {
       this._updatePageStatusInternal(pNum, 'attempting', initialAttemptNumber);
@@ -994,10 +994,10 @@ export class ProductListCollector {
     sitePageInfoCache.setTtl(cacheTtl);
     
     return await sitePageInfoCache.getOrFetch(force, async () => {
-      debugLog(`[ProductListCollector] Fetching total pages. Force refresh: ${force}`);
+      logger.debug(`Fetching total pages. Force refresh: ${force}`);
       const result = await this._fetchTotalPages();
       ProductListCollector.lastPageProductCount = result.lastPageProductCount;
-      debugLog(`[ProductListCollector] Fetched and cached new total pages data: ${result.totalPages} pages, ${result.lastPageProductCount} products on last page.`);
+      logger.debug(`Fetched and cached new total pages data: ${result.totalPages} pages, ${result.lastPageProductCount} products on last page.`);
       return {
         totalPages: result.totalPages,
         lastPageProductCount: result.lastPageProductCount,

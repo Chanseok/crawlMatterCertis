@@ -30,7 +30,7 @@ import * as cheerio from 'cheerio';
 
 import type { DetailCrawlResult } from '../utils/types.js';
 import type { Product, MatterProduct, CrawlerConfig } from '../../../../types.d.ts';
-import { debugLog } from '../../util.js';
+import { logger } from '../../../shared/utils/Logger.js';
 import { 
   crawlerEvents, 
   updateRetryStatus, 
@@ -119,12 +119,12 @@ export class ProductDetailCollector {
         
         // 하이브리드 전략이 활성화되어 있고 신호가 중단되지 않은 경우에만 Axios로 시도
         if (useHybridStrategy && !signal.aborted) {
-          debugLog(`[ProductDetailCollector] Falling back to Axios/Cheerio strategy for ${product.url}`);
+          logger.debug(`Falling back to Axios/Cheerio strategy for ${product.url}`, 'ProductDetailCollector');
           try {
             const result = await this.crawlWithAxios(product, signal);
             return result;
           } catch (axiosError) {
-            debugLog(`[ProductDetailCollector] Axios/Cheerio fallback also failed for ${product.url}`);
+            logger.debug(`Axios/Cheerio fallback also failed for ${product.url}`, 'ProductDetailCollector');
             throw axiosError instanceof Error ? axiosError : new Error(String(axiosError)); // 두 전략 모두 실패한 경우 마지막 오류를 전달
           }
         } else {
@@ -187,7 +187,7 @@ export class ProductDetailCollector {
       if (signal.aborted) {
         throw new Error(`Aborted crawling for ${product.url} during operation.`);
       }
-      debugLog(`Playwright error: ${config.productDetailTimeoutMs} ms timeout for ${product.model}`);
+      logger.debug(`Playwright error: ${config.productDetailTimeoutMs} ms timeout for ${product.model}`, 'ProductDetailCollector');
       // console.error(`[ProductDetailCollector] Error crawling product detail with Playwright for ${product.url}:`, error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to crawl product detail with Playwright for ${product.url}: ${errorMessage}`);
@@ -1280,7 +1280,7 @@ export class ProductDetailCollector {
    * 제품 상세 정보 수집 프로세스 실행
    */
   public async collect(products: Product[]): Promise<MatterProduct[]> {
-    debugLog(`[ProductDetailCollector] Starting product detail collection for ${products.length} products.`);
+    logger.info(`Starting product detail collection for ${products.length} products.`, 'ProductDetailCollector');
     if (products.length === 0) {
       console.log('[ProductDetailCollector] No products to collect details for.');
       return [];
@@ -1320,10 +1320,10 @@ export class ProductDetailCollector {
     try {
       // Force a browser context refresh before starting detail collection
       if (this.browserManager && typeof this.browserManager.forceRefreshContext === 'function') {
-        debugLog('[ProductDetailCollector] Forcing browser context refresh before detail collection.');
+        logger.debug('Forcing browser context refresh before detail collection.', 'ProductDetailCollector');
         try {
           await this.browserManager.forceRefreshContext();
-          debugLog('[ProductDetailCollector] Browser context refreshed successfully.');
+          logger.debug('Browser context refreshed successfully.', 'ProductDetailCollector');
         } catch (refreshError) {
           console.error('[ProductDetailCollector] Failed to refresh browser context:', refreshError);
           // Decide if this error is critical enough to stop the collection
@@ -1331,11 +1331,11 @@ export class ProductDetailCollector {
           // throw new Error(`Failed to refresh browser context: ${refreshError.message}`);
         }
       } else {
-        debugLog('[ProductDetailCollector] BrowserManager or forceRefreshContext method not available. Skipping context refresh.');
+        logger.debug('BrowserManager or forceRefreshContext method not available. Skipping context refresh.', 'ProductDetailCollector');
       }
 
       this.state.setStage('productDetail:fetching', '2/2단계: 제품 상세 정보 수집 중');
-      debugLog(`Starting phase 2: crawling product details for ${products.length} products`);
+      logger.info(`Starting phase 2: crawling product details for ${products.length} products`, 'ProductDetailCollector');
 
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'detail-start',
@@ -1847,13 +1847,13 @@ export class ProductDetailCollector {
     const retryStart = config.retryStart ?? 1;
     
     if (productDetailRetryCount <= 0) {
-      debugLog(`[RETRY] 재시도 횟수가 0으로 설정되어 제품 상세 정보 재시도를 건너뜁니다.`);
+      logger.debug(`재시도 횟수가 0으로 설정되어 제품 상세 정보 재시도를 건너뜁니다.`, 'ProductDetailCollector');
       return;
     }
     
     const validFailedProducts = failedProducts.filter(url => !!url);
     if (validFailedProducts.length !== failedProducts.length) {
-      debugLog(`[RETRY] 유효하지 않은 URL ${failedProducts.length - validFailedProducts.length}개를 필터링했습니다.`);
+      logger.debug(`유효하지 않은 URL ${failedProducts.length - validFailedProducts.length}개를 필터링했습니다.`, 'ProductDetailCollector');
     }
 
     failedProducts.length = 0;
@@ -1890,10 +1890,10 @@ export class ProductDetailCollector {
 
       const retryProducts = allProducts.filter(p => p.url && retryUrls.includes(p.url));
 
-      debugLog(`[RETRY][${attempt}] 제품 상세 정보 재시도 중: ${retryProducts.length}개 제품 (${attempt - retryStart + 1}/${productDetailRetryCount})`);
+      logger.info(`[RETRY][${attempt}] 제품 상세 정보 재시도 중: ${retryProducts.length}개 제품 (${attempt - retryStart + 1}/${productDetailRetryCount})`, 'ProductDetailCollector');
 
       if (retryProducts.length === 0) {
-        debugLog(`[RETRY][${attempt}] 재시도할 제품이 없습니다.`);
+        logger.debug(`[RETRY][${attempt}] 재시도할 제품이 없습니다.`, 'ProductDetailCollector');
         break;
       }
 
@@ -1930,7 +1930,7 @@ export class ProductDetailCollector {
       );
 
       if (failedProducts.length === 0) {
-        debugLog(`[RETRY] 모든 제품 상세 정보 재시도 성공`);
+        logger.info(`모든 제품 상세 정보 재시도 성공`, 'ProductDetailCollector');
         
         crawlerEvents.emit('crawlingTaskStatus', {
           taskId: 'detail-retry',
@@ -1950,11 +1950,11 @@ export class ProductDetailCollector {
 
     const retrySuccessCount = validFailedProducts.length - failedProducts.length;
     if (retrySuccessCount > 0) {
-      debugLog(`[RETRY] 재시도를 통해 ${retrySuccessCount}개의 추가 제품 정보를 성공적으로 수집했습니다.`);
+      logger.info(`재시도를 통해 ${retrySuccessCount}개의 추가 제품 정보를 성공적으로 수집했습니다.`, 'ProductDetailCollector');
     }
 
     if (failedProducts.length > 0) {
-      debugLog(`[RETRY] ${productDetailRetryCount}회 재시도 후에도 실패한 제품 URL 수: ${failedProducts.length}`);
+      logger.warn(`${productDetailRetryCount}회 재시도 후에도 실패한 제품 URL 수: ${failedProducts.length}`, 'ProductDetailCollector');
       
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'detail-retry',

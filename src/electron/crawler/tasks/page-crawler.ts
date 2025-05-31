@@ -11,7 +11,7 @@
  */
 
 import type { CrawlerConfig } from '../../../../types.js';
-import { debugLog } from '../../util.js';
+import { logger } from '../../../shared/utils/Logger.js';
 import { BrowserManager } from '../browser/BrowserManager.js';
 import { 
   PageOperationError, 
@@ -53,19 +53,19 @@ export class PageCrawler {
     // 필수 매개변수 검증 및 오류 메시지 개선
     if (!browserManager) {
       const error = new Error('[PageCrawler] BrowserManager는 필수 매개변수입니다.');
-      debugLog(`[PageCrawler] 초기화 실패: ${error.message}`);
+      logger.error(`[PageCrawler] 초기화 실패: ${error.message}`, 'PageCrawler');
       throw error;
     }
     
     if (!config) {
       const error = new Error('[PageCrawler] CrawlerConfig는 필수 매개변수입니다.');
-      debugLog(`[PageCrawler] 초기화 실패: ${error.message}`);
+      logger.error(`[PageCrawler] 초기화 실패: ${error.message}`, 'PageCrawler');
       throw error;
     }
     
     // 필수 설정 값 검증
     if (!config.matterFilterUrl) {
-      debugLog('[PageCrawler] 경고: matterFilterUrl이 설정되지 않았습니다. 크롤링이 실패할 수 있습니다.');
+      logger.warn('[PageCrawler] 경고: matterFilterUrl이 설정되지 않았습니다. 크롤링이 실패할 수 있습니다.', 'PageCrawler');
     }
     
     this.config = config;
@@ -74,7 +74,7 @@ export class PageCrawler {
     // config에서 crawlerType 가져오기 (기본값은 'axios')
     this.crawlerType = this.config.crawlerType || 'axios';
     
-    debugLog(`[PageCrawler] 생성 중... 선택된 크롤링 전략: ${this.crawlerType}`);
+    logger.debug(`[PageCrawler] 생성 중... 선택된 크롤링 전략: ${this.crawlerType}`, 'PageCrawler');
     
     try {
       // 설정된 크롤러 전략 초기화
@@ -84,10 +84,10 @@ export class PageCrawler {
         this.browserManager
       );
       
-      debugLog('[PageCrawler] 생성 완료');
+      logger.debug('[PageCrawler] 생성 완료', 'PageCrawler');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      debugLog(`[PageCrawler] 전략 생성 실패: ${errorMessage}, 기본 전략(axios)으로 대체합니다.`);
+      logger.warn(`[PageCrawler] 전략 생성 실패: ${errorMessage}, 기본 전략(axios)으로 대체합니다.`, 'PageCrawler');
       
       // 실패 시 기본 전략(axios)으로 대체
       this.crawlerType = 'axios';
@@ -106,11 +106,11 @@ export class PageCrawler {
    */
   refreshConfig(newConfig: CrawlerConfig): boolean {
     if (!newConfig) {
-      debugLog('[PageCrawler] 경고: 갱신할 설정 객체가 제공되지 않았습니다.');
+      logger.warn('[PageCrawler] 경고: 갱신할 설정 객체가 제공되지 않았습니다.', 'PageCrawler');
       return false;
     }
 
-    debugLog('[PageCrawler] 설정 갱신 시작...');
+    logger.debug('[PageCrawler] 설정 갱신 시작...', 'PageCrawler');
     
     try {
       // 기존 config와 병합하여 새로운 객체 생성 (Object.assign 대신 안전한 스프레드 연산자와 깊은 복사 사용)
@@ -139,7 +139,7 @@ export class PageCrawler {
       if (newCrawlerType !== this.crawlerType) {
         const prevType = this.crawlerType;
         this.crawlerType = newCrawlerType;
-        debugLog(`[PageCrawler] 크롤러 타입이 '${prevType}'에서 '${newCrawlerType}'으로 변경되었습니다. 전략 객체를 재생성합니다.`);
+        logger.debug(`[PageCrawler] 크롤러 타입이 '${prevType}'에서 '${newCrawlerType}'으로 변경되었습니다. 전략 객체를 재생성합니다.`, 'PageCrawler');
         
         try {
           // 새 전략 객체 생성
@@ -148,24 +148,24 @@ export class PageCrawler {
             this.config,
             this.browserManager
           );
-          debugLog(`[PageCrawler] 새 전략(${this.crawlerType}) 생성 성공`);
+          logger.debug(`[PageCrawler] 새 전략(${this.crawlerType}) 생성 성공`, 'PageCrawler');
         } catch (strategyError) {
           const errorMessage = strategyError instanceof Error ? 
             strategyError.message : String(strategyError);
-          debugLog(`[PageCrawler] 새 전략 생성 실패: ${errorMessage}, 이전 전략(${prevType})으로 복구합니다.`);
+          logger.warn(`[PageCrawler] 새 전략 생성 실패: ${errorMessage}, 이전 전략(${prevType})으로 복구합니다.`, 'PageCrawler');
           
           // 오류 발생 시 원래 타입으로 복구
           this.crawlerType = prevType;
           return false;
         }
       } else {
-        debugLog(`[PageCrawler] 설정이 업데이트되었습니다. 크롤러 타입: ${this.crawlerType}`);
+        logger.debug(`[PageCrawler] 설정이 업데이트되었습니다. 크롤러 타입: ${this.crawlerType}`, 'PageCrawler');
       }
       
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      debugLog(`[PageCrawler] 설정 갱신 중 오류 발생: ${errorMessage}`);
+      logger.error(`[PageCrawler] 설정 갱신 중 오류 발생: ${errorMessage}`, 'PageCrawler');
       return false;
     }
   }
@@ -180,23 +180,23 @@ export class PageCrawler {
     // 유효성 검사
     if (!crawlerType || (crawlerType !== 'axios' && crawlerType !== 'playwright')) {
       const error = new Error(`[PageCrawler] 유효하지 않은 크롤링 전략: '${crawlerType}'. 'playwright' 또는 'axios'만 지원됩니다.`);
-      debugLog(error.message);
+      logger.error(error.message, 'PageCrawler');
       throw error;
     }
     
     // 이미 같은 전략을 사용 중이면 불필요한 처리 방지
     if (this.crawlerType === crawlerType) {
-      debugLog(`[PageCrawler] 이미 ${crawlerType} 전략을 사용 중입니다.`);
+      logger.debug(`[PageCrawler] 이미 ${crawlerType} 전략을 사용 중입니다.`, 'PageCrawler');
       
       // 강제 초기화가 요청된 경우에만 초기화 실행
       if (forceInitialize) {
         try {
-          debugLog(`[PageCrawler] 기존 ${crawlerType} 전략 강제 재초기화 시작...`);
+          logger.debug(`[PageCrawler] 기존 ${crawlerType} 전략 강제 재초기화 시작...`, 'PageCrawler');
           await this.crawlerStrategy.initialize();
-          debugLog(`[PageCrawler] ${crawlerType} 전략 재초기화 완료`);
+          logger.debug(`[PageCrawler] ${crawlerType} 전략 재초기화 완료`, 'PageCrawler');
         } catch (initError) {
           const errorMessage = initError instanceof Error ? initError.message : String(initError);
-          debugLog(`[PageCrawler] 전략 재초기화 실패: ${errorMessage}`);
+          logger.warn(`[PageCrawler] 전략 재초기화 실패: ${errorMessage}`, 'PageCrawler');
         }
       }
       return;
@@ -206,23 +206,23 @@ export class PageCrawler {
     const previousType = this.crawlerType;
     let previousStrategy = this.crawlerStrategy;
     
-    debugLog(`[PageCrawler] 크롤링 전략 변경 시작: ${previousType} → ${crawlerType}`);
+    logger.debug(`[PageCrawler] 크롤링 전략 변경 시작: ${previousType} → ${crawlerType}`, 'PageCrawler');
     
     try {
       // 기존 전략 리소스 정리
       try {
-        debugLog(`[PageCrawler] 기존 전략(${previousType}) 리소스 정리 중...`);
+        logger.debug(`[PageCrawler] 기존 전략(${previousType}) 리소스 정리 중...`, 'PageCrawler');
         await previousStrategy.cleanup();
-        debugLog(`[PageCrawler] 기존 전략(${previousType}) 리소스 정리 완료`);
+        logger.debug(`[PageCrawler] 기존 전략(${previousType}) 리소스 정리 완료`, 'PageCrawler');
       } catch (cleanupError) {
         // 정리 중 오류가 발생해도 계속 진행
         const errorMessage = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
-        debugLog(`[PageCrawler] 기존 전략 정리 중 오류 발생 (무시됨): ${errorMessage}`);
+        logger.warn(`[PageCrawler] 기존 전략 정리 중 오류 발생 (무시됨): ${errorMessage}`, 'PageCrawler');
       }
       
       // 새 전략으로 전환
       this.crawlerType = crawlerType;
-      debugLog(`[PageCrawler] 새 전략(${crawlerType}) 인스턴스 생성 중...`);
+      logger.debug(`[PageCrawler] 새 전략(${crawlerType}) 인스턴스 생성 중...`, 'PageCrawler');
       
       this.crawlerStrategy = CrawlerStrategyFactory.createStrategy(
         this.crawlerType, 
@@ -232,18 +232,18 @@ export class PageCrawler {
       
       // 새 전략 초기화
       if (forceInitialize) {
-        debugLog(`[PageCrawler] 새 전략(${crawlerType}) 초기화 중...`);
+        logger.debug(`[PageCrawler] 새 전략(${crawlerType}) 초기화 중...`, 'PageCrawler');
         await this.crawlerStrategy.initialize();
       }
       
-      debugLog(`[PageCrawler] 크롤링 전략을 ${crawlerType}로 성공적으로 변경했습니다.`);
+      logger.info(`[PageCrawler] 크롤링 전략을 ${crawlerType}로 성공적으로 변경했습니다.`, 'PageCrawler');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      debugLog(`[PageCrawler] 크롤링 전략 변경 중 오류 발생: ${errorMessage}`);
+      logger.error(`[PageCrawler] 크롤링 전략 변경 중 오류 발생: ${errorMessage}`, 'PageCrawler');
       
       // 이전 전략으로 복구 시도
       try {
-        debugLog(`[PageCrawler] 이전 전략(${previousType})으로 복구 시도 중...`);
+        logger.warn(`[PageCrawler] 이전 전략(${previousType})으로 복구 시도 중...`, 'PageCrawler');
         this.crawlerType = previousType;
         this.crawlerStrategy = previousStrategy;
         
@@ -251,12 +251,12 @@ export class PageCrawler {
         if (forceInitialize) {
           await this.crawlerStrategy.initialize();
         }
-        debugLog(`[PageCrawler] 이전 전략(${previousType})으로 복구 성공`);
+        logger.info(`[PageCrawler] 이전 전략(${previousType})으로 복구 성공`, 'PageCrawler');
       } catch (recoveryError) {
         // 복구 실패 시 기본 전략(axios)으로 추가 복구 시도
         const fallbackType = 'axios';
         try {
-          debugLog(`[PageCrawler] 이전 전략 복구 실패. 기본 전략(${fallbackType})으로 2차 복구 시도 중...`);
+          logger.warn(`[PageCrawler] 이전 전략 복구 실패. 기본 전략(${fallbackType})으로 2차 복구 시도 중...`, 'PageCrawler');
           
           this.crawlerType = fallbackType;
           this.crawlerStrategy = CrawlerStrategyFactory.createStrategy(
@@ -268,11 +268,11 @@ export class PageCrawler {
           if (forceInitialize) {
             await this.crawlerStrategy.initialize();
           }
-          debugLog(`[PageCrawler] 기본 전략(${fallbackType})으로 2차 복구 성공`);
+          logger.info(`[PageCrawler] 기본 전략(${fallbackType})으로 2차 복구 성공`, 'PageCrawler');
         } catch (secondRecoveryError) {
           const secondErrorMsg = secondRecoveryError instanceof Error ? 
             secondRecoveryError.message : String(secondRecoveryError);
-          debugLog(`[PageCrawler] 모든 복구 시도 실패: ${secondErrorMsg}`);
+          logger.error(`[PageCrawler] 모든 복구 시도 실패: ${secondErrorMsg}`, 'PageCrawler');
         }
       }
       
@@ -338,7 +338,7 @@ export class PageCrawler {
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      debugLog(`[PageCrawler] 전략 설정 갱신 실패: ${errorMessage}`);
+      logger.error(`[PageCrawler] 전략 설정 갱신 실패: ${errorMessage}`, 'PageCrawler');
       return false;
     }
   }
@@ -350,19 +350,19 @@ export class PageCrawler {
    * @throws {Error} 초기화 중 오류가 발생하고 fallback이 비활성화된 경우
    */
   public async initialize(forceFallback: boolean = true): Promise<boolean> {
-    debugLog(`[PageCrawler] 초기화 시작 (전략: ${this.crawlerType})`);
+    logger.debug(`[PageCrawler] 초기화 시작 (전략: ${this.crawlerType})`, 'PageCrawler');
     
     try {
-      debugLog(`[PageCrawler] ${this.crawlerStrategy.constructor.name} 전략 초기화 중...`);
+      logger.debug(`[PageCrawler] ${this.crawlerStrategy.constructor.name} 전략 초기화 중...`, 'PageCrawler');
       await this.crawlerStrategy.initialize();
-      debugLog(`[PageCrawler] 초기화 완료`);
+      logger.debug(`[PageCrawler] 초기화 완료`, 'PageCrawler');
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error 
         ? `초기화 실패: ${error.message}`
         : '초기화 중 알 수 없는 오류 발생';
       
-      debugLog(`[PageCrawler] ${errorMessage}`);
+      logger.error(`[PageCrawler] ${errorMessage}`, 'PageCrawler');
       
       // 현재 전략이 이미 기본 전략(axios)인 경우
       if (this.crawlerType === 'axios' || !forceFallback) {
@@ -371,7 +371,7 @@ export class PageCrawler {
       
       // fallback 활성화된 경우 기본 전략으로 전환 시도
       try {
-        debugLog('[PageCrawler] 초기화 실패, fallback(axios) 전략으로 전환 시도...');
+        logger.warn('[PageCrawler] 초기화 실패, fallback(axios) 전략으로 전환 시도...', 'PageCrawler');
         await this.switchCrawlerStrategy('axios', true);
         return true;
       } catch (fallbackError) {
@@ -379,7 +379,7 @@ export class PageCrawler {
           ? fallbackError.message 
           : String(fallbackError);
           
-        debugLog(`[PageCrawler] fallback 전략으로 전환 실패: ${fallbackErrorMsg}`);
+        logger.error(`[PageCrawler] fallback 전략으로 전환 실패: ${fallbackErrorMsg}`, 'PageCrawler');
         throw new PageInitializationError(
           `초기화 실패 및 fallback 전환 실패: ${errorMessage}. Fallback 오류: ${fallbackErrorMsg}`, 
           0, 1
@@ -425,11 +425,11 @@ export class PageCrawler {
         );
       }
 
-      debugLog(`[PageCrawler] 페이지 ${pageNumber} 크롤링 시작 (시도: ${attempt}, 전략: ${this.crawlerType})`);
+      logger.debug(`[PageCrawler] 페이지 ${pageNumber} 크롤링 시작 (시도: ${attempt}, 전략: ${this.crawlerType})`, 'PageCrawler');
       
       // 중단 신호 모니터링 이벤트 리스너 설정
       const abortListener = () => {
-        debugLog(`[PageCrawler] 페이지 ${pageNumber} 크롤링 중단 신호 감지됨 (시도: ${attempt})`);
+        logger.debug(`[PageCrawler] 페이지 ${pageNumber} 크롤링 중단 신호 감지됨 (시도: ${attempt})`, 'PageCrawler');
       };
       
       if (signal && !signal.aborted) {
@@ -457,11 +457,11 @@ export class PageCrawler {
         }
         
         const timeTaken = Date.now() - startTime;
-        debugLog(`[PageCrawler] 페이지 ${pageNumber} 크롤링 완료: ${result.rawProducts.length}개 제품 정보 수집 (${timeTaken}ms)`);
+        logger.debug(`[PageCrawler] 페이지 ${pageNumber} 크롤링 완료: ${result.rawProducts.length}개 제품 정보 수집 (${timeTaken}ms)`, 'PageCrawler');
         
         // 빈 제품 목록 경고 로깅
         if (result.rawProducts.length === 0) {
-          debugLog(`[PageCrawler] 경고: 페이지 ${pageNumber}에서 수집된 제품이 없습니다.`);
+          logger.warn(`[PageCrawler] 경고: 페이지 ${pageNumber}에서 수집된 제품이 없습니다.`, 'PageCrawler');
         }
         
         return result;
@@ -476,22 +476,22 @@ export class PageCrawler {
       
       // 이미 PageOperationError인 경우 그대로 전파
       if (error instanceof PageOperationError) {
-        debugLog(`[PageCrawler] 페이지 ${pageNumber} 크롤링 실패 (${error.message}) (${timeTaken}ms)`);
+        logger.warn(`[PageCrawler] 페이지 ${pageNumber} 크롤링 실패 (${error.message}) (${timeTaken}ms)`, 'PageCrawler');
         
         // 자동 전략 전환이 활성화되고 최대 시도 횟수를 초과하지 않은 경우
         if (autoSwitchStrategy && attempt <= 1) {
           try {
             const alternativeStrategy: CrawlerType = currentStrategy === 'axios' ? 'playwright' : 'axios';
-            debugLog(`[PageCrawler] 페이지 ${pageNumber} 크롤링 실패 후 ${alternativeStrategy} 전략으로 자동 전환 시도`);
+            logger.warn(`[PageCrawler] 페이지 ${pageNumber} 크롤링 실패 후 ${alternativeStrategy} 전략으로 자동 전환 시도`, 'PageCrawler');
             
             // 전략 전환
             await this.switchCrawlerStrategy(alternativeStrategy, true);
             
             // 새 전략으로 다시 시도
-            debugLog(`[PageCrawler] 페이지 ${pageNumber} 크롤링 ${alternativeStrategy} 전략으로 재시도 중...`);
+            logger.info(`[PageCrawler] 페이지 ${pageNumber} 크롤링 ${alternativeStrategy} 전략으로 재시도 중...`, 'PageCrawler');
             return await this.crawlPage(pageNumber, signal, attempt + 1, false); // 재귀 호출 시 자동 전환 비활성화
           } catch (switchError) {
-            debugLog(`[PageCrawler] 전략 전환 실패: ${switchError instanceof Error ? switchError.message : String(switchError)}`);
+            logger.error(`[PageCrawler] 전략 전환 실패: ${switchError instanceof Error ? switchError.message : String(switchError)}`, 'PageCrawler');
           }
         }
         
@@ -501,7 +501,7 @@ export class PageCrawler {
       // 알려진 Error 타입인 경우
       if (error instanceof Error) {
         const errorMessage = `페이지 ${pageNumber} 크롤링 중 오류: ${error.message} (시도: ${attempt})`;
-        debugLog(`[PageCrawler] ${errorMessage} (${timeTaken}ms)`);
+        logger.error(`[PageCrawler] ${errorMessage} (${timeTaken}ms)`, 'PageCrawler');
         
         const pageError = new PageOperationError(
           errorMessage,
@@ -516,7 +516,7 @@ export class PageCrawler {
       
       // 기타 알 수 없는 오류
       const unknownErrorMessage = `페이지 ${pageNumber} 크롤링 중 알 수 없는 오류 발생 (시도: ${attempt})`;
-      debugLog(`[PageCrawler] ${unknownErrorMessage} (${timeTaken}ms)`);
+      logger.error(`[PageCrawler] ${unknownErrorMessage} (${timeTaken}ms)`, 'PageCrawler');
       
       throw new PageOperationError(
         unknownErrorMessage,
@@ -541,7 +541,7 @@ export class PageCrawler {
     const startTime = Date.now();
     const currentStrategy = this.crawlerType;
     
-    debugLog(`[PageCrawler] 총 페이지 수 조회 시작 (전략: ${this.crawlerType})`);
+    logger.debug(`[PageCrawler] 총 페이지 수 조회 시작 (전략: ${this.crawlerType})`, 'PageCrawler');
     
     try {
       const sitePageInfo: SitePageInfo = await this.crawlerStrategy.fetchTotalPages();
@@ -560,11 +560,11 @@ export class PageCrawler {
       }
       
       if (sitePageInfo.totalPages <= 0) {
-        debugLog(`[PageCrawler] 경고: 총 페이지 수가 0보다 작거나 같습니다: ${sitePageInfo.totalPages}`);
+        logger.warn(`[PageCrawler] 경고: 총 페이지 수가 0보다 작거나 같습니다: ${sitePageInfo.totalPages}`, 'PageCrawler');
       }
       
       const timeTaken = Date.now() - startTime;
-      debugLog(`[PageCrawler] 총 페이지 수 조회 완료: ${sitePageInfo.totalPages}페이지, 마지막 페이지 제품 수: ${sitePageInfo.lastPageProductCount} (${timeTaken}ms)`);
+      logger.debug(`[PageCrawler] 총 페이지 수 조회 완료: ${sitePageInfo.totalPages}페이지, 마지막 페이지 제품 수: ${sitePageInfo.lastPageProductCount} (${timeTaken}ms)`, 'PageCrawler');
       
       return {
         totalPages: sitePageInfo.totalPages,
@@ -583,22 +583,22 @@ export class PageCrawler {
         ? `총 페이지 수 조회 실패: ${error.message}`
         : '총 페이지 수 조회 중 알 수 없는 오류 발생';
       
-      debugLog(`[PageCrawler] ${errorMessage} (${timeTaken}ms)`);
+      logger.error(`[PageCrawler] ${errorMessage} (${timeTaken}ms)`, 'PageCrawler');
       
       // 자동 전략 전환이 활성화된 경우 
       if (autoSwitchStrategy) {
         try {
           const alternativeStrategy: CrawlerType = currentStrategy === 'axios' ? 'playwright' : 'axios';
-          debugLog(`[PageCrawler] 총 페이지 수 조회 실패 후 ${alternativeStrategy} 전략으로 자동 전환 시도`);
+          logger.warn(`[PageCrawler] 총 페이지 수 조회 실패 후 ${alternativeStrategy} 전략으로 자동 전환 시도`, 'PageCrawler');
           
           // 전략 전환
           await this.switchCrawlerStrategy(alternativeStrategy, true);
           
           // 새 전략으로 다시 시도 (재귀 호출)
-          debugLog(`[PageCrawler] 총 페이지 수 조회를 ${alternativeStrategy} 전략으로 재시도 중...`);
+          logger.info(`[PageCrawler] 총 페이지 수 조회를 ${alternativeStrategy} 전략으로 재시도 중...`, 'PageCrawler');
           return await this.fetchTotalPages(false); // 재귀 호출 시 자동 전환 비활성화
         } catch (switchError) {
-          debugLog(`[PageCrawler] 전략 전환 실패: ${switchError instanceof Error ? switchError.message : String(switchError)}`);
+          logger.error(`[PageCrawler] 전략 전환 실패: ${switchError instanceof Error ? switchError.message : String(switchError)}`, 'PageCrawler');
         }
       }
       
@@ -624,7 +624,7 @@ export class PageCrawler {
    * @returns 정리 완료 여부 (true: 성공, false: 일부 실패)
    */
   public async cleanup(forced: boolean = false): Promise<boolean> {
-    debugLog(`[PageCrawler] 리소스 정리 시작 (전략: ${this.crawlerType}, 강제모드: ${forced})`);
+    logger.debug(`[PageCrawler] 리소스 정리 시작 (전략: ${this.crawlerType}, 강제모드: ${forced})`, 'PageCrawler');
     
     let cleanupSuccess = true;
     const cleanupErrors: string[] = [];
@@ -632,28 +632,28 @@ export class PageCrawler {
     // 1. 크롤링 전략 정리
     try {
       if (this.crawlerStrategy) {
-        debugLog('[PageCrawler] 크롤링 전략 리소스 정리 중...');
+        logger.debug('[PageCrawler] 크롤링 전략 리소스 정리 중...', 'PageCrawler');
         await this.crawlerStrategy.cleanup();
-        debugLog('[PageCrawler] 크롤링 전략 리소스 정리 완료');
+        logger.debug('[PageCrawler] 크롤링 전략 리소스 정리 완료', 'PageCrawler');
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       cleanupErrors.push(`크롤링 전략 정리 실패: ${errorMessage}`);
       cleanupSuccess = false;
       
-      debugLog(`[PageCrawler] 크롤링 전략 정리 중 오류: ${errorMessage}`);
+      logger.error(`[PageCrawler] 크롤링 전략 정리 중 오류: ${errorMessage}`, 'PageCrawler');
       
       // 강제 모드에서는 추가 정리 시도
       if (forced) {
         try {
-          debugLog('[PageCrawler] 강제 모드: 크롤링 전략 강제 정리 시도 중...');
+          logger.debug('[PageCrawler] 강제 모드: 크롤링 전략 강제 정리 시도 중...', 'PageCrawler');
           // 모든 전략에 공통적으로 적용되는 cleanup 메서드만 사용
           await this.crawlerStrategy.cleanup();
-          debugLog('[PageCrawler] 크롤링 전략 강제 정리 완료');
+          logger.debug('[PageCrawler] 크롤링 전략 강제 정리 완료', 'PageCrawler');
         } catch (forceError) {
           const forceErrorMessage = forceError instanceof Error ? forceError.message : String(forceError);
           cleanupErrors.push(`강제 정리도 실패: ${forceErrorMessage}`);
-          debugLog(`[PageCrawler] 강제 정리도 실패: ${forceErrorMessage}`);
+          logger.error(`[PageCrawler] 강제 정리도 실패: ${forceErrorMessage}`, 'PageCrawler');
         }
       }
     }
@@ -661,40 +661,40 @@ export class PageCrawler {
     // 2. 브라우저 매니저 정리 (있는 경우)
     try {
       if (this.browserManager && typeof this.browserManager.close === 'function') {
-        debugLog('[PageCrawler] 브라우저 매니저 리소스 정리 중...');
+        logger.debug('[PageCrawler] 브라우저 매니저 리소스 정리 중...', 'PageCrawler');
         await this.browserManager.close();
-        debugLog('[PageCrawler] 브라우저 매니저 리소스 정리 완료');
+        logger.debug('[PageCrawler] 브라우저 매니저 리소스 정리 완료', 'PageCrawler');
       } else if (this.browserManager && typeof this.browserManager.cleanupResources === 'function') {
-        debugLog('[PageCrawler] 브라우저 매니저 cleanupResources 호출 중...');
+        logger.debug('[PageCrawler] 브라우저 매니저 cleanupResources 호출 중...', 'PageCrawler');
         await this.browserManager.cleanupResources();
-        debugLog('[PageCrawler] 브라우저 매니저 cleanupResources 완료');
+        logger.debug('[PageCrawler] 브라우저 매니저 cleanupResources 완료', 'PageCrawler');
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       cleanupErrors.push(`브라우저 매니저 정리 실패: ${errorMessage}`);
       cleanupSuccess = false;
-      debugLog(`[PageCrawler] 브라우저 매니저 정리 중 오류: ${errorMessage}`);
+      logger.error(`[PageCrawler] 브라우저 매니저 정리 중 오류: ${errorMessage}`, 'PageCrawler');
     }
     
     // 3. 강제 모드에서는 추가적인 메모리 해제 로직만 수행
     if (forced) {
       try {
-        debugLog('[PageCrawler] 강제 모드: 내부 참조 정리 중...');
+        logger.debug('[PageCrawler] 강제 모드: 내부 참조 정리 중...', 'PageCrawler');
         // 내부 참조 정리 (가능한 범위에서)
-        debugLog('[PageCrawler] 내부 참조 정리 완료');
+        logger.debug('[PageCrawler] 내부 참조 정리 완료', 'PageCrawler');
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         cleanupErrors.push(`내부 참조 정리 실패: ${errorMessage}`);
         cleanupSuccess = false;
-        debugLog(`[PageCrawler] 내부 참조 정리 중 오류: ${errorMessage}`);
+        logger.error(`[PageCrawler] 내부 참조 정리 중 오류: ${errorMessage}`, 'PageCrawler');
       }
     }
     
     // 4. 정리 결과 로깅
     if (cleanupSuccess) {
-      debugLog('[PageCrawler] 모든 리소스 정리 완료');
+      logger.debug('[PageCrawler] 모든 리소스 정리 완료', 'PageCrawler');
     } else {
-      debugLog(`[PageCrawler] 리소스 정리 중 일부 오류 발생 (${cleanupErrors.length}개): ${cleanupErrors.join(', ')}`);
+      logger.warn(`[PageCrawler] 리소스 정리 중 일부 오류 발생 (${cleanupErrors.length}개): ${cleanupErrors.join(', ')}`, 'PageCrawler');
     }
     
     return cleanupSuccess;

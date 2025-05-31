@@ -13,6 +13,7 @@ import type {
 } from '../../../../types.d.ts';
 import { crawlerEvents } from '../utils/progress.js';
 import { PageValidator, PageValidationResult } from '../utils/page-validator.js';
+import { logger } from '../../../shared/utils/Logger.js';
 
 export type CrawlingStage =
   | 'preparation'
@@ -161,7 +162,7 @@ export class CrawlerState {
     
     // 업데이트된 캐시 저장
     this.pageProductsCache.set(pageNumber, mergedProducts);
-    console.log(`[CrawlerState] 페이지 ${pageNumber}의 제품 캐시 업데이트: 기존 ${existingProducts.length}개 + 신규 ${newProducts.length}개 = 병합 후 ${mergedProducts.length}개`);
+    logger.debug(`페이지 ${pageNumber}의 제품 캐시 업데이트: 기존 ${existingProducts.length}개 + 신규 ${newProducts.length}개 = 병합 후 ${mergedProducts.length}개`, 'CrawlerState');
     
     return mergedProducts;
   }
@@ -243,7 +244,7 @@ export class CrawlerState {
     // 기존 progress 이벤트도 발행하여 일관성 유지
     crawlerEvents.emit('crawlingProgress', {...this.progressData});
     
-    console.log(`[CrawlerState] Stage changed to: ${stage} - ${message}`);
+    logger.info(`Stage changed to: ${stage} - ${message}`, 'CrawlerState');
   }
 /**
  * 진행 상태 업데이트
@@ -270,7 +271,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
       // 완료된 경우 남은 시간을 0으로 설정
       this.progressData.remainingTime = 0;
       this.progressData.percentage = 100;
-      console.log('[CrawlerState] Setting remaining time to 0 due to completion');
+      logger.debug('Setting remaining time to 0 due to completion', 'CrawlerState');
     } else {
       // 남은 시간 추정 (진행률에 기반)
       if (this.progressData.total > 0 && this.progressData.current > 0) {
@@ -285,7 +286,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
   }
 
   // 명시적 디버그 로깅 추가
-  console.log(`[CrawlerState] Progress updated: ${this.progressData.current}/${this.progressData.total} (${Math.round((this.progressData.current || 0) / (this.progressData.total || 1) * 100)}%)`);
+  logger.debug(`Progress updated: ${this.progressData.current}/${this.progressData.total} (${Math.round((this.progressData.current || 0) / (this.progressData.total || 1) * 100)}%)`, 'CrawlerState');
 
   // 헬퍼 메서드를 사용하여 이벤트 발행 (일관성 유지)
   this.emitProgressUpdate();
@@ -324,14 +325,14 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
       this.progressData.message = `크롤링 중단: ${error}`;
       
       // 상세 로그 기록
-      console.error(`[CrawlerState] 치명적 오류 발생: ${error}`);
-      console.error(`[CrawlerState] 현재 상태: 단계=${this.currentStage}, 처리된 항목=${this.progressData.current}/${this.progressData.total}`);
+      logger.error(`치명적 오류 발생: ${error}`, 'CrawlerState');
+      logger.error(`현재 상태: 단계=${this.currentStage}, 처리된 항목=${this.progressData.current}/${this.progressData.total}`, 'CrawlerState');
       
       // 상태 업데이트 이벤트 발생
       this.emitProgressUpdate();
     } catch (err) {
       // 메타 오류 처리 (오류 보고 중 발생한 오류)
-      console.error(`[CrawlerState] 오류 보고 중 예외 발생: ${err instanceof Error ? err.message : String(err)}`);
+      logger.error(`오류 보고 중 예외 발생: ${err instanceof Error ? err.message : String(err)}`, 'CrawlerState');
     }
   }
 
@@ -363,12 +364,12 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     
     // 치명적 오류인 경우 추가 처리
     if (errorAnalysis.isCritical) {
-      console.warn(`[CrawlerState] 페이지 ${pageNumber}에서 치명적 오류 발생: ${errorAnalysis.message}`);
+      logger.warn(`페이지 ${pageNumber}에서 치명적 오류 발생: ${errorAnalysis.message}`, 'CrawlerState');
       this.progressData.message = `페이지 ${pageNumber}: ${errorAnalysis.message}`;
       this.emitProgressUpdate();
     } 
     
-    console.log(`[CrawlerState] 페이지 ${pageNumber} 실패 기록: ${error.substring(0, 100)}${error.length > 100 ? '...' : ''}`);
+    logger.debug(`페이지 ${pageNumber} 실패 기록: ${error.substring(0, 100)}${error.length > 100 ? '...' : ''}`, 'CrawlerState');
   }
 
   /**
@@ -404,13 +405,13 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     
     // 치명적 오류인 경우 추가 처리
     if (errorAnalysis.isCritical) {
-      console.warn(`[CrawlerState] 제품 ${shortUrl}에서 치명적 오류 발생: ${errorAnalysis.message}`);
+      logger.warn(`제품 ${shortUrl}에서 치명적 오류 발생: ${errorAnalysis.message}`, 'CrawlerState');
       this.progressData.message = `처리 중 오류: ${errorAnalysis.message} (실패: ${failedCount}건, ${failureRate}%)`;
     } else {
       this.progressData.message = `제품 상세정보 수집 중... (실패: ${failedCount}건, ${failureRate}%)`;
     }
     
-    console.log(`[CrawlerState] 제품 실패 기록 [${failedCount}/${totalCount}]: ${shortUrl} - ${error.substring(0, 100)}${error.length > 100 ? '...' : ''}`);
+    logger.debug(`제품 실패 기록 [${failedCount}/${totalCount}]: ${shortUrl} - ${error.substring(0, 100)}${error.length > 100 ? '...' : ''}`, 'CrawlerState');
     this.emitProgressUpdate();
   }
 
@@ -456,7 +457,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
   public resetFailedPages(): void {
     this.failedPages = [];
     this.failedPageErrors = {};
-    console.log('[CrawlerState] Failed pages have been reset for retry.');
+    logger.info('Failed pages have been reset for retry.', 'CrawlerState');
   }
   
   /**
@@ -571,12 +572,12 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
    */
   public setDetailStageProductCount(count: number): void {
     if (count < 0) {
-      console.warn(`[CrawlerState] Invalid negative count ${count} passed to setDetailStageProductCount, ignoring.`);
+      logger.warn(`Invalid negative count ${count} passed to setDetailStageProductCount, ignoring.`, 'CrawlerState');
       return;
     }
     
     this.detailStageTotalProductCount = count;
-    console.log(`[CrawlerState] Detail stage total product count set to: ${count}`);
+    logger.debug(`Detail stage total product count set to: ${count}`, 'CrawlerState');
     
     // Stage 2에 있는 경우, UI를 위해 progressData.totalItems 및 total도 업데이트
     if (this.currentStage.startsWith('productDetail') || this.currentStage === 'completed') {

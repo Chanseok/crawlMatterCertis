@@ -14,6 +14,7 @@ import { makeObservable, observable, action, computed, runInAction, observable a
 import { crawlingStore } from '../stores/domain/CrawlingStore';
 import { logStore } from '../stores/domain/LogStore';
 import { SessionConfigManager } from '../services/domain/SessionConfigManager';
+import { Logger, LogLevel } from '../../shared/utils/Logger';
 import type { CrawlerConfig } from '../../../types';
 
 /**
@@ -594,5 +595,176 @@ export class ConfigurationViewModel extends BaseViewModel {
 
   get isDirty(): boolean {
     return this.hasChanges;
+  }
+
+  // === 로깅 설정 관리 메서드 ===
+  
+  /**
+   * 컴포넌트별 로그 레벨 업데이트
+   */
+  @action
+  updateLogLevel(component: string, level: LogLevel): void {
+    const config = { ...this.config };
+    if (!config.logging) {
+      config.logging = {
+        level: 'INFO' as const,
+        components: {},
+        enableStackTrace: false,
+        enableTimestamp: true
+      };
+    }
+    if (!config.logging.components) {
+      config.logging.components = {};
+    }
+    
+    // Type assertion for components to allow dynamic string keys
+    (config.logging.components as any)[component] = this.logLevelToString(level);
+    this.updateConfig('logging', config.logging);
+    
+    // Logger에 즉시 적용
+    Logger.getInstance().setComponentLogLevel(component, level);
+    
+    this.addLog(`Updated ${component} log level to ${this.logLevelToString(level)}`, 'info');
+  }
+
+  /**
+   * 전역 로그 레벨 업데이트
+   */
+  @action
+  updateGlobalLogLevel(level: LogLevel): void {
+    const config = { ...this.config };
+    if (!config.logging) {
+      config.logging = {
+        level: 'INFO' as const,
+        components: {},
+        enableStackTrace: false,
+        enableTimestamp: true
+      };
+    }
+    
+    config.logging.level = this.logLevelToString(level) as any;
+    this.updateConfig('logging', config.logging);
+    
+    // Logger에 즉시 적용
+    Logger.getInstance().setGlobalLogLevel(level);
+    
+    this.addLog(`Updated global log level to ${this.logLevelToString(level)}`, 'info');
+  }
+
+  /**
+   * 로깅 옵션 업데이트 (스택 트레이스, 타임스탬프)
+   */
+  @action
+  updateLoggingOptions(enableStackTrace: boolean, enableTimestamp: boolean): void {
+    const config = { ...this.config };
+    if (!config.logging) {
+      config.logging = {
+        level: 'INFO',
+        components: {},
+        enableStackTrace: false,
+        enableTimestamp: true
+      };
+    }
+    
+    config.logging.enableStackTrace = enableStackTrace;
+    config.logging.enableTimestamp = enableTimestamp;
+    this.updateConfig('logging', config.logging);
+    
+    // Logger에 즉시 적용
+    const logger = Logger.getInstance();
+    logger.setEnableStackTrace(enableStackTrace);
+    logger.setEnableTimestamp(enableTimestamp);
+    
+    this.addLog('Updated logging options', 'info');
+  }
+
+  /**
+   * 현재 로깅 설정 반환
+   */
+  getLoggingConfig() {
+    return this.config.logging || {
+      level: 'INFO',
+      components: {},
+      enableStackTrace: false,
+      enableTimestamp: true
+    };
+  }
+
+  /**
+   * 특정 컴포넌트의 로그 레벨 반환
+   */
+  getComponentLogLevel(component: string): LogLevel {
+    const loggingConfig = this.getLoggingConfig();
+    const levelString = (loggingConfig.components as any)?.[component] || loggingConfig.level || 'INFO';
+    return this.stringToLogLevel(levelString);
+  }
+
+  /**
+   * 로그 레벨을 문자열로 변환
+   */
+  logLevelToString(level: LogLevel): string {
+    switch (level) {
+      case LogLevel.ERROR: return 'ERROR';
+      case LogLevel.WARN: return 'WARN';
+      case LogLevel.INFO: return 'INFO';
+      case LogLevel.DEBUG: return 'DEBUG';
+      case LogLevel.VERBOSE: return 'VERBOSE';
+      default: return 'INFO';
+    }
+  }
+
+  /**
+   * 문자열을 로그 레벨로 변환
+   */
+  stringToLogLevel(levelString: string): LogLevel {
+    switch (levelString.toUpperCase()) {
+      case 'ERROR': return LogLevel.ERROR;
+      case 'WARN': return LogLevel.WARN;
+      case 'INFO': return LogLevel.INFO;
+      case 'DEBUG': return LogLevel.DEBUG;
+      case 'VERBOSE': return LogLevel.VERBOSE;
+      default: return LogLevel.INFO;
+    }
+  }
+
+  /**
+   * 사용 가능한 컴포넌트 목록 반환
+   */
+  getAvailableComponents(): string[] {
+    return [
+      'CrawlerState',
+      'CrawlerEngine', 
+      'ProductListCollector',
+      'ProductDetailCollector',
+      'PageCrawler',
+      'BrowserManager'
+    ];
+  }
+
+  /**
+   * 로깅 설정을 즉시 적용
+   */
+  @action
+  applyLoggingConfig(): void {
+    const loggingConfig = this.getLoggingConfig();
+    const logger = Logger.getInstance();
+    
+    // 전역 로그 레벨 설정
+    logger.setGlobalLogLevel(this.stringToLogLevel(loggingConfig.level || 'INFO'));
+    
+    // 컴포넌트별 로그 레벨 설정
+    if (loggingConfig.components) {
+      Object.entries(loggingConfig.components).forEach(([component, level]) => {
+        if (level) {
+          logger.setComponentLogLevel(component, this.stringToLogLevel(level));
+        }
+      });
+    }
+    
+    // 로깅 옵션 설정
+    logger.setEnableStackTrace(loggingConfig.enableStackTrace || false);
+    logger.setEnableTimestamp(loggingConfig.enableTimestamp !== false);
+    
+    this.addLog('Applied logging configuration', 'info');
   }
 }

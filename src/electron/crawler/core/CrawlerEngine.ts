@@ -30,8 +30,8 @@ import type {
   FailedProductReport
 } from '../utils/types.js';
 import type { Product, MatterProduct, PageProcessingStatusItem } from '../../../../types.js';
-import { debugLog } from '../../util.js';
 import { configManager } from '../../ConfigManager.js';
+import { logger } from '../../../shared/utils/Logger.js';
 
 export class CrawlerEngine {
   private state: CrawlerState;
@@ -64,6 +64,10 @@ export class CrawlerEngine {
     // 이 config를 크롤링 세션 전체에서 공유하여 불필요한 configManager.getConfig() 호출 방지
     this.sessionConfig = config; // 세션 설정을 클래스 멤버에 저장
     const sessionConfig = this.sessionConfig; // 지역 변수로도 사용
+    
+    // 로깅 시스템 초기화 (세션 시작 시)
+    logger.initializeFromConfig(sessionConfig);
+    logger.info('Crawler session started with logging configuration', 'CrawlerEngine');
     
     // 배치 처리 설정 가져오기
     const batchSize = sessionConfig.batchSize || 30; // 기본값 30페이지
@@ -616,7 +620,7 @@ export class CrawlerEngine {
         const detailStartTime = Date.now();
         updateProductDetailProgress(0, productsForDetailStage.length, detailStartTime);
         
-        debugLog(`[CrawlerEngine] Found ${productsForDetailStage.length} new products to process. Starting detail collection...`);
+        logger.info(`Found ${productsForDetailStage.length} new products to process. Starting detail collection...`);
         
         // 제품 상세 정보 수집기 생성 (2단계)
         const productDetailCollector = new ProductDetailCollector(this.state, this.abortController!, sessionConfig, this.browserManager!); // Pass session config for consistency
