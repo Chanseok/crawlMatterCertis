@@ -24,6 +24,7 @@ async function testCrawlerStrategies() {
     productDetailRetryCount: 3,
     productsPerPage: 12,
     autoAddToLocalDB: false,
+    autoStatusCheck: true,
     matterFilterUrl: 'https://csa-iot.org/all-solutions/matter/?_filter_company_1=all&_filter_device_type_1=all',
     pageTimeoutMs: 30000,
     minRequestDelayMs: 500,
@@ -37,7 +38,8 @@ async function testCrawlerStrategies() {
     productListRetryCount: 3,
     productDetailRetryCount: 3,
     productsPerPage: 12,
-    autoAddToLocalDB: false
+    autoAddToLocalDB: false,
+    autoStatusCheck: true
   });
   await browserManager.initialize();
 

@@ -342,6 +342,9 @@ export interface CrawlerConfig {
     // DB 관련 설정
     autoAddToLocalDB: boolean;  // 수집 성공 시 자동으로 로컬DB에 추가 여부
     
+    // 고급 설정
+    autoStatusCheck: boolean;   // 상태 & 제어 탭 첫 진입 시 자동 상태 체크 여부
+    
     // 크롤러 코어 관련 설정 (선택적으로 만들어 호환성 유지)
     baseUrl?: string;
     matterFilterUrl?: string;

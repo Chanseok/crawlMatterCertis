@@ -21,6 +21,7 @@ const DEFAULT_CONFIG: CrawlerConfig = {
   productDetailRetryCount: 9, // Default within validated range 3-20
   productsPerPage: 12, // Default within validated range 1-100 (example)
   autoAddToLocalDB: true,
+  autoStatusCheck: true,    // 기본값: 자동 상태 체크 활성화
   crawlerType: 'axios', // Default crawler type is axios/cheerio
   
   // Batch processing defaults

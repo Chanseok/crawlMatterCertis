@@ -160,6 +160,10 @@ export class ConfigurationService extends BaseService {
       throw new Error('Auto add to local DB must be a boolean');
     }
 
+    if (typeof config.autoStatusCheck !== 'boolean') {
+      throw new Error('Auto status check must be a boolean');
+    }
+
     // Validate optional fields
     if (config.headlessBrowser !== undefined && typeof config.headlessBrowser !== 'boolean') {
       throw new Error('Headless browser must be a boolean');

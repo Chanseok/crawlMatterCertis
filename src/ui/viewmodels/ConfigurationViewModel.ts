@@ -10,7 +10,7 @@
  */
 
 import { BaseViewModel } from './core/BaseViewModel';
-import { makeObservable, observable, action, computed, toJS, runInAction, observable as mobxObservable } from 'mobx';
+import { makeObservable, observable, action, computed, runInAction, observable as mobxObservable } from 'mobx';
 import { crawlingStore } from '../stores/domain/CrawlingStore';
 import { logStore } from '../stores/domain/LogStore';
 import { SessionConfigManager } from '../services/domain/SessionConfigManager';
@@ -505,6 +505,7 @@ export class ConfigurationViewModel extends BaseViewModel {
       productDetailRetryCount: 5,
       productsPerPage: 12,
       autoAddToLocalDB: true,
+      autoStatusCheck: true,    // 기본값: 자동 상태 체크 활성화
       crawlerType: 'axios',
       batchSize: 50,
       batchDelayMs: 1000,

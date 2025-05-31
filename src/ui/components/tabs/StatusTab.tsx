@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, SetStateAction } from 'react';
+import React, { useState, useEffect, useCallback, SetStateAction, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { ExpandableSection } from '../ExpandableSection';
 import CrawlingDashboard from '../CrawlingDashboard';
@@ -6,6 +6,7 @@ import PageProgressDisplay from '../PageProgressDisplay';
 import { ConcurrentTasksVisualizer } from '../../Charts';
 import StatusCheckAnimation from '../StatusCheckAnimation';
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
+import { useConfigurationViewModel } from '../../providers/ViewModelProvider';
 
 interface StatusTabProps {
   statusExpanded: boolean;
@@ -33,9 +34,26 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
   productsLength
 }) => {
   const { progress } = useCrawlingStore();
+  const configurationViewModel = useConfigurationViewModel();
+  
+  // Auto status check functionality
+  const hasAutoChecked = useRef(false);
   
   // 애니메이션 상태 관리
   const [showAnimation, setShowAnimation] = useState(false);
+  
+  // Auto status check on first visit when autoStatusCheck is enabled
+  useEffect(() => {
+    const autoStatusCheck = configurationViewModel.getConfigValue('autoStatusCheck');
+    
+    if (autoStatusCheck && !hasAutoChecked.current && crawlingStatus !== 'running' && !isStatusChecking && !showAnimation) {
+      hasAutoChecked.current = true;
+      // Small delay to ensure the tab is fully rendered
+      setTimeout(() => {
+        setShowAnimation(true);
+      }, 500);
+    }
+  }, [configurationViewModel, crawlingStatus, isStatusChecking, showAnimation]);
   
   // Use useState here to create a proper state setter function that matches the expected type
   const [localCompareExpanded, setLocalCompareExpanded] = useState(compareExpandedInApp);
@@ -131,17 +149,88 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
       </div>
 
       {/* 작업 시각화 */}
-      <div className="mt-6 transition-all duration-500 ease-in-out" 
-           style={{ 
-             opacity: progress.currentStage === 2 ? 0 : 1,
-             maxHeight: progress.currentStage === 2 ? '0' : '250px', // 높이 증가
-             overflow: 'hidden'
-           }}>
-        <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">제품 목록 페이지 읽기</h3>
-        <PageProgressDisplay />
-        <div className="relative">
-          <ConcurrentTasksVisualizer />
-        </div>
+      <div className="mt-6 transition-all duration-500 ease-in-out">
+        {/* 1단계: 제품 목록 페이지 수집 시각화 */}
+        {(progress.currentStage === 1 || (progress.currentStage === 0 && crawlingStatus === 'running')) && (
+          <div className="space-y-4">
+            <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              1단계: 제품 목록 페이지 읽기
+            </h3>
+            <PageProgressDisplay />
+            <div className="relative">
+              <ConcurrentTasksVisualizer />
+            </div>
+          </div>
+        )}
+        
+        {/* 2단계: 제품 상세정보 수집 시각화 */}
+        {progress.currentStage === 2 && (
+          <div className="space-y-4">
+            <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              2단계: 제품 상세정보 수집
+            </h3>
+            
+            {/* 2단계 진행률 표시 */}
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  상세정보 수집 진행률
+                </span>
+                <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                  {progress.processedItems || 0} / {progress.totalItems || 0} 
+                  ({Math.round(progress.percentage || 0)}%)
+                </span>
+              </div>
+              
+              {/* 진행률 바 */}
+              <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5">
+                <div 
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(progress.percentage || 0, 100)}%` }}
+                ></div>
+              </div>
+              
+              {/* 수집 상태 정보 */}
+              <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
+                <div className="text-center">
+                  <div className="font-semibold text-green-600 dark:text-green-400">
+                    {progress.newItems || 0}
+                  </div>
+                  <div className="text-gray-500 dark:text-gray-400">신규</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold text-blue-600 dark:text-blue-400">
+                    {progress.updatedItems || 0}
+                  </div>
+                  <div className="text-gray-500 dark:text-gray-400">업데이트</div>
+                </div>
+              </div>
+              
+              {/* 현재 진행 메시지 */}
+              {progress.message && (
+                <div className="mt-3 text-xs text-gray-600 dark:text-gray-400 text-center">
+                  {progress.message}
+                </div>
+              )}
+            </div>
+            
+            {/* 동시 작업 시각화 - 2단계에서도 표시 */}
+            <div className="relative">
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                동시 진행 작업
+              </div>
+              <ConcurrentTasksVisualizer />
+            </div>
+          </div>
+        )}
+        
+        {/* 크롤링이 시작되지 않았거나 완료된 경우 */}
+        {(crawlingStatus === 'idle' || crawlingStatus === 'completed') && progress.currentStage !== 1 && progress.currentStage !== 2 && (
+          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+            <div className="text-lg mb-2">🚀</div>
+            <div className="text-sm">크롤링을 시작하면 진행 상황이 여기에 표시됩니다</div>
+          </div>
+        )}
       </div>
     </>
   );

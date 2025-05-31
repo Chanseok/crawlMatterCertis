@@ -37,7 +37,8 @@ async function testHybridCrawlerStrategy() {
     // 필수 필드 추가
     pageRangeLimit: 500,
     productListRetryCount: 5,
-    productDetailRetryCount: 5
+    productDetailRetryCount: 5,
+    autoStatusCheck: true
   };
   
   // 테스트용 제품 샘플

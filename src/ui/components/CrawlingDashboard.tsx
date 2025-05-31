@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
-import { observer } from 'mobx-react-lite';
+import { observer, useLocalObservable } from 'mobx-react-lite';
 
 // Clean Architecture - Display Components (Single Responsibility)
 import { CrawlingStageDisplay } from './displays/CrawlingStageDisplay';
@@ -70,7 +70,8 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   const { concurrentTasks } = useTaskStore();
 
   // === SECONDARY: ViewModel for Complex UI Logic (Helper) ===
-  const viewModel = useMemo(() => new CrawlingDashboardViewModel(), []);
+  // const viewModel = useMemo(() => new CrawlingDashboardViewModel(), []);
+  const viewModel = useLocalObservable(() => new CrawlingDashboardViewModel());
   
   // === LOCAL UI STATE (Component-specific only) ===
   const [isStatusChecking, setIsStatusChecking] = useState(false);

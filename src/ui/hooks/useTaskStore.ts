@@ -43,6 +43,8 @@ export function useTaskStore() {
       taskStore.updateMultipleTaskStatuses(taskStatuses),
     updateConcurrentTasks: (tasks: any[]) => 
       taskStore.updateConcurrentTasks(tasks),
+    updateConcurrentTasksFromTaskStatus: (taskStatusArray: any[]) => 
+      taskStore.updateConcurrentTasksFromTaskStatus(taskStatusArray),
     completeTask: (taskId: string | number, data?: any) => 
       taskStore.completeTask(taskId, data),
     errorTask: (taskId: string | number, errorData?: any) => 

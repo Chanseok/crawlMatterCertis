@@ -31,6 +31,15 @@ export const ConcurrentTasksVisualizer = observer(() => {
   // Safety check to ensure tasks is an array
   const tasksArray = Array.isArray(concurrentTasks) ? concurrentTasks : [];
 
+  // Debug logging for concurrent tasks
+  useEffect(() => {
+    console.log('[ConcurrentTasksVisualizer] concurrentTasks updated:', {
+      concurrentTasksLength: concurrentTasks.length,
+      activeTasksCount: Object.keys(activeTasks).length,
+      tasksArray: tasksArray
+    });
+  }, [concurrentTasks, activeTasks]);
+
   // 작업 상태 변경 감지를 위한 이전 상태 추적
   const prevTasksRef = useRef<ConcurrentCrawlingTask[]>([]);
 

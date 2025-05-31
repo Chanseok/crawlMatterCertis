@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useConfigurationViewModel, useCrawlingWorkflowViewModel } from '../providers/ViewModelProvider';
 import { BatchProcessingSettings } from './BatchProcessingSettings';
+import { ExpandableSection } from './ExpandableSection';
 import type { CrawlerConfig } from '../../../types';
 import { WorkflowStage } from '../viewmodels/CrawlingWorkflowViewModel';
 
@@ -12,6 +13,7 @@ import { WorkflowStage } from '../viewmodels/CrawlingWorkflowViewModel';
 function CrawlingSettingsComponent() {
   const configurationViewModel = useConfigurationViewModel();
   const crawlingWorkflowViewModel = useCrawlingWorkflowViewModel();
+  const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
 
   // 컴포넌트 마운트 시 초기화
   useEffect(() => {
@@ -123,67 +125,101 @@ function CrawlingSettingsComponent() {
       )}
 
       {configurationViewModel.config && Object.keys(configurationViewModel.config).length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              페이지 범위 제한
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="1000"
-              value={configurationViewModel.getEffectiveValue('pageRangeLimit') || 0}
-              onChange={(e) => handleFieldChange('pageRangeLimit', Number(e.target.value))}
-              disabled={isDisabled}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              제품 목록 재시도 횟수
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="20"
-              value={configurationViewModel.getEffectiveValue('productListRetryCount') || 0}
-              onChange={(e) => handleFieldChange('productListRetryCount', Number(e.target.value))}
-              disabled={isDisabled}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              제품 상세 재시도 횟수
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="20"
-              value={configurationViewModel.getEffectiveValue('productDetailRetryCount') || 0}
-              onChange={(e) => handleFieldChange('productDetailRetryCount', Number(e.target.value))}
-              disabled={isDisabled}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-            />
-          </div>
-
-          <div>
-            <label className="flex items-center">
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                페이지 범위 제한
+              </label>
               <input
-                type="checkbox"
-                checked={configurationViewModel.getEffectiveValue('autoAddToLocalDB') || false}
-                onChange={(e) => handleFieldChange('autoAddToLocalDB', e.target.checked)}
+                type="number"
+                min="1"
+                max="1000"
+                value={configurationViewModel.getEffectiveValue('pageRangeLimit') || 0}
+                onChange={(e) => handleFieldChange('pageRangeLimit', Number(e.target.value))}
                 disabled={isDisabled}
-                className="mr-2"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
               />
-              <span className="text-sm font-medium text-gray-700">
-                자동으로 로컬 DB에 추가
-              </span>
-            </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                제품 목록 재시도 횟수
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={configurationViewModel.getEffectiveValue('productListRetryCount') || 0}
+                onChange={(e) => handleFieldChange('productListRetryCount', Number(e.target.value))}
+                disabled={isDisabled}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                제품 상세 재시도 횟수
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={configurationViewModel.getEffectiveValue('productDetailRetryCount') || 0}
+                onChange={(e) => handleFieldChange('productDetailRetryCount', Number(e.target.value))}
+                disabled={isDisabled}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={configurationViewModel.getEffectiveValue('autoAddToLocalDB') || false}
+                  onChange={(e) => handleFieldChange('autoAddToLocalDB', e.target.checked)}
+                  disabled={isDisabled}
+                  className="mr-2"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  자동으로 로컬 DB에 추가
+                </span>
+              </label>
+            </div>
           </div>
-        </div>
+
+          {/* 고급 설정 섹션 */}
+          <div className="mt-6">
+            <ExpandableSection
+              title="고급 설정"
+              isExpanded={isAdvancedExpanded}
+              onToggle={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
+              additionalClasses="border border-gray-200 rounded-lg"
+            >
+              <div className="p-4 bg-gray-50">
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={configurationViewModel.getEffectiveValue('autoStatusCheck') || false}
+                        onChange={(e) => handleFieldChange('autoStatusCheck', e.target.checked)}
+                        disabled={isDisabled}
+                        className="mr-2"
+                      />
+                      <span className="text-sm font-medium text-gray-700">
+                        자동 상태 체크
+                      </span>
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1 ml-6">
+                      상태 & 제어 탭 첫 진입 시 자동으로 상태를 체크합니다
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </ExpandableSection>
+          </div>
+        </>
       )}
 
       {/* 배치 처리 설정 (페이지 범위가 임계값을 초과할 때만 표시) */}

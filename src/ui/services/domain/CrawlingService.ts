@@ -317,7 +317,8 @@ export class CrawlingService extends BaseService {
       productListRetryCount: 9,
       productDetailRetryCount: 9,
       productsPerPage: 12,
-      autoAddToLocalDB: false
+      autoAddToLocalDB: false,
+      autoStatusCheck: true
     };
 
     return {

@@ -108,6 +108,7 @@ export class TaskStore {
       clearTaskHistory: action,
       clearAllTasks: action,
       updateConcurrentTasks: action,
+      updateConcurrentTasksFromTaskStatus: action,
       updateStatistics: action
     });
 
@@ -153,10 +154,18 @@ export class TaskStore {
   private initializeEventSubscriptions(): void {
     // Batch task status updates (for concurrent crawling) - this is the main event we get
     const unsubConcurrentTasks = this.platformApi.subscribeToEvent('crawlingTaskStatus', (taskStatus: any) => {
+      console.log('[TaskStore] Received crawlingTaskStatus event:', taskStatus);
+      
       if (Array.isArray(taskStatus)) {
+        console.log(`[TaskStore] Processing array of ${taskStatus.length} task statuses`);
         this.updateMultipleTaskStatuses(taskStatus);
+        // Also update concurrentTasks array for ConcurrentTasksVisualizer
+        this.updateConcurrentTasksFromTaskStatus(taskStatus);
       } else if (taskStatus && typeof taskStatus === 'object') {
+        console.log('[TaskStore] Processing single task status:', taskStatus);
         this.updateTaskStatus(taskStatus.taskId || taskStatus.pageNumber || taskStatus.id, taskStatus);
+        // Also update concurrentTasks array for single task update
+        this.updateConcurrentTasksFromTaskStatus([taskStatus]);
       }
     });
     this.unsubscribeFunctions.push(unsubConcurrentTasks);
@@ -540,6 +549,27 @@ export class TaskStore {
   updateConcurrentTasks(tasks: ConcurrentCrawlingTask[]): void {
     this.concurrentTasks = tasks;
     this.lastTaskUpdate = new Date();
+  }
+
+  /**
+   * Update concurrent tasks array from task status events
+   * This bridges the gap between activeTasks and concurrentTasks for visualization
+   */
+  @action
+  updateConcurrentTasksFromTaskStatus(taskStatusArray: any[]): void {
+    const concurrentTasks: ConcurrentCrawlingTask[] = taskStatusArray
+      .filter(taskData => taskData && (taskData.pageNumber || taskData.id || taskData.taskId))
+      .map(taskData => ({
+        pageNumber: taskData.pageNumber || taskData.id || taskData.taskId,
+        status: this.validateTaskStatus(taskData.status) as any,
+        error: taskData.error || taskData.errorDetails
+      }));
+
+    if (concurrentTasks.length > 0) {
+      this.concurrentTasks = concurrentTasks;
+      this.lastTaskUpdate = new Date();
+      console.log(`[TaskStore] Updated concurrentTasks with ${concurrentTasks.length} tasks from crawlingTaskStatus event`);
+    }
   }
 
   /**

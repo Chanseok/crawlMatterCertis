@@ -54,7 +54,12 @@ export class CrawlingStore {
     productListRetryCount: 9,
     productDetailRetryCount: 9,
     productsPerPage: 12,
-    autoAddToLocalDB: false
+    autoAddToLocalDB: false,
+    autoStatusCheck: true,    // 기본값: 자동 상태 체크 활성화
+    batchSize: 30,
+    batchDelayMs: 2000,
+    enableBatchProcessing: true,
+    batchRetryLimit: 3
   };
 
   // Status and summary
@@ -248,7 +253,12 @@ export class CrawlingStore {
         productListRetryCount: this.config.productListRetryCount,
         productDetailRetryCount: this.config.productDetailRetryCount,
         productsPerPage: this.config.productsPerPage,
-        autoAddToLocalDB: this.config.autoAddToLocalDB
+        autoAddToLocalDB: this.config.autoAddToLocalDB,
+        // Batch processing configuration
+        batchSize: this.config.batchSize,
+        batchDelayMs: this.config.batchDelayMs,
+        enableBatchProcessing: this.config.enableBatchProcessing,
+        batchRetryLimit: this.config.batchRetryLimit
       };
 
       const success = await this.ipcService.startCrawling(serializedConfig);
