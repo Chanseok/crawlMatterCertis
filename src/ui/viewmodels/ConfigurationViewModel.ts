@@ -10,7 +10,7 @@
  */
 
 import { BaseViewModel } from './core/BaseViewModel';
-import { makeObservable, observable, action, computed } from 'mobx';
+import { makeObservable, observable, action, computed, toJS, runInAction, observable as mobxObservable } from 'mobx';
 import { crawlingStore } from '../stores/domain/CrawlingStore';
 import { logStore } from '../stores/domain/LogStore';
 import { SessionConfigManager } from '../services/domain/SessionConfigManager';
@@ -45,8 +45,8 @@ export interface ValidationResult {
  */
 export class ConfigurationViewModel extends BaseViewModel {
   // === Observable State ===
-  @observable accessor config: CrawlerConfig = {} as CrawlerConfig;
-  @observable accessor originalConfig: CrawlerConfig = {} as CrawlerConfig;
+  @observable.ref accessor config: CrawlerConfig = {} as CrawlerConfig;
+  @observable.ref accessor originalConfig: CrawlerConfig = {} as CrawlerConfig;
   @observable accessor isLoading: boolean = false;
   @observable accessor isSaving: boolean = false;
   @observable accessor validationErrors: Record<string, string> = {};
@@ -80,19 +80,35 @@ export class ConfigurationViewModel extends BaseViewModel {
       updateMultipleConfig: action,
       resetConfiguration: action,
       resetToDefaults: action,
-      validateConfiguration: action,
+      updateValidationErrors: action,
       clearError: action,
       importConfiguration: action
     });
-    this.initialize();
+    // 비동기 초기화를 constructor 밖에서 실행하도록 변경
+    setTimeout(() => this.initialize(), 0);
   }
 
   // === Computed Properties ===
+  get hasChanges(): boolean {
+    // Simple property-by-property comparison to avoid MobX cycles
+    if (Object.keys(this.config).length !== Object.keys(this.originalConfig).length) {
+      return true;
+    }
+    
+    for (const key of Object.keys(this.config) as Array<keyof CrawlerConfig>) {
+      if (this.config[key] !== this.originalConfig[key]) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
   @computed get configurationState(): ConfigurationState {
     return {
       config: this.config,
       originalConfig: this.originalConfig,
-      hasChanges: JSON.stringify(this.config) !== JSON.stringify(this.originalConfig),
+      hasChanges: this.hasChanges,
       isLoading: this.isLoading,
       isSaving: this.isSaving,
       validationErrors: this.validationErrors,
@@ -101,28 +117,16 @@ export class ConfigurationViewModel extends BaseViewModel {
     };
   }
 
-  // Regular getter for hasChanges to avoid MobX cycle
-  get hasChanges(): boolean {
-    return JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
-  }
-
   @computed get isValid(): boolean {
     return Object.keys(this.validationErrors).length === 0;
   }
 
   @computed get canSave(): boolean {
-    const hasChanges = JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
-    return hasChanges && this.isValid && !this.isSaving;
+    return this.hasChanges && this.isValid && !this.isSaving;
   }
 
   @computed get canReset(): boolean {
-    const hasChanges = JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
-    return hasChanges && !this.isSaving;
-  }
-
-  // Regular getter for isDirty to avoid MobX cycle with hasChanges
-  get isDirty(): boolean {
-    return JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
+    return this.hasChanges && !this.isSaving;
   }
 
   // === Initialization ===
@@ -132,7 +136,9 @@ export class ConfigurationViewModel extends BaseViewModel {
       await this.loadConfiguration();
       this.logDebug('initialize', 'ConfigurationViewModel initialized successfully');
     } catch (error) {
-      this.error = `Initialization failed: ${error}`;
+      runInAction(() => {
+        this.error = `Initialization failed: ${error}`;
+      });
       this.logError('initialize', error);
     }
   }
@@ -181,12 +187,11 @@ export class ConfigurationViewModel extends BaseViewModel {
 
   // === Session Status for Debugging ===
   getSessionStatus() {
-    const hasChanges = JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
     return {
       isConfigLoaded: Object.keys(this.config).length > 0,
       isLocked: this.isConfigurationLocked,
-      isDirty: this.isDirty,
-      hasChanges: hasChanges,
+      isDirty: this.hasChanges,
+      hasChanges: this.hasChanges,
       lastSaved: this.lastSaved,
       isLoading: this.isLoading,
       isSaving: this.isSaving,
@@ -211,20 +216,27 @@ export class ConfigurationViewModel extends BaseViewModel {
       // CrawlingStore에서 현재 설정 로드
       const loadedConfig = await this.crawlingStore.loadConfig();
       
-      this.config = { ...loadedConfig };
-      this.originalConfig = { ...loadedConfig };
+      // 비동기 작업 후 observable 속성 수정은 runInAction으로 감싸기
+      runInAction(() => {
+        this.config = mobxObservable({ ...loadedConfig });
+        this.originalConfig = mobxObservable({ ...loadedConfig });
+      });
       
       // 유효성 검사
-      this.validateConfiguration();
+      this.updateValidationErrors();
       
       this.addLog('Configuration loaded successfully', 'success');
       
     } catch (error) {
-      this.error = `Failed to load configuration: ${error}`;
+      runInAction(() => {
+        this.error = `Failed to load configuration: ${error}`;
+      });
       this.logError('loadConfiguration', error);
       this.addLog('Failed to load configuration', 'error');
     } finally {
-      this.isLoading = false;
+      runInAction(() => {
+        this.isLoading = false;
+      });
     }
   }
 
@@ -243,39 +255,52 @@ export class ConfigurationViewModel extends BaseViewModel {
    */
   @action
   async saveConfiguration(): Promise<void> {
-    if (!this.canSave) {
+    // 저장 가능 여부 체크 (MobX 사이클 방지를 위해 직접 계산)
+    if (!this.hasChanges || this.isSaving) {
       throw new Error('Cannot save configuration in current state');
+    }
+
+    // 유효성 검사를 먼저 수행하고 결과 저장
+    const validation = this.validateConfiguration();
+    if (!validation.isValid) {
+      // 검증 실패 시 validationErrors 업데이트
+      runInAction(() => {
+        this.validationErrors = validation.errors;
+      });
+      throw new Error('Configuration validation failed');
     }
 
     this.isSaving = true;
     this.clearError();
 
     try {
-      // 유효성 검사
-      const validation = this.validateConfiguration();
-      if (!validation.isValid) {
-        throw new Error('Configuration validation failed');
-      }
-
       // CrawlingStore를 통해 설정 업데이트
       await this.crawlingStore.updateConfig(this.config);
       
       // SessionConfigManager를 통해 세션 설정 저장
       await this.sessionConfigManager.savePendingChanges();
       
-      // 원본 설정 업데이트
-      this.originalConfig = { ...this.config };
-      this.lastSaved = new Date();
+      // 비동기 작업 후 observable 속성 수정은 runInAction으로 감싸기
+      runInAction(() => {
+        this.originalConfig = { ...this.config };
+        this.lastSaved = new Date();
+        // 성공 시 validationErrors 초기화
+        this.validationErrors = {};
+      });
       
       this.addLog('Configuration saved successfully', 'success');
       
     } catch (error) {
-      this.error = `Failed to save configuration: ${error}`;
+      runInAction(() => {
+        this.error = `Failed to save configuration: ${error}`;
+      });
       this.logError('saveConfiguration', error);
       this.addLog('Failed to save configuration', 'error');
       throw error;
     } finally {
-      this.isSaving = false;
+      runInAction(() => {
+        this.isSaving = false;
+      });
     }
   }
 
@@ -284,8 +309,7 @@ export class ConfigurationViewModel extends BaseViewModel {
    */
   @action
   async autoSave(): Promise<void> {
-    const hasChanges = JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
-    if (hasChanges && this.isValid) {
+    if (this.hasChanges && this.isValid) {
       try {
         await this.saveConfiguration();
       } catch (error) {
@@ -305,14 +329,12 @@ export class ConfigurationViewModel extends BaseViewModel {
     key: K, 
     value: CrawlerConfig[K]
   ): void {
-    this.config = {
+    this.config = mobxObservable({
       ...this.config,
       [key]: value
-    };
-    
+    });
     // 해당 필드 유효성 검사
     this.validateField(key, value);
-    
     this.logDebug('updateConfig', `Updated ${key}`, { key, value });
   }
 
@@ -321,14 +343,11 @@ export class ConfigurationViewModel extends BaseViewModel {
    */
   @action
   updateMultipleConfig(updates: Partial<CrawlerConfig>): void {
-    this.config = {
+    this.config = mobxObservable({
       ...this.config,
       ...updates
-    };
-    
-    // 전체 유효성 검사
-    this.validateConfiguration();
-    
+    });
+    this.updateValidationErrors();
     this.logDebug('updateMultipleConfig', 'Updated multiple config values', updates);
   }
 
@@ -337,10 +356,9 @@ export class ConfigurationViewModel extends BaseViewModel {
    */
   @action
   resetConfiguration(): void {
-    this.config = { ...this.originalConfig };
+    this.config = mobxObservable({ ...this.originalConfig });
     this.validationErrors = {};
     this.clearError();
-    
     this.addLog('Configuration reset to last saved state', 'info');
   }
 
@@ -349,19 +367,17 @@ export class ConfigurationViewModel extends BaseViewModel {
    */
   @action
   resetToDefaults(): void {
-    this.config = this.getDefaultConfiguration();
-    this.validateConfiguration();
+    this.config = mobxObservable(this.getDefaultConfiguration());
+    this.updateValidationErrors();
     this.clearError();
-    
     this.addLog('Configuration reset to default values', 'info');
   }
 
   // === Validation ===
   
   /**
-   * 전체 설정 유효성 검사
+   * 전체 설정 유효성 검사 (상태 수정 없이 결과만 반환)
    */
-  @action
   validateConfiguration(): ValidationResult {
     const errors: Record<string, string> = {};
     const warnings: Record<string, string> = {};
@@ -416,13 +432,20 @@ export class ConfigurationViewModel extends BaseViewModel {
       }
     }
 
-    this.validationErrors = errors;
-
     return {
       isValid: Object.keys(errors).length === 0,
       errors,
       warnings
     };
+  }
+
+  /**
+   * 유효성 검사를 실행하고 결과를 validationErrors에 저장
+   */
+  @action
+  updateValidationErrors(): void {
+    const validation = this.validateConfiguration();
+    this.validationErrors = validation.errors;
   }
 
   /**
@@ -552,7 +575,7 @@ export class ConfigurationViewModel extends BaseViewModel {
     try {
       const importedConfig = JSON.parse(configJson) as CrawlerConfig;
       this.config = { ...this.getDefaultConfiguration(), ...importedConfig };
-      this.validateConfiguration();
+      this.updateValidationErrors();
       this.addLog('Configuration imported successfully', 'success');
     } catch (error) {
       this.error = `Failed to import configuration: ${error}`;
@@ -566,5 +589,9 @@ export class ConfigurationViewModel extends BaseViewModel {
    */
   cleanup(): void {
     this.logDebug('cleanup', 'ConfigurationViewModel cleanup completed');
+  }
+
+  get isDirty(): boolean {
+    return this.hasChanges;
   }
 }
