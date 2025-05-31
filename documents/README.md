@@ -9,6 +9,10 @@
 - `overview.md` - 전체 아키텍처 개요
 - `electron-react.md` - Electron-React 통합 구조
 - `domain-hooks.md` - Domain Hooks 아키텍처
+- `clean-architecture-implementation.md` - Clean Architecture 구현 가이드
+- `viewmodel-pattern-implementation.md` - ViewModel 패턴 구현 문서
+- `final-architecture-completion-report.md` - 🎯 **최종 아키텍처 완성도 보고서**
+- `future-scalability-maintenance-guidelines.md` - 🚀 **향후 확장성 및 유지보수 가이드라인**
 
 ### 🛠️ Development (`development/`)
 개발 관련 문서 및 가이드
@@ -40,6 +44,8 @@
 - `improving.md` - 개선 사항
 - `productlist-refactoring.md` - ProductList 리팩토링
 - `phase2-documentation.md` - 2단계 리팩토링 문서
+- `phase3-mobx-migration-complete.md` - MobX 마이그레이션 완료
+- `project-structure-improvement-complete.md` - 프로젝트 구조 개선 완료
 - `typesafety-improvements.md` - 타입 안전성 개선
 - `progress-documentation-ko.md` - 리팩토링 진행 문서 (한국어)
 
