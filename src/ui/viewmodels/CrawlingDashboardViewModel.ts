@@ -6,7 +6,7 @@
  * and computed properties for dashboard display logic.
  */
 
-import { makeObservable, observable, computed, action } from 'mobx';
+import { makeObservable, observable, action } from 'mobx';
 import { crawlingStore } from '../stores/domain/CrawlingStore';
 import { taskStore } from '../stores/domain/TaskStore';
 import type { CrawlingProgress, CrawlingStatus, CrawlerConfig } from '../../../types';
@@ -50,7 +50,13 @@ export class CrawlingDashboardViewModel {
   private animationRef: number | null = null;
 
   constructor() {
-    makeObservable(this);
+    makeObservable(this, {
+      // Actions only - remove all computed properties to avoid cycles
+      setAnimatedValues: action,
+      setAnimatedDigits: action,
+      setShowCompletion: action,
+      setIsSuccess: action
+    });
   }
 
   // Domain Store delegates
@@ -86,14 +92,18 @@ export class CrawlingDashboardViewModel {
     return taskStore.concurrentTasks;
   }
 
-  // Computed properties for UI logic
-  @computed get targetPageCount(): number {
+  // Regular method for UI logic (not computed to avoid cycles)
+  get targetPageCount(): number {
     // Complex page count calculation logic
     const statusActualTarget = this.statusSummary?.actualTargetPageCountForStage1;
     const progressTotalPages = this.progress.totalPages;
-    const rangeBased = this.crawlingRange ? 
-      (this.crawlingRange.startPage - this.crawlingRange.endPage + 1) : 
+    
+    // Inline crawlingRange calculation to avoid circular dependency
+    const crawlingRange = this.statusSummary?.crawlingRange;
+    const rangeBased = crawlingRange ? 
+      (crawlingRange.startPage - crawlingRange.endPage + 1) : 
       null;
+    
     const configLimit = this.config.pageRangeLimit;
     const siteTotalPages = this.statusSummary?.siteTotalPages;
 
@@ -105,11 +115,7 @@ export class CrawlingDashboardViewModel {
            1;
   }
 
-  @computed get crawlingRange() {
-    return this.statusSummary?.crawlingRange;
-  }
-
-  @computed get calculatedPercentage(): number {
+  get calculatedPercentage(): number {
     if (this.status !== 'running' || this.progress.currentStage !== 1) return 0;
 
     let successCount = 0;
@@ -131,16 +137,20 @@ export class CrawlingDashboardViewModel {
       successCount = Math.max(successTasksCount, successCount);
     }
 
+    // Calculate target page count directly to avoid cycle with this.targetPageCount
     const actualTargetPageCount = 
       (this.progress.currentStage === 1 && this.statusSummary?.actualTargetPageCountForStage1) || 
       (this.statusSummary?.crawlingRange ? 
         (this.statusSummary.crawlingRange.startPage - this.statusSummary.crawlingRange.endPage + 1) : 
-        this.targetPageCount);
+        this.progress.totalPages || 
+        this.config.pageRangeLimit || 
+        this.statusSummary?.siteTotalPages || 
+        1);
 
     return actualTargetPageCount > 0 ? (successCount / actualTargetPageCount) * 100 : 0;
   }
 
-  @computed get stageInfo(): { text: string; color: string } {
+  get stageInfo(): { text: string; color: string } {
     const currentStep = this.progress.currentStep || '';
     
     // 1.5단계 검증 진행 상태 처리
@@ -178,7 +188,7 @@ export class CrawlingDashboardViewModel {
     };
   }
 
-  @computed get collectionStatusText(): string {
+  get collectionStatusText(): string {
     const isBeforeStatusCheck = !this.statusSummary || Object.keys(this.statusSummary).length === 0;
     const isAfterStatusCheck = this.statusSummary && this.status === 'idle';
 
@@ -195,7 +205,7 @@ export class CrawlingDashboardViewModel {
     }
   }
 
-  @computed get retryStatusText(): string {
+  get retryStatusText(): string {
     const isBeforeStatusCheck = !this.statusSummary || Object.keys(this.statusSummary).length === 0;
     const isAfterStatusCheck = this.statusSummary && this.status === 'idle';
 

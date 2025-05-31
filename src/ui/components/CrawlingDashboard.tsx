@@ -93,9 +93,9 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   const prevProgress = useRef(progress);
 
   // === COMPUTED VALUES (Clean Code Pattern) ===
-  const targetPageCount = useMemo(() => viewModel.targetPageCount, [viewModel]);
-
-  const calculatedPercentage = useMemo(() => viewModel.calculatedPercentage, [viewModel]);
+  // Direct access to avoid MobX cycles - computed properties are already memoized by MobX
+  const targetPageCount = viewModel.targetPageCount;
+  const calculatedPercentage = viewModel.calculatedPercentage;
 
   const isBeforeStatusCheck = useMemo(() => 
     status === 'idle' && !statusSummary?.dbLastUpdated, 

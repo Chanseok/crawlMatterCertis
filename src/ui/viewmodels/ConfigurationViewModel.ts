@@ -61,7 +61,29 @@ export class ConfigurationViewModel extends BaseViewModel {
 
   constructor() {
     super();
-    makeObservable(this);
+    makeObservable(this, {
+      configurationState: computed,
+      isValid: computed,
+      canSave: computed,
+      canReset: computed,
+      initialize: action,
+      setConfigurationLocked: action,
+      updateConfigurationField: action,
+      discardChanges: action,
+      clearErrorState: action,
+      saveConfig: action,
+      loadConfiguration: action,
+      refreshConfiguration: action,
+      saveConfiguration: action,
+      autoSave: action,
+      updateConfig: action,
+      updateMultipleConfig: action,
+      resetConfiguration: action,
+      resetToDefaults: action,
+      validateConfiguration: action,
+      clearError: action,
+      importConfiguration: action
+    });
     this.initialize();
   }
 
@@ -70,7 +92,7 @@ export class ConfigurationViewModel extends BaseViewModel {
     return {
       config: this.config,
       originalConfig: this.originalConfig,
-      hasChanges: this.hasChanges,
+      hasChanges: JSON.stringify(this.config) !== JSON.stringify(this.originalConfig),
       isLoading: this.isLoading,
       isSaving: this.isSaving,
       validationErrors: this.validationErrors,
@@ -79,7 +101,8 @@ export class ConfigurationViewModel extends BaseViewModel {
     };
   }
 
-  @computed get hasChanges(): boolean {
+  // Regular getter for hasChanges to avoid MobX cycle
+  get hasChanges(): boolean {
     return JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
   }
 
@@ -88,15 +111,18 @@ export class ConfigurationViewModel extends BaseViewModel {
   }
 
   @computed get canSave(): boolean {
-    return this.hasChanges && this.isValid && !this.isSaving;
+    const hasChanges = JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
+    return hasChanges && this.isValid && !this.isSaving;
   }
 
   @computed get canReset(): boolean {
-    return this.hasChanges && !this.isSaving;
+    const hasChanges = JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
+    return hasChanges && !this.isSaving;
   }
 
-  @computed get isDirty(): boolean {
-    return this.hasChanges;
+  // Regular getter for isDirty to avoid MobX cycle with hasChanges
+  get isDirty(): boolean {
+    return JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
   }
 
   // === Initialization ===
@@ -155,11 +181,12 @@ export class ConfigurationViewModel extends BaseViewModel {
 
   // === Session Status for Debugging ===
   getSessionStatus() {
+    const hasChanges = JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
     return {
       isConfigLoaded: Object.keys(this.config).length > 0,
       isLocked: this.isConfigurationLocked,
       isDirty: this.isDirty,
-      hasChanges: this.hasChanges,
+      hasChanges: hasChanges,
       lastSaved: this.lastSaved,
       isLoading: this.isLoading,
       isSaving: this.isSaving,
@@ -257,7 +284,8 @@ export class ConfigurationViewModel extends BaseViewModel {
    */
   @action
   async autoSave(): Promise<void> {
-    if (this.hasChanges && this.isValid) {
+    const hasChanges = JSON.stringify(this.config) !== JSON.stringify(this.originalConfig);
+    if (hasChanges && this.isValid) {
       try {
         await this.saveConfiguration();
       } catch (error) {
