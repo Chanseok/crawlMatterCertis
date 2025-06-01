@@ -167,13 +167,14 @@ export class CrawlerEngine {
       // 결과를 저장할 변수 초기화
       let allCollectedProducts: Product[] = [];
       let batchNumber = 0;
+      let totalBatches = 1; // 기본값: 1 (비배치 처리의 경우)
       
       // 배치 처리가 활성화되고 크롤링할 페이지가 배치 크기보다 큰 경우 배치 처리 실행
       if (enableBatchProcessing && totalPagesToCrawl > batchSize) {
         console.log(`[CrawlerEngine] Using batch processing with ${batchSize} pages per batch`);
         
         // 배치 수 계산
-        const totalBatches = Math.ceil(totalPagesToCrawl / batchSize);
+        totalBatches = Math.ceil(totalPagesToCrawl / batchSize);
         let currentPage = startPage;
         
         // 각 배치 처리
@@ -192,6 +193,9 @@ export class CrawlerEngine {
             totalBatches: totalBatches,
             batchRetryCount: 0,
             batchRetryLimit: batchRetryLimit,
+            status: 'running',
+            currentStage: 1,
+            currentStep: '1단계: 제품 목록 수집',
             message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치 - 1단계: 제품 목록 수집`
           });
           
@@ -299,6 +303,9 @@ export class CrawlerEngine {
               totalBatches: totalBatches,
               batchRetryCount: 0,
               batchRetryLimit: batchRetryLimit,
+              status: 'running',
+              currentStage: 3,
+              currentStep: '3단계: 제품 상세 정보 수집',
               message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치 - 2단계: 제품 상세 정보 수집`
             });
             
@@ -308,14 +315,16 @@ export class CrawlerEngine {
             const detailStartTime = Date.now();
             
             // 2단계 진행 상황 초기화
-            updateProductDetailProgress(0, batchProducts.length, detailStartTime);
+            updateProductDetailProgress(0, batchProducts.length, detailStartTime, false, 0, 0, batchNumber, totalBatches);
             
             // 2단계 상세 정보 수집기 생성
             const batchDetailCollector = new ProductDetailCollector(
               this.state,
               this.abortController!,
               sessionConfig,
-              this.browserManager!
+              this.browserManager!,
+              batchNumber,
+              totalBatches
             );
             
             try {
@@ -327,13 +336,20 @@ export class CrawlerEngine {
                 batchProducts.length, 
                 batchProducts.length, 
                 detailStartTime, 
-                true
+                true,
+                0,
+                0,
+                batchNumber,
+                totalBatches
               );
               
               // DB 저장 단계
               crawlerEvents.emit('crawlingProgress', {
                 currentBatch: batchNumber,
                 totalBatches: totalBatches,
+                status: 'running',
+                currentStage: 3,
+                currentStep: '3단계: DB 저장',
                 message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치 - DB 저장`
               });
               
@@ -432,6 +448,9 @@ export class CrawlerEngine {
             crawlerEvents.emit('crawlingProgress', {
               currentBatch: batchNumber,
               totalBatches: totalBatches,
+              status: 'running',
+              currentStage: 1,
+              currentStep: '1단계: 배치 간 대기',
               message: `배치 ${batchNumber} 완료. 다음 배치 준비 중...`
             });
             
@@ -451,7 +470,12 @@ export class CrawlerEngine {
       // 배치 처리 완료 알림
       crawlerEvents.emit('crawlingProgress', {
         message: '1단계: 제품 목록 수집이 완료되었습니다. 2단계를 시작합니다.',
-        status: 'completed_stage_1'
+        status: 'completed_stage_1',
+        currentStage: 1,
+        currentStep: '1단계 완료',
+        // 배치 정보 유지 (배치 처리된 경우)
+        currentBatch: enableBatchProcessing && totalPagesToCrawl > batchSize ? totalBatches : undefined,
+        totalBatches: enableBatchProcessing && totalPagesToCrawl > batchSize ? totalBatches : undefined
       });
       
       console.log('[CrawlerEngine] Stage 1 (Product List Collection) completed successfully. Proceeding to Stage 2.');
@@ -593,22 +617,22 @@ export class CrawlerEngine {
         this.state.setDetailStageProductCount(productsForDetailStage.length);
         console.log(`[CrawlerEngine] Called this.state.setDetailStageProductCount(${productsForDetailStage.length}) for Stage 2.`);
 
-        // ✅ Explicitly set stage to productDetail to ensure UI recognizes Stage 2
-        this.state.setStage('productDetail:init', '2단계: 제품 상세 정보 수집 시작');
-        console.log(`[CrawlerEngine] Set stage to productDetail:init for Stage 2`);
+        // ✅ Explicitly set stage to productDetail to ensure UI recognizes Stage 3
+        this.state.setStage('productDetail:init', '3단계: 제품 상세 정보 수집 시작');
+        console.log(`[CrawlerEngine] Set stage to productDetail:init for Stage 3`);
 
-        // Update the main progress state for the beginning of Stage 2.
+        // Update the main progress state for the beginning of Stage 3.
         // This resets processed counts and sets the overall total for this stage.
         this.state.updateProgress({
-            currentStage: CRAWLING_STAGE.PRODUCT_DETAIL, // Mark current stage as Product Detail
-            totalItems: productsForDetailStage.length,   // Total items to process in Stage 2
-            processedItems: 0,                           // Reset processed items for Stage 2
+            currentStage: CRAWLING_STAGE.PRODUCT_DETAIL, // Mark current stage as Product Detail (Stage 3)
+            totalItems: productsForDetailStage.length,   // Total items to process in Stage 3
+            processedItems: 0,                           // Reset processed items for Stage 3
             newItems: 0,                                 // Reset new items count
             updatedItems: 0,                             // Reset updated items count
             percentage: 0,                               // Reset percentage completion
-            currentStep: '2단계: 제품 상세 정보 수집 초기화 중...',   // Initial status message for Stage 2
-            currentPage: 0,                              // Reset current page (if applicable to Stage 2)
-            totalPages: 0,                               // Reset total pages (if applicable to Stage 2)
+            currentStep: '3단계: 제품 상세 정보 수집 초기화 중...',   // Initial status message for Stage 3
+            currentPage: 0,                              // Reset current page (if applicable to Stage 3)
+            totalPages: 0,                               // Reset total pages (if applicable to Stage 3)
             remainingTime: 0, // Stage 2 시작 시 예상 남은 시간 0으로 명확히
         });
         console.log(`[CrawlerEngine] Called this.state.updateProgress for start of Stage 2: totalItems=${productsForDetailStage.length}, processedItems=0.`);
@@ -616,7 +640,7 @@ export class CrawlerEngine {
 
         // 2/2단계: 제품 상세 정보 수집 시작 알림
         const detailStartTime = Date.now();
-        updateProductDetailProgress(0, productsForDetailStage.length, detailStartTime);
+        updateProductDetailProgress(0, productsForDetailStage.length, detailStartTime, false, 0, 0, undefined, undefined);
         
         logger.info(`Found ${productsForDetailStage.length} new products to process. Starting detail collection...`);
         
@@ -631,7 +655,11 @@ export class CrawlerEngine {
           productsForDetailStage.length, 
           productsForDetailStage.length, 
           detailStartTime, 
-          true
+          true,
+          0,
+          0,
+          undefined,
+          undefined
         );
 
         // 중복 제거 및 정렬

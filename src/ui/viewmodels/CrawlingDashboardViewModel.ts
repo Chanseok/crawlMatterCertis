@@ -55,7 +55,7 @@ export class CrawlingDashboardViewModel {
 
   constructor() {
     makeObservable(this, {
-      // Actions only - remove all computed properties to avoid cycles
+      // Only actions and observable properties - no computed to avoid cycles
       setAnimatedValues: action,
       setAnimatedDigits: action,
       setShowCompletion: action,
@@ -63,7 +63,41 @@ export class CrawlingDashboardViewModel {
     });
   }
 
-  // Domain Store delegates
+  // Primary reactive properties that UI components should use (NOT computed to avoid cycles)
+  get currentStage(): 1 | 2 | 3 | 0 {
+    const stageValue = crawlingStore.progress.currentStage || 0;
+    const currentStep = crawlingStore.progress.currentStep || '';
+    
+    // Convert string stage to number if needed
+    const numericStage = typeof stageValue === 'number' ? stageValue : 0;
+    
+    // Stage 2 (validation) detection - return as 2 for proper UI handling
+    if (numericStage === 2 || currentStep.includes('2/4단계') || 
+        currentStep.includes('2단계') || currentStep.includes('검증') || 
+        currentStep.includes('DB 중복 검증')) {
+      return 2;
+    }
+    
+    // Stage 3 (detail) detection
+    if (numericStage === 3 || currentStep.includes('3단계') || 
+        currentStep.includes('상세') || currentStep.includes('제품 상세')) {
+      return 3;
+    }
+    
+    // Stage 1 (list) detection
+    if (numericStage === 1 || currentStep.includes('1단계') || 
+        currentStep.includes('목록')) {
+      return 1;
+    }
+    
+    return 0; // Default/idle state
+  }
+
+  get currentStep(): string {
+    return crawlingStore.progress.currentStep || '대기 중...';
+  }
+
+  // Domain Store delegates - simple getters without computed decorators
   get status(): CrawlingStatus {
     return crawlingStore.status;
   }
@@ -96,20 +130,25 @@ export class CrawlingDashboardViewModel {
     return taskStore.concurrentTasks;
   }
 
-  // Regular method for UI logic (not computed to avoid cycles)
+  // Regular method for UI logic
   get targetPageCount(): number {
+    // Directly access store values to avoid circular dependencies
+    const statusSummary = crawlingStore.statusSummary;
+    const progress = crawlingStore.progress;
+    const config = crawlingStore.config;
+    
     // Complex page count calculation logic
-    const statusActualTarget = this.statusSummary?.actualTargetPageCountForStage1;
-    const progressTotalPages = this.progress.totalPages;
+    const statusActualTarget = statusSummary?.actualTargetPageCountForStage1;
+    const progressTotalPages = progress.totalPages;
     
     // Inline crawlingRange calculation to avoid circular dependency
-    const crawlingRange = this.statusSummary?.crawlingRange;
+    const crawlingRange = statusSummary?.crawlingRange;
     const rangeBased = crawlingRange ? 
       (crawlingRange.startPage - crawlingRange.endPage + 1) : 
       null;
     
-    const configLimit = this.config.pageRangeLimit;
-    const siteTotalPages = this.statusSummary?.siteTotalPages;
+    const configLimit = config.pageRangeLimit;
+    const siteTotalPages = statusSummary?.siteTotalPages;
 
     return statusActualTarget || 
            progressTotalPages || 
@@ -120,74 +159,88 @@ export class CrawlingDashboardViewModel {
   }
 
   get calculatedPercentage(): number {
-    if (this.status !== 'running' || this.progress.currentStage !== 1) return 0;
+    // Directly access store values to avoid circular dependencies
+    const status = crawlingStore.status;
+    const progress = crawlingStore.progress;
+    const currentStage = progress.currentStage || 0;
+    
+    if (status !== 'running' || currentStage !== 1) return 0;
 
     let successCount = 0;
 
     // 1. stage1PageStatuses에서 성공 상태인 페이지 수 확인
-    if (this.progress.stage1PageStatuses && Array.isArray(this.progress.stage1PageStatuses)) {
-      const successStatusPages = this.progress.stage1PageStatuses.filter(p => p.status === 'success').length;
+    if (progress.stage1PageStatuses && Array.isArray(progress.stage1PageStatuses)) {
+      const successStatusPages = progress.stage1PageStatuses.filter(p => p.status === 'success').length;
       successCount = Math.max(successCount, successStatusPages);
     }
 
     // 2. currentPage 값 확인
-    if (this.progress.currentPage !== undefined && this.progress.currentPage > 0) {
-      successCount = Math.max(successCount, this.progress.currentPage);
+    if (progress.currentPage !== undefined && progress.currentPage > 0) {
+      successCount = Math.max(successCount, progress.currentPage);
     }
 
     // 3. concurrentTasks에서 성공 상태인 페이지 확인
-    if (this.concurrentTasks && this.concurrentTasks.length > 0) {
-      const successTasksCount = this.concurrentTasks.filter(task => task.status === 'success').length;
+    const concurrentTasks = taskStore.concurrentTasks;
+    if (concurrentTasks && concurrentTasks.length > 0) {
+      const successTasksCount = concurrentTasks.filter(task => task.status === 'success').length;
       successCount = Math.max(successTasksCount, successCount);
     }
 
     // Calculate target page count directly to avoid cycle with this.targetPageCount
+    const statusSummary = crawlingStore.statusSummary;
+    const config = crawlingStore.config;
     const actualTargetPageCount = 
-      (this.progress.currentStage === 1 && this.statusSummary?.actualTargetPageCountForStage1) || 
-      (this.statusSummary?.crawlingRange ? 
-        (this.statusSummary.crawlingRange.startPage - this.statusSummary.crawlingRange.endPage + 1) : 
-        this.progress.totalPages || 
-        this.config.pageRangeLimit || 
-        this.statusSummary?.siteTotalPages || 
+      (currentStage === 1 && statusSummary?.actualTargetPageCountForStage1) || 
+      (statusSummary?.crawlingRange ? 
+        (statusSummary.crawlingRange.startPage - statusSummary.crawlingRange.endPage + 1) : 
+        progress.totalPages || 
+        config.pageRangeLimit || 
+        statusSummary?.siteTotalPages || 
         1);
 
     return actualTargetPageCount > 0 ? (successCount / actualTargetPageCount) * 100 : 0;
   }
 
   get stageInfo(): { text: string; color: string } {
-    const currentStep = this.progress.currentStep || '';
+    // Directly access store values to avoid circular dependencies
+    const currentStage = crawlingStore.progress.currentStage || 0;
+    const currentStep = crawlingStore.progress.currentStep || '';
     
-    console.log('[ViewModel] stageInfo - currentStage:', this.progress.currentStage, 'currentStep:', currentStep);
+    console.log('[ViewModel] stageInfo - currentStage:', currentStage, 'currentStep:', currentStep);
     
-    // 1. 명시적인 2단계 체크 - currentStage 우선
-    if (this.progress.currentStage === 2) {
-      console.log('[ViewModel] Detected Stage 2 via currentStage');
+    // 1. Stage 2 (validation) 우선 체크
+    if (currentStage === 2 || currentStep.includes('2/4단계') || 
+        currentStep.includes('2단계') || currentStep.includes('로컬db') || 
+        currentStep.includes('검증') || currentStep.includes('db 중복') ||
+        currentStep.includes('DB 중복 검증')) {
+      console.log('[ViewModel] Detected Stage 2 (validation) via currentStage/currentStep');
       return {
-        text: '2단계: 상세 수집',
-        color: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300'
-      };
-    }
-    
-    // 2. currentStep을 통한 2단계 감지
-    if (currentStep.includes('2단계') || currentStep.includes('상세') || currentStep.includes('제품 상세')) {
-      console.log('[ViewModel] Detected Stage 2 via currentStep');
-      return {
-        text: '2단계: 상세 수집',
-        color: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300'
-      };
-    }
-    
-    // 3. 1.5단계 검증 진행 상태 처리
-    if (currentStep.includes('1.5/3단계') || currentStep.includes('로컬db') || 
-        currentStep.includes('검증') || currentStep.includes('db 중복')) {
-      return {
-        text: '1.5단계: 제품 검증',
+        text: '2단계: 제품 검증',
         color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
       };
-    } 
+    }
     
-    // 4. 1단계 처리
-    else if (this.progress.currentStage === 1 || currentStep.includes('1단계') || currentStep.includes('목록')) {
+    // 2. Stage 3 체크 - currentStage 우선
+    if (currentStage === 3) {
+      console.log('[ViewModel] Detected Stage 3 via currentStage');
+      return {
+        text: '3단계: 상세 수집',
+        color: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300'
+      };
+    }
+    
+    // 3. currentStep을 통한 3단계 감지
+    if (currentStep.includes('3단계') || currentStep.includes('상세') || currentStep.includes('제품 상세')) {
+      console.log('[ViewModel] Detected Stage 3 via currentStep');
+      return {
+        text: '3단계: 상세 수집',
+        color: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300'
+      };
+    }
+    
+    // 4. Stage 1 처리
+    if (currentStage === 1 || currentStep.includes('1단계') || currentStep.includes('목록')) {
+      console.log('[ViewModel] Detected Stage 1 via currentStage/currentStep');
       return {
         text: '1단계: 목록 수집',
         color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300'
@@ -195,7 +248,7 @@ export class CrawlingDashboardViewModel {
     } 
     
     // 5. 완료 상태
-    else if (this.status === 'completed' && !this.progress.currentStage) {
+    if (crawlingStore.status === 'completed' && !currentStage) {
       return {
         text: '완료',
         color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
@@ -203,7 +256,7 @@ export class CrawlingDashboardViewModel {
     } 
     
     // 6. 오류 상태
-    else if (this.status === 'error') {
+    if (crawlingStore.status === 'error') {
       return {
         text: '오류 발생',
         color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
@@ -217,12 +270,18 @@ export class CrawlingDashboardViewModel {
   }
 
   get collectionStatusText(): string {
-    const isBeforeStatusCheck = !this.statusSummary || Object.keys(this.statusSummary).length === 0;
-    const isAfterStatusCheck = this.statusSummary && this.status === 'idle';
+    // Directly access store values to avoid circular dependencies
+    const statusSummary = crawlingStore.statusSummary;
+    const status = crawlingStore.status;
+    const progress = crawlingStore.progress;
+    const currentStage = progress.currentStage || 0;
+    
+    const isBeforeStatusCheck = !statusSummary || Object.keys(statusSummary).length === 0;
+    const isAfterStatusCheck = statusSummary && status === 'idle';
 
-    if (this.status === 'running' && this.progress.currentStage === 1) {
+    if (status === 'running' && currentStage === 1) {
       return '목록 수집 중';
-    } else if (this.status === 'running' && this.progress.currentStage === 2) {
+    } else if (status === 'running' && currentStage === 2) {
       return '상세 정보 수집 중';
     } else if (isBeforeStatusCheck) {
       return '목록 수집 상태';
@@ -234,19 +293,25 @@ export class CrawlingDashboardViewModel {
   }
 
   get retryStatusText(): string {
-    const isBeforeStatusCheck = !this.statusSummary || Object.keys(this.statusSummary).length === 0;
-    const isAfterStatusCheck = this.statusSummary && this.status === 'idle';
+    // Directly access store values to avoid circular dependencies
+    const statusSummary = crawlingStore.statusSummary;
+    const status = crawlingStore.status;
+    const progress = crawlingStore.progress;
+    const config = crawlingStore.config;
+    const currentStage = progress.currentStage || 0;
+    
+    const isBeforeStatusCheck = !statusSummary || Object.keys(statusSummary).length === 0;
+    const isAfterStatusCheck = statusSummary && status === 'idle';
 
     if (isBeforeStatusCheck) {
       return '재시도 카운트';
     } else if (isAfterStatusCheck) {
-      return `목록 수집 재시도 설정: ${this.config.productListRetryCount || 0}, 상세 수집 재시도 설정: ${this.config.productDetailRetryCount || 0}`;
-    } else if (this.status === 'running') {
-      const currentStage = this.progress.currentStage;
+      return `목록 수집 재시도 설정: ${config.productListRetryCount || 0}, 상세 수집 재시도 설정: ${config.productDetailRetryCount || 0}`;
+    } else if (status === 'running') {
       const retryCount = Math.round(this.animatedValues.retryCount);
-      const maxRetries = this.progress.maxRetries !== undefined ? this.progress.maxRetries :
-        currentStage === 1 ? this.config.productListRetryCount :
-        currentStage === 2 ? this.config.productDetailRetryCount : 0;
+      const maxRetries = progress.maxRetries !== undefined ? progress.maxRetries :
+        currentStage === 1 ? config.productListRetryCount :
+        currentStage === 2 ? config.productDetailRetryCount : 0;
       
       return `재시도: ${retryCount}${maxRetries ? ` / ${maxRetries}` : '회'}`;
     }
@@ -256,17 +321,21 @@ export class CrawlingDashboardViewModel {
 
   // Status change detection
   isValueChanged(key: keyof CrawlingStatusSummary): boolean {
-    if (!this.statusSummary || !this.lastStatusSummary) return false;
+    // Directly access store values to avoid circular dependencies
+    const statusSummary = crawlingStore.statusSummary;
+    const lastStatusSummary = crawlingStore.lastStatusSummary;
+    
+    if (!statusSummary || !lastStatusSummary) return false;
 
     if (key === 'dbLastUpdated') {
-      const current = this.statusSummary[key];
-      const previous = this.lastStatusSummary[key];
+      const current = statusSummary[key];
+      const previous = lastStatusSummary[key];
       return current !== previous && 
              current !== null && previous !== null &&
              new Date(current).getTime() !== new Date(previous).getTime();
     }
 
-    return this.statusSummary[key] !== this.lastStatusSummary[key];
+    return statusSummary[key] !== lastStatusSummary[key];
   }
 
   // Animation methods
@@ -292,13 +361,17 @@ export class CrawlingDashboardViewModel {
       clearInterval(this.animationRef);
     }
 
+    // Directly access store values to avoid circular dependencies
+    const progress = crawlingStore.progress;
+    const currentStage = progress.currentStage || 0;
+
     const targetValues = {
-      percentage: this.progress.currentStage === 1 ? this.calculatedPercentage : (this.progress.percentage || 0),
+      percentage: currentStage === 1 ? this.calculatedPercentage : (progress.percentage || 0),
       currentPage: this.getCurrentPageValue(),
-      processedItems: this.progress.processedItems || 0,
-      newItems: this.progress.newItems || 0,
-      updatedItems: this.progress.updatedItems || 0,
-      retryCount: this.progress.retryCount !== undefined ? this.progress.retryCount : 0
+      processedItems: progress.processedItems || 0,
+      newItems: progress.newItems || 0,
+      updatedItems: progress.updatedItems || 0,
+      retryCount: progress.retryCount !== undefined ? progress.retryCount : 0
     };
 
     const startValues = { ...this.animatedValues };
@@ -332,25 +405,31 @@ export class CrawlingDashboardViewModel {
   }
 
   private getCurrentPageValue(): number {
-    if (this.status !== 'running' || this.progress.currentStage !== 1) {
-      return this.progress.currentPage || 0;
+    // Directly access store values to avoid circular dependencies
+    const status = crawlingStore.status;
+    const progress = crawlingStore.progress;
+    const concurrentTasks = taskStore.concurrentTasks;
+    const currentStage = progress.currentStage || 0;
+    
+    if (status !== 'running' || currentStage !== 1) {
+      return progress.currentPage || 0;
     }
 
     let successPageCount = 0;
 
     // Multiple sources for current page calculation
-    if (this.progress.stage1PageStatuses && Array.isArray(this.progress.stage1PageStatuses)) {
-      const successStatusPages = this.progress.stage1PageStatuses.filter(p => p.status === 'success').length;
+    if (progress.stage1PageStatuses && Array.isArray(progress.stage1PageStatuses)) {
+      const successStatusPages = progress.stage1PageStatuses.filter(p => p.status === 'success').length;
       successPageCount = Math.max(successPageCount, successStatusPages);
     }
 
-    if (this.concurrentTasks && this.concurrentTasks.length > 0) {
-      const successTasksCount = this.concurrentTasks.filter((task) => task.status === 'success').length;
+    if (concurrentTasks && concurrentTasks.length > 0) {
+      const successTasksCount = concurrentTasks.filter((task) => task.status === 'success').length;
       successPageCount = Math.max(successPageCount, successTasksCount);
     }
 
-    if (this.progress.currentPage !== undefined && this.progress.currentPage > 0) {
-      successPageCount = Math.max(successPageCount, this.progress.currentPage);
+    if (progress.currentPage !== undefined && progress.currentPage > 0) {
+      successPageCount = Math.max(successPageCount, progress.currentPage);
     }
 
     return successPageCount;

@@ -16,12 +16,13 @@ export const CRAWLING_PHASES = {
     PRODUCT_DETAIL: '제품 상세 정보 수집'
 };
 
-// 크롤링 단계 상수 - 숫자 값 추가
+// 크롤링 단계 상수 - 숫자 값 (순차 진행: 1→2→3)
 export const CRAWLING_STAGE = {
     INIT: 0,
     PRODUCT_LIST: 1,
-    PRODUCT_DETAIL: 2,
-    COMPLETE: 3
+    PRODUCT_VALIDATION: 2,  // 기존 1.5 단계를 2로 변경
+    PRODUCT_DETAIL: 3,      // 기존 2 단계를 3으로 변경
+    COMPLETE: 4
 };
 
 // 동시 작업 상태는 공유 타입에서 사용
@@ -223,7 +224,9 @@ export function updateProductDetailProgress(
     startTime: number,
     isCompleted: boolean = false,
     newItems: number = 0,
-    updatedItems: number = 0
+    updatedItems: number = 0,
+    currentBatch?: number,
+    totalBatches?: number
 ): void {
     // 안전 검사: 음수 값이나 비정상적인 값을 방지
     if (processedItems < 0) processedItems = 0;
@@ -269,6 +272,8 @@ export function updateProductDetailProgress(
         estimatedEndTime: remainingTime && !isCompleted ? now + remainingTime : (isCompleted ? now : 0),
         newItems,
         updatedItems,
+        currentBatch,
+        totalBatches,
         message: message // 명확한 메시지
     });
 }

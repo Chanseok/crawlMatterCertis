@@ -72,7 +72,7 @@ export class CrawlerState {
   private detailStageProcessedCount: number = 0;
   private detailStageNewCount: number = 0;
   private detailStageUpdatedCount: number = 0;
-  private detailStageTotalProductCount: number = 0; // Added for Stage 2 total
+  private detailStageTotalProductCount: number = 0; // Added for Stage 3 total (Detail stage)
   private processedProductUrls: Set<string> = new Set(); // 중복 처리 방지
   
   // 페이지당 기대되는 제품 수
@@ -573,7 +573,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     this.detailStageProcessedCount = 0;
     this.detailStageNewCount = 0;
     this.detailStageUpdatedCount = 0;
-    this.detailStageTotalProductCount = 0; // Reset for Stage 2 total
+    this.detailStageTotalProductCount = 0; // Reset for Stage 3 total (Detail stage)
     this.processedProductUrls.clear(); // Reset duplicate tracking
     
     // 스마트 병합을 위한 상태 초기화
@@ -595,7 +595,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     this.detailStageTotalProductCount = count;
     logger.debug(`Detail stage total product count set to: ${count}`, 'CrawlerState');
     
-    // Stage 2에 있는 경우, UI를 위해 progressData.totalItems 및 total도 업데이트
+    // Stage 3에 있는 경우, UI를 위해 progressData.totalItems 및 total도 업데이트
     if (this.currentStage.startsWith('productDetail') || this.currentStage === 'completed') {
       this.updateProgress({ 
         total: count,
@@ -670,9 +670,9 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     const percentage = totalItems > 0 ? (this.detailStageProcessedCount / totalItems * 100) : 0;
     const safePercentage = Math.min(Math.max(percentage, 0), 100);
     
-    // ✅ Ensure stage remains as productDetail during Stage 2 processing
+    // ✅ Ensure stage remains as productDetail during Stage 3 processing
     if (this.currentStage !== 'productDetail:processing') {
-      this.setStage('productDetail:processing', '2단계: 제품 상세 정보 수집 중');
+      this.setStage('productDetail:processing', '3단계: 제품 상세 정보 수집 중');
     }
     
     // 정확한 상태 업데이트를 위한 전체 필드 설정
@@ -684,10 +684,10 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
       newItems: this.detailStageNewCount,
       updatedItems: this.detailStageUpdatedCount,
       percentage: safePercentage,
-      currentStage: 2,  // ✅ 2단계 명시적 설정
-      currentStep: '2단계: 제품 상세 정보 수집',  // ✅ 현재 단계 명시적 설정  
+      currentStage: 3,  // ✅ 3단계 명시적 설정 (Stage 3: Detail)
+      currentStep: '3단계: 제품 상세 정보 수집',  // ✅ 현재 단계 명시적 설정  
       status: 'running',
-      message: `2단계: 제품 상세정보 ${this.detailStageProcessedCount}/${totalItems} 처리 중 (${safePercentage.toFixed(1)}%)`
+      message: `3단계: 제품 상세정보 ${this.detailStageProcessedCount}/${totalItems} 처리 중 (${safePercentage.toFixed(1)}%)`
     });
     
     // 향상된 디버그 로깅 (호출 스택 추적 포함)

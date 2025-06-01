@@ -110,10 +110,12 @@ export interface CrawlingError {
 
 /**
  * 크롤링 단계를 세부적으로 나타내는 열거형 타입
+ * 숫자와 문자열 둘 다 지원 (1=List, 2=Validation, 3=Detail)
  * 
- * @typedef {string} CrawlingStage
+ * @typedef {string | number} CrawlingStage
  */
 export type CrawlingStage = 
+    | number  // 숫자 스테이지 지원 (1, 2, 3)
     | 'idle' 
     | 'productList:init' 
     | 'productList:collecting' 

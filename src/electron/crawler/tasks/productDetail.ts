@@ -42,17 +42,23 @@ export class ProductDetailCollector {
   private abortController: AbortController;
   private readonly config: CrawlerConfig;
   private browserManager: BrowserManager;
+  private currentBatch?: number;
+  private totalBatches?: number;
 
   constructor(
     state: CrawlerState,
     abortController: AbortController,
     config: CrawlerConfig,
-    browserManager: BrowserManager
+    browserManager: BrowserManager,
+    currentBatch?: number,
+    totalBatches?: number
   ) {
     this.state = state;
     this.abortController = abortController;
     this.config = config;
     this.browserManager = browserManager;
+    this.currentBatch = currentBatch;
+    this.totalBatches = totalBatches;
   }
   
   /**
@@ -1308,7 +1314,9 @@ export class ProductDetailCollector {
       percentage: 0,                // 진행율 (0%로 초기화)
       newItems: 0,                  // 새 항목 수 (0으로 초기화)
       updatedItems: 0,              // 업데이트된 항목 수 (0으로 초기화)
-      currentStage: 2,              // 2단계 명시적 설정
+      currentStage: 3,              // Stage 3: Product Detail (기존 stage 2를 stage 3으로 변경)
+      currentBatch: this.currentBatch,
+      totalBatches: this.totalBatches,
       currentStep: '2단계: 제품 상세 정보 수집',
       status: 'running',            // 실행 상태 설정
       message: `2단계: 제품 상세 정보 수집 시작 (0/${products.length})`
@@ -1344,7 +1352,7 @@ export class ProductDetailCollector {
         taskId: 'detail-start',
         status: 'running',
         message: JSON.stringify({
-          stage: 2,
+          stage: 3, // Stage 3: Product Detail (기존 stage 2를 stage 3으로 변경)
           type: 'start',
           totalProducts: products.length,
           startTime: new Date().toISOString()
@@ -1365,7 +1373,7 @@ export class ProductDetailCollector {
           taskId: 'detail-abort',
           status: 'stopped',
           message: JSON.stringify({
-            stage: 2,
+            stage: 3,  // Stage 3: Detail
             type: 'abort',
             processedItems: this.state.getDetailStageProcessedCount(),
             totalItems: products.length,
@@ -1416,7 +1424,7 @@ export class ProductDetailCollector {
         taskId: 'detail-complete',
         status: completionStatus,
         message: JSON.stringify({
-          stage: 2,
+          stage: 3,
           type: 'complete',
           totalItems: products.length,
           processedItems: actualProcessedCount,
@@ -1461,10 +1469,12 @@ export class ProductDetailCollector {
       this.state.updateProgress({
         current: this.state.getDetailStageProcessedCount(), 
         total: totalItems,
-        currentStage: 2,              // 2단계 명시적 설정
-        currentStep: '2단계: 제품 상세 정보 처리 완료',
+        currentStage: 3,              // Stage 3: Detail collection (기존 stage 2를 stage 3으로 변경)
+        currentStep: '3단계: 제품 상세 정보 처리 완료',
         status: 'running', 
-        message: '2단계: 제품 상세 정보 처리 완료'
+        message: '3단계: 제품 상세 정보 처리 완료',
+        currentBatch: this.currentBatch,
+        totalBatches: this.totalBatches
       });
       
       crawlerEvents.emit('crawlingStageChanged', 'productDetail:processing', '2단계: 제품 상세 정보 처리 완료');
@@ -1496,7 +1506,7 @@ export class ProductDetailCollector {
       taskId: `product-${product.url}`,
       status: 'running',
       message: JSON.stringify({
-        stage: 2,
+        stage: 3,
         type: 'product',
         url: product.url,
         manufacturer: product.manufacturer || 'Unknown',
@@ -1538,7 +1548,7 @@ export class ProductDetailCollector {
             taskId: `product-retry-${product.url}`,
             status: 'attempting',
             message: JSON.stringify({
-              stage: 2,
+              stage: 3,
               type: 'retry',
               url: product.url,
               attempt: retryAttempt,
@@ -1590,17 +1600,17 @@ export class ProductDetailCollector {
           totalItems: totalItems,              // 총 항목 수
           percentage: Math.min((currentProcessed / Math.max(totalItems, 1)) * 100, 100), // 진행율
           currentStep: '제품 상세 정보 수집',     // 현재 단계 설명
-          currentStage: 2,                    // 현재 단계 번호
+          currentStage: 3,                    // Stage 3: Detail collection (기존 stage 2를 stage 3으로 변경)
           newItems: currentNew,               // 새로운 항목 수
           updatedItems: currentUpdated,       // 업데이트된 항목 수
-          message: `2단계: 제품 상세정보 ${currentProcessed}/${totalItems} 처리 중 (${Math.min((currentProcessed / Math.max(totalItems, 1)) * 100, 100).toFixed(1)}%)`
+          message: `3단계: 제품 상세정보 ${currentProcessed}/${totalItems} 처리 중 (${Math.min((currentProcessed / Math.max(totalItems, 1)) * 100, 100).toFixed(1)}%)`
         });
         
         crawlerEvents.emit('crawlingTaskStatus', {
           taskId: `product-${product.url}`,
           status: 'success',
           message: JSON.stringify({
-            stage: 2,
+            stage: 3,
             type: 'product',
             url: product.url,
             manufacturer: detailProduct.manufacturer || 'Unknown',
@@ -1629,7 +1639,7 @@ export class ProductDetailCollector {
         taskId: `product-${product.url}`,
         status: 'error',
         message: JSON.stringify({
-          stage: 2,
+          stage: 3,
           type: 'product',
           url: product.url,
           manufacturer: product.manufacturer || 'Unknown',
@@ -1692,12 +1702,14 @@ export class ProductDetailCollector {
       totalItems: totalItems,       // 총 항목 수 (명시적 설정)
       processedItems: 0,            // 처리된 항목 수
       percentage: 0,                // 진행율
-      currentStage: 2,              // 2단계 명시적 설정
-      currentStep: '2단계: 제품 상세 정보 수집',
+      currentStage: 3,              // Stage 3: Detail collection (기존 stage 2를 stage 3으로 변경)
+      currentStep: '3단계: 제품 상세 정보 수집',
+      currentBatch: this.currentBatch,
+      totalBatches: this.totalBatches,
       status: 'running',            // 상태
       newItems: 0,                  // 새 항목 수
       updatedItems: 0,              // 업데이트된 항목 수
-      message: `2/2단계: 제품 상세 정보 수집 시작 (0/${totalItems})`
+      message: `3단계: 제품 상세 정보 수집 시작 (0/${totalItems})`
     });
     
     // 초기 진행 이벤트 발행 - UI 업데이트를 위한 중요한 단계
@@ -1710,14 +1722,14 @@ export class ProductDetailCollector {
       totalItems: totalItems,       // 총 항목 수 (UI에 표시될 총 제품 수)
       percentage: 0,                // 진행율
       currentStep: '제품 상세 정보 수집',  // 현재 단계 설명
-      currentStage: 2,              // 현재 단계 번호
+      currentStage: 3,              // 현재 단계 번호 (Stage 3: Detail)
       remainingTime: undefined,     // 남은 시간 (아직 계산 불가)
       elapsedTime: 0,               // 경과 시간
       startTime: startTime,         // 시작 시간
       estimatedEndTime: 0,          // 예상 종료 시간 (아직 계산 불가)
       newItems: 0,                  // 새 항목 수
       updatedItems: 0,              // 업데이트된 항목 수
-      message: `2단계: 제품 상세정보 0/${totalItems} 처리 중 (0.0%)`
+      message: `3단계: 제품 상세정보 0/${totalItems} 처리 중 (0.0%)`
     });
 
     console.log(`[ProductDetailCollector] Starting detail collection for ${totalItems} products with proper UI initialization`);
@@ -1749,11 +1761,13 @@ export class ProductDetailCollector {
           this.state.updateProgress({
             current: currentProcessedItems,
             total: totalItems,
-            currentStage: 2,              // 2단계 명시적 설정
-            currentStep: '2단계: 제품 상세 정보 수집',
+            currentStage: 3,              // 3단계 명시적 설정 (Stage 3: Detail)
+            currentStep: '3단계: 제품 상세 정보 수집',
             status: 'running',
             message: message,
             percentage: percentage,
+            currentBatch: this.currentBatch,
+            totalBatches: this.totalBatches,
             newItems: this.state.getDetailStageNewCount(),
             updatedItems: this.state.getDetailStageUpdatedCount()
           });
@@ -1770,7 +1784,7 @@ export class ProductDetailCollector {
             totalItems: totalItems,
             percentage: percentage,
             currentStep: '제품 상세 정보 수집',
-            currentStage: 2,
+            currentStage: 3,                       // Stage 3: Detail
             remainingTime: remainingTime,
             elapsedTime: elapsedTime,
             startTime: startTime,
@@ -1813,12 +1827,14 @@ export class ProductDetailCollector {
       total: totalItems,
       totalItems: totalItems,
       processedItems: actualProcessedItems,
-      currentStage: 2,              // 2단계 명시적 설정
-      currentStep: '2단계: 제품 상세 정보 수집 완료',
+      currentStage: 3,              // 3단계 명시적 설정 (Stage 3: Detail)
+      currentStep: '3단계: 제품 상세 정보 수집 완료',
       status: 'running',
       newItems: newItems,
       updatedItems: updatedItems,
-      message: `2/2단계: 제품 상세 정보 수집 완료 (${actualProcessedItems}/${totalItems})`,
+      message: `3단계: 제품 상세 정보 수집 완료 (${actualProcessedItems}/${totalItems})`,
+      currentBatch: this.currentBatch,
+      totalBatches: this.totalBatches,
       percentage: 100
     });
     this.state.updateParallelTasks(0, config.detailConcurrency ?? 1);
@@ -1835,14 +1851,14 @@ export class ProductDetailCollector {
       totalItems: totalItems,                // 총 항목 수
       percentage: 100,                       // 완료 상태
       currentStep: '제품 상세 정보 수집 완료', // 완료 상태
-      currentStage: 2,                      // 현재 단계
+      currentStage: 3,                      // 현재 단계 (Stage 3: Detail)
       remainingTime: 0,                     // 남은 시간
       elapsedTime: finalElapsedTime,        // 총 소요 시간
       startTime: startTime,                 // 시작 시간
       estimatedEndTime: Date.now(),         // 종료 시간
       newItems: newItems,                   // 신규 항목 수
       updatedItems: updatedItems,           // 업데이트 항목 수
-      message: `2단계 완료: ${actualProcessedItems}/${totalItems}개 제품 상세정보 수집 완료 (신규: ${newItems}, 업데이트: ${updatedItems})`
+      message: `3단계 완료: ${actualProcessedItems}/${totalItems}개 제품 상세정보 수집 완료 (신규: ${newItems}, 업데이트: ${updatedItems})`
     });
   }
 
@@ -1885,6 +1901,17 @@ export class ProductDetailCollector {
     });
     
     for (let attempt = retryStart; attempt <= maxRetry && failedProducts.length > 0; attempt++) {
+      // 크롤링 중지 신호 확인
+      if (this.abortController.signal.aborted) {
+        logger.info('재시도 중 중지 신호를 받아 제품 상세 정보 재시도를 중단합니다.', 'ProductDetailCollector');
+        crawlerEvents.emit('crawlingTaskStatus', {
+          taskId: 'detail-retry',
+          status: 'cancelled',
+          message: '제품 상세 정보 재시도가 중지되었습니다.'
+        });
+        return;
+      }
+      
       updateRetryStatus('detail-retry', {
         currentAttempt: attempt - retryStart + 1,
         remainingItems: failedProducts.length,

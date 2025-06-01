@@ -322,19 +322,19 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
   /**
    * Check if the detected total pages (usually 1) is likely incorrect
    */
-  private isDetectedTotalPagesLikelyIncorrect($: cheerio.CheerioAPI): boolean {
-    // Check if there are products but no pagination
-    const productCount = $('div.post-feed article').length;
-    const hasProducts = productCount > 0;
-    
-    // Check for any pagination-related elements that might indicate more pages
-    const hasPaginationWrapper = $('div.pagination-wrapper').length > 0;
-    const hasNavElements = $('div.pagination-wrapper > nav').length > 0;
-    
-    // If we have products and some pagination structure but no page numbers,
-    // it's likely the pagination detection failed
-    return hasProducts && (hasPaginationWrapper || hasNavElements);
-  }
+  // private isDetectedTotalPagesLikelyIncorrect($: cheerio.CheerioAPI): boolean {
+  //   // Check if there are products but no pagination
+  //   const productCount = $('div.post-feed article').length;
+  //   const hasProducts = productCount > 0;
+  //   
+  //   // Check for any pagination-related elements that might indicate more pages
+  //   const hasPaginationWrapper = $('div.pagination-wrapper').length > 0;
+  //   const hasNavElements = $('div.pagination-wrapper > nav').length > 0;
+  //   
+  //   // If we have products and some pagination structure but no page numbers,
+  //   // it's likely the pagination detection failed
+  //   return hasProducts && (hasPaginationWrapper || hasNavElements);
+  // }
 
   /**
    * 리소스 정리

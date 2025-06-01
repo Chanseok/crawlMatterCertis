@@ -10,6 +10,7 @@ console.log('[CrawlingStore] 🔄 MODULE LOADING - CrawlingStore.ts module is be
 
 import { makeObservable, observable, action, runInAction } from 'mobx';
 import { IPCService, IPCUnsubscribeFunction, ipcService } from '../../services/IPCService'; // Added ipcService import
+import { getPlatformApi } from '../../platform/api';
 
 /*
 interface CrawlingError {
@@ -42,12 +43,16 @@ export class CrawlingStore {
   @observable accessor lastStatusSummary: CrawlingStatusSummary | null = null;
   @observable accessor isCheckingStatus: boolean = false;
   @observable accessor currentMessage: string = '대기 중...';
+  
+  // Track the highest stage reached to prevent stage regression
+  @observable accessor highestStageReached: number = 0;
 
   private unsubscribeCrawlingProgress: IPCUnsubscribeFunction | null = null;
   private unsubscribeCrawlingComplete: IPCUnsubscribeFunction | null = null;
   private unsubscribeCrawlingError: IPCUnsubscribeFunction | null = null;
   private unsubscribeCrawlingStopped: IPCUnsubscribeFunction | null = null;
   private unsubscribeCrawlingStatusSummary: IPCUnsubscribeFunction | null = null;
+  private unsubscribeCrawlingTaskStatus: IPCUnsubscribeFunction | null = null;
 
   constructor(private ipcServiceInstance: IPCService) {
     console.log('[CrawlingStore] Constructor called');
@@ -119,6 +124,19 @@ export class CrawlingStore {
       this.unsubscribeCrawlingStatusSummary = this.ipcServiceInstance.subscribeCrawlingStatusSummary(
         this.handleCrawlingStatusSummary
       );
+      
+      console.log('[CrawlingStore] 🔗 Subscribing to crawlingTaskStatus via platform API...');
+      // Use the same platform API subscription mechanism as TaskStore to avoid conflicts
+      const platformApi = getPlatformApi();
+      if (platformApi && typeof platformApi.subscribeToEvent === 'function') {
+        this.unsubscribeCrawlingTaskStatus = platformApi.subscribeToEvent('crawlingTaskStatus', (data: any) => {
+          console.log('[CrawlingStore] 🎯 Received crawlingTaskStatus via platform API. Data:', JSON.stringify(data, null, 2));
+          this.handleCrawlingTaskStatus(data);
+        });
+      } else {
+        console.warn('[CrawlingStore] Platform API not available for crawlingTaskStatus subscription');
+        this.unsubscribeCrawlingTaskStatus = () => {};
+      }
       
       console.log('[CrawlingStore] 🔗 All event subscriptions completed successfully');
     } catch (error) {
@@ -215,6 +233,172 @@ export class CrawlingStore {
     });
   };
 
+  @action
+  private handleCrawlingTaskStatus = (data: any): void => {
+    console.log('[CrawlingStore] 🎯 handleCrawlingTaskStatus RECEIVED EVENT. Data:', JSON.stringify(data, null, 2));
+    
+    try {
+      // Extract stage information from crawlingTaskStatus event
+      let stage = 0;
+      let step = '대기 중...';
+      let message = '대기 중...';
+      
+      if (data && typeof data === 'object') {
+        // Parse the stage information from the task status message
+        if (data.stage !== undefined) {
+          stage = data.stage;
+        }
+        
+        if (data.message) {
+          message = data.message;
+          step = data.message;
+          
+          // Try to parse message as JSON if it looks like JSON
+          try {
+            if (typeof data.message === 'string' && data.message.trim().startsWith('{')) {
+              const parsedMessage = JSON.parse(data.message);
+              console.log('[CrawlingStore] 🎯 Parsed JSON message:', parsedMessage);
+              
+              if (parsedMessage.stage !== undefined) {
+                stage = parsedMessage.stage;
+                console.log('[CrawlingStore] 🎯 Extracted stage from JSON message:', stage);
+              }
+              
+              // Create a more user-friendly step message
+              if (parsedMessage.type === 'page') {
+                step = `페이지 ${parsedMessage.pageNumber || '?'} 크롤링 중...`;
+              } else if (parsedMessage.type === 'product') {
+                step = `상품 상세 정보 크롤링 중...`;
+              } else {
+                step = `Stage ${stage} 진행 중...`;
+              }
+              
+              message = step;
+            }
+          } catch (parseError) {
+            console.log('[CrawlingStore] 🎯 Message is not JSON, using as-is:', data.message);
+          }
+        }
+        
+        // Try to extract stage from message string if not found yet
+        if (stage === 0 && typeof message === 'string') {
+          const stageMatch = message.match(/stage[:\s]*(\d+)/i);
+          if (stageMatch) {
+            stage = parseInt(stageMatch[1], 10);
+            console.log('[CrawlingStore] 🎯 Extracted stage from message string:', stage);
+          }
+        }
+      }
+      
+      console.log('[CrawlingStore] 🎯 Parsed task status - stage:', stage, 'step:', step, 'message:', message);
+      
+      runInAction(() => {
+        // Enhanced stage logic to handle sequential progression: 1 → 2 → 3
+        let displayStage = stage;
+        let displayStep = step;
+        let displayMessage = message;
+        
+        // Map validation stages to Stage 2 (기존 1.5를 2로 변경)
+        if (typeof message === 'string') {
+          if (message.includes('2/4단계') || message.includes('DB 중복 검증') || message.includes('validation')) {
+            displayStage = 2;
+            displayStep = '2단계: 중복 검증';
+            displayMessage = message.replace('2/4단계', '2단계');
+          }
+          // Map stage 1 completion to transition message
+          else if (message.includes('1단계: 제품 목록 수집이 완료되었습니다')) {
+            displayStage = 1;
+            displayStep = '1단계 완료';
+            displayMessage = '1단계: 제품 목록 수집 완료. 중복 검증 시작...';
+          }
+          // Map stage 3 preparation (기존 stage 2를 stage 3으로 변경)
+          else if (message.includes('3단계: 제품 상세 정보 수집 준비 중')) {
+            displayStage = 3;
+            displayStep = '3단계: 제품 상세 정보 수집 준비';
+            displayMessage = '3단계: 제품 상세 정보 수집 준비 중...';
+          }
+        }
+        
+        // Enhanced stage priority logic: allow progression through 1 → 2 → 3
+        // Define stage order: 0 < 1 < 2 < 3
+        const shouldUpdateStage = this.isStageProgression(displayStage, this.highestStageReached);
+        
+        if (shouldUpdateStage) {
+          // Update highest stage reached
+          if (this.isStageProgression(displayStage, this.highestStageReached)) {
+            this.highestStageReached = displayStage;
+            console.log('[CrawlingStore] 🎯 New highest stage reached:', displayStage);
+          }
+          
+          // Update progress with enhanced stage information
+          this.progress = {
+            ...this.progress,
+            currentStage: displayStage, // Keep actual stage value (1, 2, 3)
+            currentStep: displayStep,
+            message: displayMessage,
+            status: 'running'
+          };
+          
+          this.status = 'running';
+          this.currentMessage = displayMessage;
+          
+          console.log('[CrawlingStore] 🎯 Store state AFTER enhanced crawlingTaskStatus update:', {
+            originalStage: stage,
+            displayStage: displayStage,
+            uiStage: displayStage, // Now always integer
+            newStatus: this.status,
+            newStep: this.progress.currentStep,
+            newMessage: this.currentMessage,
+            highestStageReached: this.highestStageReached
+          });
+        } else {
+          console.log('[CrawlingStore] 🎯 Skipping stage update - display stage:', displayStage, 'is lower than highest reached:', this.highestStageReached);
+        }
+      });
+    } catch (error) {
+      console.error('[CrawlingStore] 🎯 Error processing crawlingTaskStatus:', error);
+    }
+  };
+
+  // 스테이지 진행 순서를 확인하는 헬퍼 메서드
+  private isStageProgression(newStage: number, currentHighestStage: number): boolean {
+    // Stage 순서: 0 < 1 < 2 < 3 (1=List, 2=Validation, 3=Detail)
+    // 정확한 진행 순서를 확인
+    
+    if (newStage === currentHighestStage) {
+      return true; // 같은 스테이지는 업데이트 허용 (메시지 업데이트)
+    }
+    
+    // 순차적 진행 체크
+    if (currentHighestStage === 0 && newStage === 1) return true;  // 0 → 1
+    if (currentHighestStage === 1 && newStage === 2) return true;  // 1 → 2 (validation)
+    if (currentHighestStage === 2 && newStage === 3) return true;  // 2 → 3 (detail)
+    
+    // 역행 방지: 이미 더 높은 스테이지에 도달했다면 낮은 스테이지로 돌아가지 않음
+    if (newStage < currentHighestStage) {
+      console.log('[CrawlingStore] 🚫 Stage regression blocked:', {
+        newStage,
+        currentHighestStage,
+        blocked: true
+      });
+      return false;
+    }
+    
+    return newStage >= currentHighestStage;
+  }
+
+  /**
+   * Handle crawlingTaskStatus events forwarded from TaskStore
+   * This is used when direct platform API subscription fails due to initialization timing
+   */
+  @action
+  public handleCrawlingTaskStatusFromTaskStore = (data: any): void => {
+    console.log('[CrawlingStore] 🎯 Received forwarded crawlingTaskStatus from TaskStore. Data:', JSON.stringify(data, null, 2));
+    
+    // Use the same logic as handleCrawlingTaskStatus
+    this.handleCrawlingTaskStatus(data);
+  };
+
   // Helper method to extract only serializable properties from config
   private extractSerializableConfig(config: any): any {
     if (!config || typeof config !== 'object') {
@@ -270,7 +454,9 @@ export class CrawlingStore {
     console.log('[CrawlingStore] Attempting to start crawling...', startConfig);
     this.error = null;
     this.status = 'initializing';
-    this.progress = { ...initialProgress, status: 'initializing', currentStep: '크롤링 시작 중...', startTime: Date.now() }; 
+    this.progress = { ...initialProgress, status: 'initializing', currentStep: '크롤링 시작 중...', startTime: Date.now() };
+    // Reset stage tracking when starting new crawling session
+    this.highestStageReached = 0; 
     
     // 간단하고 안전한 config 객체 생성
     let configToSend: any = {};
@@ -408,6 +594,7 @@ export class CrawlingStore {
     this.unsubscribeCrawlingError?.();
     this.unsubscribeCrawlingStopped?.();
     this.unsubscribeCrawlingStatusSummary?.();
+    this.unsubscribeCrawlingTaskStatus?.();
     this.progress = { ...initialProgress };
     this.status = 'idle';
     this.error = null;

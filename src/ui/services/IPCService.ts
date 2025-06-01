@@ -162,6 +162,36 @@ export class IPCService {
   }
 
   /**
+   * 크롤링 태스크 상태 이벤트 구독
+   */
+  public subscribeCrawlingTaskStatus(handler: IPCEventHandler): IPCUnsubscribeFunction {
+    if (!this.isElectronAvailable || !window.electron?.subscribeCrawlingTaskStatus) {
+      console.warn('[IPCService] subscribeCrawlingTaskStatus not available.');
+      return () => {};
+    }
+
+    try {
+      console.log('[IPCService] Setting up crawling task status subscription...');
+      const wrappedHandler = (data: any) => {
+        console.log('[IPCService] CrawlingTaskStatus event received, calling handler. Data:', JSON.stringify(data));
+        try {
+          handler(data);
+          console.log('[IPCService] Handler called successfully for crawlingTaskStatus');
+        } catch (error) {
+          console.error('[IPCService] Error in crawlingTaskStatus handler:', error);
+        }
+      };
+      
+      const unsubscribe = window.electron.subscribeCrawlingTaskStatus(wrappedHandler);
+      console.log('[IPCService] Subscribed to crawling task status events');
+      return unsubscribe;
+    } catch (error) {
+      console.error('[IPCService] Failed to subscribe to crawling task status:', error);
+      return () => {};
+    }
+  }
+
+  /**
    * 초기 크롤링 상태 조회
    */
   public async checkCrawlingStatus(): Promise<any> {

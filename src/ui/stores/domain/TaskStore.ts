@@ -156,6 +156,23 @@ export class TaskStore {
     const unsubConcurrentTasks = this.platformApi.subscribeToEvent('crawlingTaskStatus', (taskStatus: any) => {
       console.log('[TaskStore] Received crawlingTaskStatus event:', taskStatus);
       
+      // Forward the event to CrawlingStore to update progress
+      try {
+        // Get CrawlingStore instance and forward the event
+        import('./CrawlingStore').then(({ crawlingStore }) => {
+          if (crawlingStore && typeof crawlingStore.handleCrawlingTaskStatusFromTaskStore === 'function') {
+            console.log('[TaskStore] Forwarding crawlingTaskStatus to CrawlingStore...');
+            crawlingStore.handleCrawlingTaskStatusFromTaskStore(taskStatus);
+          } else {
+            console.warn('[TaskStore] CrawlingStore instance not available or method not found');
+          }
+        }).catch((error) => {
+          console.error('[TaskStore] Error importing CrawlingStore:', error);
+        });
+      } catch (error) {
+        console.error('[TaskStore] Error forwarding crawlingTaskStatus to CrawlingStore:', error);
+      }
+      
       if (Array.isArray(taskStatus)) {
         console.log(`[TaskStore] Processing array of ${taskStatus.length} task statuses`);
         this.updateMultipleTaskStatuses(taskStatus);
