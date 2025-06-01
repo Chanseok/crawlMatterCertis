@@ -6,6 +6,8 @@
  * and crawling operations. Encapsulates crawling business logic.
  */
 
+console.log('[CrawlingStore] 🔄 MODULE LOADING - CrawlingStore.ts module is being imported');
+
 import { makeObservable, observable, action, runInAction } from 'mobx';
 import { IPCService, IPCUnsubscribeFunction, ipcService } from '../../services/IPCService'; // Added ipcService import
 
@@ -48,6 +50,9 @@ export class CrawlingStore {
   private unsubscribeCrawlingStatusSummary: IPCUnsubscribeFunction | null = null;
 
   constructor(private ipcServiceInstance: IPCService) {
+    console.log('[CrawlingStore] Constructor called');
+    console.log('[CrawlingStore] IPCService instance:', this.ipcServiceInstance);
+    
     makeObservable(this, {
       // Note: @observable accessor properties don't need to be listed here
       // Arrow function properties with @action decorators don't need to be listed here
@@ -61,7 +66,10 @@ export class CrawlingStore {
       updateConfig: action,
       cleanup: action,
     });
+    
+    console.log('[CrawlingStore] About to subscribe to events');
     this.subscribeToEvents();
+    console.log('[CrawlingStore] Constructor completed');
   }
 
   // Computed properties
@@ -82,27 +90,52 @@ export class CrawlingStore {
   }
 
   private subscribeToEvents(): void {
-    console.log('[CrawlingStore] Subscribing to IPC events');
-    this.unsubscribeCrawlingProgress = this.ipcServiceInstance.subscribeCrawlingProgress(
-      this.handleCrawlingProgress
-    );
-    this.unsubscribeCrawlingComplete = this.ipcServiceInstance.subscribeCrawlingComplete(
-      this.handleCrawlingComplete
-    );
-    this.unsubscribeCrawlingError = this.ipcServiceInstance.subscribeCrawlingError(
-      this.handleCrawlingError
-    );
-    this.unsubscribeCrawlingStopped = this.ipcServiceInstance.subscribeCrawlingStopped(
-      this.handleCrawlingStopped
-    );
-    this.unsubscribeCrawlingStatusSummary = this.ipcServiceInstance.subscribeCrawlingStatusSummary(
-      this.handleCrawlingStatusSummary
-    );
+    console.log('[CrawlingStore] 🔗 Subscribing to IPC events...');
+    console.log('[CrawlingStore] 🔗 IPC Service instance available:', !!this.ipcServiceInstance);
+    
+    try {
+      console.log('[CrawlingStore] 🔗 Subscribing to crawlingProgress...');
+      this.unsubscribeCrawlingProgress = this.ipcServiceInstance.subscribeCrawlingProgress(
+        this.handleCrawlingProgress
+      );
+      console.log('[CrawlingStore] 🔗 crawlingProgress subscription result:', !!this.unsubscribeCrawlingProgress);
+      
+      console.log('[CrawlingStore] 🔗 Subscribing to crawlingComplete...');
+      this.unsubscribeCrawlingComplete = this.ipcServiceInstance.subscribeCrawlingComplete(
+        this.handleCrawlingComplete
+      );
+      
+      console.log('[CrawlingStore] 🔗 Subscribing to crawlingError...');
+      this.unsubscribeCrawlingError = this.ipcServiceInstance.subscribeCrawlingError(
+        this.handleCrawlingError
+      );
+      
+      console.log('[CrawlingStore] 🔗 Subscribing to crawlingStopped...');
+      this.unsubscribeCrawlingStopped = this.ipcServiceInstance.subscribeCrawlingStopped(
+        this.handleCrawlingStopped
+      );
+      
+      console.log('[CrawlingStore] 🔗 Subscribing to crawlingStatusSummary...');
+      this.unsubscribeCrawlingStatusSummary = this.ipcServiceInstance.subscribeCrawlingStatusSummary(
+        this.handleCrawlingStatusSummary
+      );
+      
+      console.log('[CrawlingStore] 🔗 All event subscriptions completed successfully');
+    } catch (error) {
+      console.error('[CrawlingStore] 🔗 ERROR during event subscription:', error);
+    }
   }
 
   @action
   private handleCrawlingProgress = (progress: CrawlingProgress): void => {
-    console.log('[CrawlingStore] handleCrawlingProgress invoked. Data:', JSON.stringify(progress));
+    console.log('[CrawlingStore] 🚀 handleCrawlingProgress RECEIVED EVENT. Data:', JSON.stringify(progress, null, 2));
+    console.log('[CrawlingStore] 🚀 Current store state before update:', {
+      currentStatus: this.status,
+      currentStage: this.progress.currentStage,
+      currentStep: this.progress.currentStep,
+      currentMessage: this.currentMessage
+    });
+    
     runInAction(() => {
       const newProgress = { ...this.progress, ...progress };
       if (progress.currentStage === undefined && this.progress.currentStage !== undefined) {
@@ -118,7 +151,14 @@ export class CrawlingStore {
       if (progress.message) {
         this.currentMessage = progress.message;
       }
-      console.log('[CrawlingStore] Progress updated in store. New currentStage:', this.progress.currentStage, 'New currentStep:', this.progress.currentStep);
+      
+      console.log('[CrawlingStore] 🚀 Store state AFTER update:', {
+        newStatus: this.status,
+        newStage: this.progress.currentStage,
+        newStep: this.progress.currentStep,
+        newMessage: this.currentMessage,
+        newProgress: this.progress
+      });
     });
   };
 
@@ -375,4 +415,6 @@ export class CrawlingStore {
   }
 }
 
+console.log('[CrawlingStore] 🏭 Creating singleton CrawlingStore instance...');
 export const crawlingStore = new CrawlingStore(ipcService);
+console.log('[CrawlingStore] 🏭 Singleton CrawlingStore instance created successfully');

@@ -5,10 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vite + React + TS</title>
-    <!-- Temporarily relaxed CSP for development -->
-    <meta 
+    <script>
+      console.log("[HEAD-DEBUG] 🚀 Script in HEAD executed!");
+      // Also try using window.postMessage to communicate with preload
+      window.postMessage({ type: 'DEBUG_SCRIPT_EXECUTED', source: 'head' }, '*');
+    </script>
+    <!-- CSP temporarily disabled for debugging -->
+    <!-- <meta 
       http-equiv="Content-Security-Policy" 
-      content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com ws: wss:;">
+      content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com ws: wss:;"> -->
     <!-- 디지털 스타일 폰트 추가 -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
@@ -124,7 +129,22 @@
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="background: red; color: white; padding: 20px; font-size: 24px; text-align: center;">
+        🔴 TESTING: This should be visible if HTML is loading correctly!
+        <br>Time: <span id="current-time"></span>
+      </div>
+    </div>
+    <script>
+      console.log("[BODY-DEBUG] 🔥 Body script executed!");
+      document.getElementById('current-time').textContent = new Date().toLocaleTimeString();
+      window.postMessage({ type: 'DEBUG_SCRIPT_EXECUTED', source: 'body' }, '*');
+      console.log("[BODY-DEBUG] window.electron exists:", !!window.electron);
+      console.log("[BODY-DEBUG] document.readyState:", document.readyState);
+      console.log("[BODY-DEBUG] document.getElementById('root'):", document.getElementById('root'));
+    </script>
+    
+    <!-- Vite's standard module loading -->
     <script type="module" src="/src/ui/main.tsx"></script>
   </body>
 </html>

@@ -1,10 +1,103 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { 
     EventPayloadMapping, 
     MethodParamsMapping,
     MethodReturnMapping,
     IElectronAPI
 } from '../../types.js' with { "resolution-mode": "require" };
+
+// 브라우저 콘솔 로그를 파일로 저장하는 기능
+const LOG_FILE = path.join(process.cwd(), 'dist-output', 'browser.log');
+
+// 기존 console 메서드들을 저장
+const originalConsole = {
+  log: console.log,
+  error: console.error,
+  warn: console.warn,
+  info: console.info,
+  debug: console.debug
+};
+
+// 로그를 파일에 저장하는 함수
+function writeToLogFile(level: string, args: any[]) {
+  try {
+    const timestamp = new Date().toISOString();
+    const message = args.map(arg => {
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg, null, 2);
+        } catch (e) {
+          return String(arg);
+        }
+      }
+      return String(arg);
+    }).join(' ');
+    
+    const logEntry = `${timestamp} [${level.toUpperCase()}] ${message}\n`;
+    
+    // 비동기로 파일에 추가
+    fs.appendFile(LOG_FILE, logEntry, (err: any) => {
+      if (err && err.code !== 'ENOENT') {
+        originalConsole.error('[BrowserLogger] Failed to write to browser.log:', err);
+      }
+    });
+  } catch (error) {
+    originalConsole.error('[BrowserLogger] Error in writeToLogFile:', error);
+  }
+}
+
+// User Agent 정보를 로그에 추가하는 함수
+function updateBrowserInfo() {
+  try {
+    const userAgent = navigator.userAgent;
+    const timestamp = new Date().toISOString();
+    const browserInfo = `${timestamp} [INFO] User Agent: ${userAgent}\n`;
+    
+    fs.appendFile(LOG_FILE, browserInfo, (err: any) => {
+      if (err && err.code !== 'ENOENT') {
+        originalConsole.error('[BrowserLogger] Failed to update browser info:', err);
+      }
+    });
+  } catch (error) {
+    originalConsole.error('[BrowserLogger] Error updating browser info:', error);
+  }
+}
+
+// console 메서드들을 오버라이드하여 브라우저 로그를 파일에 기록
+console.log = (...args: any[]) => {
+  originalConsole.log(...args);
+  writeToLogFile('LOG', args);
+};
+
+console.error = (...args: any[]) => {
+  originalConsole.error(...args);
+  writeToLogFile('ERROR', args);
+};
+
+console.warn = (...args: any[]) => {
+  originalConsole.warn(...args);
+  writeToLogFile('WARN', args);
+};
+
+console.info = (...args: any[]) => {
+  originalConsole.info(...args);
+  writeToLogFile('INFO', args);
+};
+
+console.debug = (...args: any[]) => {
+  originalConsole.debug(...args);
+  writeToLogFile('DEBUG', args);
+};
+
+console.log('[Preload] Console logging to browser.log enabled');
+
+// 초기화 로그
+setTimeout(() => {
+  updateBrowserInfo();
+  console.log('[BrowserLogger] Console logging to dist-output/browser.log initialized');
+}, 1000);
 
 // 구독 기반 이벤트 처리를 위한 유틸리티 함수
 function createSubscriptionHandler<K extends keyof EventPayloadMapping>(channel: K) {

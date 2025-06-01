@@ -16,6 +16,16 @@ export const ProgressBarDisplay: React.FC = observer(() => {
   const totalPages = progress?.totalPages || 0;
   const currentStep = progress?.currentStep || '';
   
+  // Debug logging
+  console.log('[ProgressBarDisplay] Rendering with:', {
+    status,
+    percentage,
+    currentPage,
+    totalPages,
+    currentStep,
+    progressObject: progress
+  });
+  
   return (
     <div className="mb-4">
       <div className="flex justify-between items-center mb-2">

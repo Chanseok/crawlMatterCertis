@@ -87,7 +87,7 @@ app.on('ready', async () => {
             preload: preloadPath,
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false // preload 스크립트가 제대로 로드되지 않을 때는 sandbox를 비활성화해볼 수 있습니다
+            sandbox: false
         }
     });
 
@@ -644,11 +644,27 @@ app.on('ready', async () => {
  * 크롤러 이벤트를 UI로 전달하는 함수
  */
 function setupCrawlerEvents(mainWindow: BrowserWindow): void {
+    console.log(`[MAIN] Setting up crawler events...`);
+    console.log(`[MAIN] crawlerEvents object:`, crawlerEvents);
+    console.log(`[MAIN] crawlerEvents listeners count:`, crawlerEvents.listenerCount('crawlingProgress'));
+    
     // 크롤링 진행 상태 이벤트
     crawlerEvents.on('crawlingProgress', (progress: CrawlingProgress) => {
-        log.info(`[MAIN] Received crawlingProgress event: stage=${progress.currentStage}, step="${progress.currentStep}", message="${progress.message}"`);
-        mainWindow.webContents.send('crawlingProgress', progress);
+        const logMessage = `[MAIN] Received crawlingProgress event: stage=${progress.currentStage}, step="${progress.currentStep}", message="${progress.message}", progress=${progress.current}/${progress.total}`;
+        log.info(logMessage);
+        console.log(logMessage); // 콘솔에도 출력
+        
+        // 웹 콘텐츠로 전송하기 전에 확인
+        if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+            console.log(`[MAIN] Sending crawlingProgress to frontend...`);
+            mainWindow.webContents.send('crawlingProgress', progress);
+            console.log(`[MAIN] crawlingProgress sent successfully`);
+        } else {
+            console.error(`[MAIN] Cannot send crawlingProgress - webContents not available`);
+        }
     });
+    
+    console.log(`[MAIN] crawlingProgress listener registered. Total listeners:`, crawlerEvents.listenerCount('crawlingProgress'));
     
     // 페이지별 병렬 작업 상태 이벤트 (추가)
     crawlerEvents.on('crawlingTaskStatus', (taskStatus: CrawlingTaskStatus) => {

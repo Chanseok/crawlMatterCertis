@@ -164,22 +164,22 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
         const $ = cheerio.load(html);
         
         // 페이지 번호 추출
-        let totalPages = 0;
-        const pageElements = $('div.pagination-wrapper > nav > div > a > span');
-        
-        if (pageElements.length > 0) {
-          const pageNumbers = pageElements
-            .map((_, el) => {
-              const text = $(el).text().trim();
-              return text ? parseInt(text, 10) : 0;
-            })
-            .get()
-            .filter(n => !isNaN(n) && n > 0);
-            
-          totalPages = Math.max(...pageNumbers, 0);
-        }
+        let totalPages = this.extractTotalPagesFromHTML($);
         
         debugLog(`[AxiosCrawlerStrategy] Determined ${totalPages} total pages from pagination elements (Attempt ${attempt}).`);
+
+        // Fallback strategy: Try random page if pagination detection failed or returned 0
+        if (totalPages <= 0) {
+          debugLog(`[AxiosCrawlerStrategy] No pagination elements found, trying fallback strategy with random page (Attempt ${attempt}).`);
+          
+          const fallbackResult = await this.tryFallbackPaginationDetection(attempt);
+          if (fallbackResult.success) {
+            totalPages = fallbackResult.totalPages;
+            debugLog(`[AxiosCrawlerStrategy] Fallback pagination detection successful: ${totalPages} pages (Attempt ${attempt}).`);
+          } else {
+            debugLog(`[AxiosCrawlerStrategy] Fallback pagination detection also failed, proceeding with manual check (Attempt ${attempt}).`);
+          }
+        }
 
         let lastPageProductCount = 0;
         if (totalPages > 0) {
@@ -215,6 +215,7 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
           }
 
           if (lastPageProductCount > 0 && totalPages <= 0) {
+            // If fallback also failed but we have products, set to 1 page as fallback
             totalPages = 1;
             debugLog(`[AxiosCrawlerStrategy] Found ${lastPageProductCount} products on the first page. Setting totalPages to 1 (Attempt ${attempt}).`);
           } else if (totalPages <= 0 && lastPageProductCount <= 0) {
@@ -251,6 +252,88 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
     }
     
     throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts (unexpectedly reached end of retry loop).`, 0, MAX_FETCH_ATTEMPTS);
+  }
+
+  /**
+   * Fallback pagination detection strategy using random page
+   */
+  private async tryFallbackPaginationDetection(mainAttempt: number): Promise<{
+    success: boolean;
+    totalPages: number;
+  }> {
+    try {
+      // Generate random page number between 100-400
+      const randomPageId = Math.floor(Math.random() * 301) + 100; // 100 to 400
+      const randomPageUrl = `${this.matterFilterUrl}&paged=${randomPageId}`;
+      
+      debugLog(`[AxiosCrawlerStrategy] Fallback: Trying random page ${randomPageId} (Main attempt ${mainAttempt})`);
+      
+      const response = await axios.get(randomPageUrl, {
+        timeout: this.pageTimeoutMs,
+        headers: this.getEnhancedHeaders()
+      });
+
+      if (response.status !== 200) {
+        debugLog(`[AxiosCrawlerStrategy] Fallback: Random page ${randomPageId} returned status ${response.status}`);
+        return { success: false, totalPages: 0 };
+      }
+
+      const html = response.data;
+      const $ = cheerio.load(html);
+      
+      const totalPages = this.extractTotalPagesFromHTML($);
+      
+      if (totalPages > 1) {
+        debugLog(`[AxiosCrawlerStrategy] Fallback: Successfully detected ${totalPages} pages from random page ${randomPageId}`);
+        return { success: true, totalPages };
+      } else {
+        debugLog(`[AxiosCrawlerStrategy] Fallback: Random page ${randomPageId} also shows only ${totalPages} pages`);
+        return { success: false, totalPages };
+      }
+      
+    } catch (error: unknown) {
+      debugLog(`[AxiosCrawlerStrategy] Fallback pagination detection failed: ${error instanceof Error ? error.message : String(error)}`);
+      return { success: false, totalPages: 0 };
+    }
+  }
+
+  /**
+   * Extract total pages from HTML using pagination elements
+   */
+  private extractTotalPagesFromHTML($: cheerio.CheerioAPI): number {
+    let totalPages = 0;
+    const pageElements = $('div.pagination-wrapper > nav > div > a > span');
+    
+    if (pageElements.length > 0) {
+      const pageNumbers = pageElements
+        .map((_, el) => {
+          const text = $(el).text().trim();
+          return text ? parseInt(text, 10) : 0;
+        })
+        .get()
+        .filter(n => !isNaN(n) && n > 0);
+        
+      totalPages = Math.max(...pageNumbers, 0);
+    }
+    
+    return totalPages;
+  }
+
+  /**
+   * Check if the detected total pages (usually 1) is likely incorrect
+   */
+  private isDetectedTotalPagesLikelyIncorrect($: cheerio.CheerioAPI): boolean {
+    // Check if there are products but no pagination
+    const productCount = $('div.post-feed article').length;
+    const hasProducts = productCount > 0;
+    
+    // Check for any pagination-related elements that might indicate more pages
+    const hasPaginationWrapper = $('div.pagination-wrapper').length > 0;
+    const hasNavElements = $('div.pagination-wrapper > nav').length > 0;
+    
+    // If we have products and some pagination structure but no page numbers,
+    // it's likely the pagination detection failed
+    return hasProducts && (hasPaginationWrapper || hasNavElements);
   }
 
   /**

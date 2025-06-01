@@ -29,7 +29,14 @@
     "verify-db": "ts-node --project tsconfig.scripts.json ./scripts/migration/verify-db-integrity.ts",
     "dist:mac": "npm run transpile:electron && npm run build && electron-builder --mac --arm64",
     "dist:win": "npm run transpile:electron && npm run build && electron-builder --win --x64",
-    "dist:linux": "npm run transpile:electron && npm run build && electron-builder --linux --x64"
+    "dist:linux": "npm run transpile:electron && npm run build && electron-builder --linux --x64",
+    "dev:with-logs": "scripts/dev-with-logging.sh",
+    "stop-dev": "pkill -f 'npm run dev' && pkill -f electron",
+    "logs:terminal": "tail -f dist-output/terminal.log",
+    "logs:browser": "tail -f dist-output/browser.log",
+    "logs:both": "tail -f dist-output/terminal.log & tail -f dist-output/browser.log",
+    "analyze-logs": "scripts/analyze-logs.sh",
+    "clean-logs": "rm -f dist-output/*.log dist-output/*.log.backup.*"
   },
   "dependencies": {
     "axios": "^1.9.0",

@@ -1,3 +1,5 @@
+console.log('[DASHBOARD] 🚀 CrawlingDashboard.tsx module loaded');
+
 import { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
 import { observer, useLocalObservable } from 'mobx-react-lite'; // Added useLocalObservable
 import type { CrawlingStatusSummary } from '../../../types'; // Only import what's used
@@ -40,7 +42,10 @@ interface CrawlingDashboardProps {
  * This maintains Domain Store architecture while adding Clean Code patterns
  */
 function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
+  console.log('[DASHBOARD] 🎨 CrawlingDashboard component rendering...');
+  
   // === PRIMARY: Domain Store Hooks (Main State Management) ===
+  console.log('[DASHBOARD] 🔧 Calling useCrawlingStore hook...');
   const { 
     status,
     progress, 
@@ -104,6 +109,24 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   // Direct access to avoid MobX cycles - computed properties are already memoized by MobX
   const targetPageCount = viewModel.targetPageCount;
   const calculatedPercentage = viewModel.calculatedPercentage;
+
+  // DEBUG: Add real-time progress monitoring
+  useEffect(() => {
+    console.log('[CrawlingDashboard] 🔍 Progress Data Debug:', {
+      status,
+      currentStage: progress.currentStage,
+      currentStep: progress.currentStep,
+      currentPage: progress.currentPage,
+      totalPages: progress.totalPages,
+      processedItems: progress.processedItems,
+      totalItems: progress.totalItems,
+      percentage: progress.percentage,
+      calculatedPercentage,
+      targetPageCount,
+      concurrentTasksLength: concurrentTasks?.length || 0,
+      message: progress.message
+    });
+  }, [status, progress, calculatedPercentage, targetPageCount, concurrentTasks]);
 
   const isBeforeStatusCheck = useMemo(() => 
     status === 'idle' && !statusSummary?.dbLastUpdated, 

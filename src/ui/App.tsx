@@ -1,3 +1,5 @@
+console.log('[APP] 🚀 App.tsx module loaded');
+
 import React, { useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
 import { AppLayout } from './components/AppLayout';
@@ -12,15 +14,18 @@ import { useApiInitialization } from './hooks/useApiInitialization';
  * Main App Content Component - separated for clean ViewModel usage
  */
 const AppContent: React.FC = observer(() => {
-  console.log('[App] Rendering App component with ViewModel pattern');
+  console.log('[APP] 🎨 AppContent component rendering...');
+  console.log('[APP] Rendering App component with ViewModel pattern');
   
   // API Initialization
   const { isInitialized } = useApiInitialization();
+  console.log('[APP] 🔧 API initialization status:', isInitialized);
   
   // ViewModels
   const uiStateViewModel = useUIStateViewModel();
   const crawlingWorkflowViewModel = useCrawlingWorkflowViewModel();
   const logViewModel = useLogViewModel();
+  console.log('[APP] ✅ ViewModels obtained successfully');
   
   // Initialize app and log initial message
   useEffect(() => {

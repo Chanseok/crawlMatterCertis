@@ -9,6 +9,8 @@ import { useEffect } from 'react';
 import { crawlingStore } from '../stores/domain/CrawlingStore';
 import type { CrawlerConfig } from '../../../types';
 
+console.log('[useCrawlingStore] Hook being executed');
+
 /**
  * Crawling operations hook using MobX Domain Store pattern
  * Provides crawling state and actions with proper React integration
