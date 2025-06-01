@@ -454,9 +454,13 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
               totalBatches: progress.totalBatches,
               batchRetryCount: progress.batchRetryCount,
               batchRetryLimit: progress.batchRetryLimit
-            }
+            },
+            renderTest: 'BATCH_UI_SHOULD_RENDER'
           });
-          return batchUICondition;
+          
+          // 🚨 FORCE SHOW BATCH UI FOR DEBUGGING
+          console.log('[CrawlingDashboard] 🚨 FORCE RENDERING BATCH UI FOR DEBUG');
+          return true; // Force render for now to debug
         })() && (
           <div className="mt-6 mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-700">
             {/* 1. 전체 배치 진행률 */}

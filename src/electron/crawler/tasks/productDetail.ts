@@ -1530,6 +1530,11 @@ export class ProductDetailCollector {
       
       detailProduct = await retryWithBackoff(
         async () => {
+          // retryWithBackoff 내부에서도 중지 신호 체크
+          if (signal.aborted) {
+            throw new Error('Aborted before Axios operation');
+          }
+          
           return await Promise.race([
             this.crawlProductDetail(product, signal),
             new Promise<never>((_, reject) =>
@@ -1541,6 +1546,12 @@ export class ProductDetailCollector {
         baseRetryDelay,
         maxRetryDelay,
         (retryAttempt, delay, err) => {
+          // 재시도 전에도 중지 신호 체크
+          if (signal.aborted) {
+            console.log(`[ProductDetailCollector] 재시도 중단됨 (재시도 ${retryAttempt}/${retryMax}): ${product.url} - ${err.message}`);
+            return; // 재시도를 포기하고 에러를 던짐
+          }
+          
           console.warn(
             `[ProductDetailCollector] Retrying (${retryAttempt}/${retryMax}) after ${delay}ms for ${product.url}: ${err.message}`
           );
@@ -1558,6 +1569,10 @@ export class ProductDetailCollector {
               timestamp: Date.now()
             })
           });
+        },
+        (retryAttempt, err) => {
+          // 재시도 포기 조건: 중지 신호가 발생한 경우
+          return signal.aborted;
         }
       );
 
@@ -1940,6 +1955,12 @@ export class ProductDetailCollector {
       await promisePool(
         retryProducts,
         async (product, signal) => {
+          // 프로세스 시작 전 중지 신호 체크
+          if (this.abortController.signal.aborted || signal.aborted) {
+            console.log(`[ProductDetailCollector] 재시도 중단됨 - 중지 신호 감지: ${product.url}`);
+            return null;
+          }
+          
           const result = await this.processProductDetailCrawl(
             product, matterProducts, failedProducts, failedProductErrors, signal, attempt
           );
@@ -1966,8 +1987,18 @@ export class ProductDetailCollector {
         },
         config.retryConcurrency ?? 1,
         this.abortController
-
       );
+
+      // promisePool 완료 후 중지 신호 체크
+      if (this.abortController.signal.aborted) {
+        logger.info('재시도 promisePool 완료 후 중지 신호를 받아 제품 상세 정보 재시도를 중단합니다.', 'ProductDetailCollector');
+        crawlerEvents.emit('crawlingTaskStatus', {
+          taskId: 'detail-retry',
+          status: 'cancelled',
+          message: '제품 상세 정보 재시도가 중지되었습니다.'
+        });
+        return;
+      }
 
       if (failedProducts.length === 0) {
         logger.info(`모든 제품 상세 정보 재시도 성공`, 'ProductDetailCollector');

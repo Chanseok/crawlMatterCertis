@@ -30,6 +30,7 @@ export function calculateBackoffDelay(attempt: number, baseDelay: number = 1000,
  * @param baseDelay 기본 지연 시간 (밀리초)
  * @param maxDelay 최대 지연 시간 (밀리초)
  * @param onRetry 재시도 시 호출할 콜백 함수
+ * @param shouldAbort 중지 조건을 체크하는 함수 (선택사항)
  * @returns 원본 함수의 결과
  */
 export async function retryWithBackoff<T>(
@@ -37,7 +38,8 @@ export async function retryWithBackoff<T>(
   maxRetries: number = 3,
   baseDelay: number = 1000,
   maxDelay: number = 30000,
-  onRetry?: (attempt: number, delay: number, error: Error) => void
+  onRetry?: (attempt: number, delay: number, error: Error) => void,
+  shouldAbort?: (attempt: number, error: Error) => boolean
 ): Promise<T> {
   let attempt = 1;
   let lastError: Error;
@@ -47,6 +49,12 @@ export async function retryWithBackoff<T>(
       return await fn();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      
+      // 중지 조건 체크 - 재시도 전에 확인
+      if (shouldAbort && shouldAbort(attempt, lastError)) {
+        console.log(`[retryWithBackoff] 중지 신호 감지됨, 재시도 중단 (attempt: ${attempt})`);
+        throw lastError;
+      }
       
       if (attempt > maxRetries) {
         throw lastError;
@@ -58,7 +66,31 @@ export async function retryWithBackoff<T>(
         onRetry(attempt, delay, lastError);
       }
       
-      await new Promise(resolve => setTimeout(resolve, delay));
+      // 지연 시간 동안에도 중지 신호 체크
+      await new Promise(resolve => {
+        const timer = setTimeout(resolve, delay);
+        
+        // 중지 조건을 주기적으로 체크 (100ms마다)
+        const checkInterval = setInterval(() => {
+          if (shouldAbort && shouldAbort(attempt, lastError)) {
+            clearTimeout(timer);
+            clearInterval(checkInterval);
+            console.log(`[retryWithBackoff] 지연 중 중지 신호 감지됨, 재시도 중단`);
+            resolve(undefined);
+          }
+        }, 100);
+        
+        setTimeout(() => {
+          clearInterval(checkInterval);
+        }, delay);
+      });
+      
+      // 지연 후에도 다시 한번 중지 조건 체크
+      if (shouldAbort && shouldAbort(attempt, lastError)) {
+        console.log(`[retryWithBackoff] 지연 후 중지 신호 감지됨, 재시도 중단`);
+        throw lastError;
+      }
+      
       attempt++;
     }
   }
