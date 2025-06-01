@@ -1,6 +1,6 @@
 console.log('[DASHBOARD] 🚀 CrawlingDashboard.tsx module loaded');
 
-import { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
 import { observer } from 'mobx-react-lite';
 import type { CrawlingStatusSummary } from '../../../types'; // Only import what's used
 
@@ -42,10 +42,7 @@ interface CrawlingDashboardProps {
  * This maintains Domain Store architecture while adding Clean Code patterns
  */
 function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
-  console.log('[DASHBOARD] 🎨 CrawlingDashboard component rendering...');
-  
   // === PRIMARY: Domain Store Hooks (Main State Management) ===
-  console.log('[DASHBOARD] 🔧 Calling useCrawlingStore hook...');
   const { 
     status,
     progress, 
@@ -419,7 +416,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
         />
 
         {/* Redesigned Batch Progress Section */}
-        {(() => {
+        {React.useMemo(() => {
           const hasCurrentBatch = progress.currentBatch !== undefined && progress.currentBatch !== null;
           const hasTotalBatches = progress.totalBatches !== undefined && progress.totalBatches !== null;
           const totalBatchesGreaterThan1 = (progress.totalBatches || 0) > 1;
@@ -427,41 +424,15 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           const statusMatches = status === 'running' || status === 'initializing' || status === 'idle' || status === 'paused';
           
           // 🔧 배치 UI 조건을 더 유연하게 수정
-          // Stage 3에서 제품 상세정보 수집 중인 경우 배치 UI를 강제 표시
+          // Stage 3에서 제품 상세정보 수집 중인 경우 또는 배치 정보가 있는 경우 배치 UI 표시
           const isStage3Running = viewModel.currentStage === 3 && statusMatches;
           
-          // 원본 배치 UI 조건 또는 Stage 3 실행 중인 경우
-          const batchUICondition = (hasCurrentBatch && hasTotalBatches && totalBatchesGreaterThan1 && statusMatches) || isStage3Running;
+          // 원본 배치 UI 조건: 명확한 배치 정보가 있는 경우
+          const hasValidBatchData = hasCurrentBatch && hasTotalBatches && totalBatchesGreaterThan1;
           
-          console.log('[CrawlingDashboard] 🎯 배치 UI 조건 체크 (수정됨):', {
-            originalData: {
-              currentBatch: progress.currentBatch,
-              hasCurrentBatch,
-              totalBatches: progress.totalBatches,
-              hasTotalBatches,
-              totalBatchesGreaterThan1
-            },
-            stage3Fallback: {
-              currentStage: viewModel.currentStage,
-              isStage3Running
-            },
-            status: status,
-            statusMatches,
-            finalCondition: batchUICondition,
-            progressKeys: Object.keys(progress),
-            batchData: { 
-              currentBatch: progress.currentBatch, 
-              totalBatches: progress.totalBatches,
-              batchRetryCount: progress.batchRetryCount,
-              batchRetryLimit: progress.batchRetryLimit
-            },
-            renderTest: 'BATCH_UI_SHOULD_RENDER'
-          });
-          
-          // 🚨 FORCE SHOW BATCH UI FOR DEBUGGING
-          console.log('[CrawlingDashboard] 🚨 FORCE RENDERING BATCH UI FOR DEBUG');
-          return true; // Force render for now to debug
-        })() && (
+          // 최종 조건: 유효한 배치 데이터가 있거나 Stage 3 실행 중인 경우
+          return (hasValidBatchData && statusMatches) || isStage3Running;
+        }, [progress.currentBatch, progress.totalBatches, status, viewModel.currentStage]) && (
           <div className="mt-6 mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-700">
             {/* 1. 전체 배치 진행률 */}
             <div className="flex items-center mb-2">
@@ -640,16 +611,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
                     const processedItems = progress.processedItems || progress.current || 0;
                     const totalItems = progress.totalItems || progress.total || 0;
                     
-                    console.log('[CrawlingDashboard] Stage 3 Progress Data:', {
-                      processedItems,
-                      totalItems,
-                      progressCurrent: progress.current,
-                      progressTotal: progress.total,
-                      progressProcessedItems: progress.processedItems,
-                      progressTotalItems: progress.totalItems,
-                      allProgressKeys: Object.keys(progress)
-                    });
-                    
                     return `${processedItems} / ${totalItems}`;
                   } else {
                     // Stage 1: Enhanced page detection using concurrentTasks data for more accurate progress
@@ -693,13 +654,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
                       const totalItems = progress.totalItems || progress.total || 0;
                       const percentage = totalItems > 0 ? (processedItems / totalItems) * 100 : 0;
                       const safePercentage = Math.min(100, Math.max(0, percentage));
-                      
-                      console.log('[CrawlingDashboard] Stage 3 Progress Calculation:', {
-                        processedItems,
-                        totalItems,
-                        percentage,
-                        safePercentage
-                      });
                       
                       return safePercentage;
                     } else {
@@ -1007,12 +961,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
       >
         {(() => {
           const showLoadingState = !statusSummary || (statusSummary.dbProductCount === undefined && statusSummary.siteProductCount === undefined);
-          console.log('[CrawlingDashboard] 🔍 Show loading state check:', {
-            hasStatusSummary: !!statusSummary,
-            dbProductCountUndefined: statusSummary?.dbProductCount === undefined,
-            siteProductCountUndefined: statusSummary?.siteProductCount === undefined,
-            showLoadingState
-          });
           return showLoadingState;
         })() ? (
           <div className="flex flex-col items-center justify-center h-20">
