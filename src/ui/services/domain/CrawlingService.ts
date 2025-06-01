@@ -111,14 +111,15 @@ export class CrawlingService extends BaseService {
       }
 
       const result = await this.ipcService.checkCrawlingStatus();
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to check crawling status');
-      }
+      // result: { success: true, status: {...} } or { success: false, error: ... }
+      const statusObj = (result && result.success && typeof result.status === 'object' && result.status !== null)
+        ? result.status
+        : {};
 
       return {
-        status: result.status?.status || 'idle',
+        status: statusObj.status || 'idle',
         progress: undefined, // checkCrawlingStatus doesn't return progress
-        summary: result.status
+        summary: statusObj
       };
     }, 'checkCrawlingStatus');
   }

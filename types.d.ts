@@ -99,6 +99,16 @@ export type CrawlingStatus =
     | 'completed_stage_1';
 
 /**
+ * 크롤링 중 발생할 수 있는 오류 정보를 나타내는 타입
+ */
+export interface CrawlingError {
+  name: string;
+  message: string;
+  stack?: string;
+  details?: any; // 추가적인 오류 정보를 담을 수 있는 필드
+}
+
+/**
  * 크롤링 단계를 세부적으로 나타내는 열거형 타입
  * 
  * @typedef {string} CrawlingStage
@@ -266,14 +276,12 @@ export type CrawlingStatusSummary = {
     siteProductCount: number;
     diff: number;
     needCrawling: boolean;
-    crawlingRange: { startPage: number; endPage: number };
-    lastPageProductCount?: number; 
-    selectedPageCount?: number; 
-    estimatedProductCount?: number; 
-    estimatedTotalTime?: number; 
-    userPageLimit?: number; 
-    error?: string; 
+    crawlingRange?: { startPage: number; endPage: number };
     actualTargetPageCountForStage1?: number;
+    isRecrawling?: boolean;
+    lastCrawlTimestamp?: number | null;
+    lastPageProductCount?: number;
+    [key: string]: any; // Added index signature
 };
 
 // 데이터베이스 요약 정보 타입

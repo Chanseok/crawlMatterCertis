@@ -9,8 +9,12 @@
 import { makeObservable, observable, action } from 'mobx';
 import { crawlingStore } from '../stores/domain/CrawlingStore';
 import { taskStore } from '../stores/domain/TaskStore';
-import type { CrawlingProgress, CrawlingStatus, CrawlerConfig } from '../../../types';
-import type { CrawlingStatusSummary } from '../stores/domain/CrawlingStore';
+import type {
+  CrawlingProgress,
+  CrawlingStatus,
+  CrawlerConfig,
+  CrawlingStatusSummary,
+} from '../../../types'; // Corrected import path
 
 interface AnimatedValues {
   percentage: number;
@@ -153,29 +157,53 @@ export class CrawlingDashboardViewModel {
   get stageInfo(): { text: string; color: string } {
     const currentStep = this.progress.currentStep || '';
     
-    // 1.5단계 검증 진행 상태 처리
+    console.log('[ViewModel] stageInfo - currentStage:', this.progress.currentStage, 'currentStep:', currentStep);
+    
+    // 1. 명시적인 2단계 체크 - currentStage 우선
+    if (this.progress.currentStage === 2) {
+      console.log('[ViewModel] Detected Stage 2 via currentStage');
+      return {
+        text: '2단계: 상세 수집',
+        color: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300'
+      };
+    }
+    
+    // 2. currentStep을 통한 2단계 감지
+    if (currentStep.includes('2단계') || currentStep.includes('상세') || currentStep.includes('제품 상세')) {
+      console.log('[ViewModel] Detected Stage 2 via currentStep');
+      return {
+        text: '2단계: 상세 수집',
+        color: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300'
+      };
+    }
+    
+    // 3. 1.5단계 검증 진행 상태 처리
     if (currentStep.includes('1.5/3단계') || currentStep.includes('로컬db') || 
         currentStep.includes('검증') || currentStep.includes('db 중복')) {
       return {
         text: '1.5단계: 제품 검증',
         color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
       };
-    } else if (this.progress.currentStage === 1) {
+    } 
+    
+    // 4. 1단계 처리
+    else if (this.progress.currentStage === 1 || currentStep.includes('1단계') || currentStep.includes('목록')) {
       return {
         text: '1단계: 목록 수집',
         color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300'
       };
-    } else if (this.progress.currentStage === 2) {
-      return {
-        text: '2단계: 상세 수집',
-        color: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300'
-      };
-    } else if (this.status === 'completed' && !this.progress.currentStage) {
+    } 
+    
+    // 5. 완료 상태
+    else if (this.status === 'completed' && !this.progress.currentStage) {
       return {
         text: '완료',
         color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
       };
-    } else if (this.status === 'error') {
+    } 
+    
+    // 6. 오류 상태
+    else if (this.status === 'error') {
       return {
         text: '오류 발생',
         color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'

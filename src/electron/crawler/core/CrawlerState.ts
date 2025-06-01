@@ -214,6 +214,13 @@ export class CrawlerState {
       percentage: 0,
       status: 'initializing',
       currentStep: '크롤링 준비 중...',
+      currentStage: 1, // ✅ currentStage 필드 추가 - 기본값 1단계
+      currentPage: 0,
+      totalPages: 0,
+      processedItems: 0,
+      totalItems: 0,
+      newItems: 0,
+      updatedItems: 0,
       elapsedTime: 0,
       startTime: Date.now(),
       message: '크롤링 준비 중...'
@@ -525,7 +532,9 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
    * 진행 상태 업데이트를 이벤트로 발행
    */
   private emitProgressUpdate(): void {
-    crawlerEvents.emit('crawlingProgress', this.progressData);
+    // The actual update to this.progressData happens in updateProgress or setStage
+    console.log(`[CrawlerState] Emitting 'crawlingProgress'. currentStage: ${this.progressData.currentStage}, currentStep: "${this.progressData.currentStep}", status: ${this.progressData.status}, total: ${this.progressData.total}, completed: ${this.progressData.current}, message: ${this.progressData.message}`);
+    crawlerEvents.emit('crawlingProgress', { ...this.progressData }); // Send a copy
   }
 
   /**
@@ -548,6 +557,13 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
       total: 0,
       percentage: 0,
       currentStep: '크롤링 준비 중...',
+      currentStage: 1, // ✅ currentStage 필드 추가 - 기본값 1단계
+      currentPage: 0,
+      totalPages: 0,
+      processedItems: 0,
+      totalItems: 0,
+      newItems: 0,
+      updatedItems: 0,
       elapsedTime: 0,
       startTime: Date.now(),
       status: 'initializing',
@@ -654,6 +670,11 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     const percentage = totalItems > 0 ? (this.detailStageProcessedCount / totalItems * 100) : 0;
     const safePercentage = Math.min(Math.max(percentage, 0), 100);
     
+    // ✅ Ensure stage remains as productDetail during Stage 2 processing
+    if (this.currentStage !== 'productDetail:processing') {
+      this.setStage('productDetail:processing', '2단계: 제품 상세 정보 수집 중');
+    }
+    
     // 정확한 상태 업데이트를 위한 전체 필드 설정
     this.updateProgress({
       current: this.detailStageProcessedCount,
@@ -663,21 +684,9 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
       newItems: this.detailStageNewCount,
       updatedItems: this.detailStageUpdatedCount,
       percentage: safePercentage,
-      message: `2단계: 제품 상세정보 ${this.detailStageProcessedCount}/${totalItems} 처리 중 (${safePercentage.toFixed(1)}%)`
-    });
-    
-    // UI 일관성을 위해 크롤링 이벤트 직접 발송
-    crawlerEvents.emit('crawlingProgress', {
+      currentStage: 2,  // ✅ 2단계 명시적 설정
+      currentStep: '2단계: 제품 상세 정보 수집',  // ✅ 현재 단계 명시적 설정  
       status: 'running',
-      currentPage: this.detailStageProcessedCount,
-      totalPages: totalItems,
-      processedItems: this.detailStageProcessedCount,
-      totalItems: totalItems,
-      percentage: safePercentage,
-      currentStep: '제품 상세 정보 수집',
-      currentStage: 2,
-      newItems: this.detailStageNewCount,
-      updatedItems: this.detailStageUpdatedCount,
       message: `2단계: 제품 상세정보 ${this.detailStageProcessedCount}/${totalItems} 처리 중 (${safePercentage.toFixed(1)}%)`
     });
     

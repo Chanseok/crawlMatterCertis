@@ -1308,6 +1308,9 @@ export class ProductDetailCollector {
       percentage: 0,                // 진행율 (0%로 초기화)
       newItems: 0,                  // 새 항목 수 (0으로 초기화)
       updatedItems: 0,              // 업데이트된 항목 수 (0으로 초기화)
+      currentStage: 2,              // 2단계 명시적 설정
+      currentStep: '2단계: 제품 상세 정보 수집',
+      status: 'running',            // 실행 상태 설정
       message: `2단계: 제품 상세 정보 수집 시작 (0/${products.length})`
     });
 
@@ -1458,6 +1461,8 @@ export class ProductDetailCollector {
       this.state.updateProgress({
         current: this.state.getDetailStageProcessedCount(), 
         total: totalItems,
+        currentStage: 2,              // 2단계 명시적 설정
+        currentStep: '2단계: 제품 상세 정보 처리 완료',
         status: 'running', 
         message: '2단계: 제품 상세 정보 처리 완료'
       });
@@ -1687,6 +1692,8 @@ export class ProductDetailCollector {
       totalItems: totalItems,       // 총 항목 수 (명시적 설정)
       processedItems: 0,            // 처리된 항목 수
       percentage: 0,                // 진행율
+      currentStage: 2,              // 2단계 명시적 설정
+      currentStep: '2단계: 제품 상세 정보 수집',
       status: 'running',            // 상태
       newItems: 0,                  // 새 항목 수
       updatedItems: 0,              // 업데이트된 항목 수
@@ -1742,6 +1749,9 @@ export class ProductDetailCollector {
           this.state.updateProgress({
             current: currentProcessedItems,
             total: totalItems,
+            currentStage: 2,              // 2단계 명시적 설정
+            currentStep: '2단계: 제품 상세 정보 수집',
+            status: 'running',
             message: message,
             percentage: percentage,
             newItems: this.state.getDetailStageNewCount(),
@@ -1803,6 +1813,9 @@ export class ProductDetailCollector {
       total: totalItems,
       totalItems: totalItems,
       processedItems: actualProcessedItems,
+      currentStage: 2,              // 2단계 명시적 설정
+      currentStep: '2단계: 제품 상세 정보 수집 완료',
+      status: 'running',
       newItems: newItems,
       updatedItems: updatedItems,
       message: `2/2단계: 제품 상세 정보 수집 완료 (${actualProcessedItems}/${totalItems})`,

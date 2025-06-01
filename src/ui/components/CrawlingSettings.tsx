@@ -107,11 +107,27 @@ function CrawlingSettingsComponent() {
           <div className="grid grid-cols-2 gap-2">
             <span>설정 로드됨:</span>
             <span>{Object.keys(configurationViewModel.config).length > 0 ? '예' : '아니오'}</span>
+            <span>설정 키 개수:</span>
+            <span>{Object.keys(configurationViewModel.config).length}</span>
             <span>마지막 저장:</span>
             <span>{configurationViewModel.lastSaved ? configurationViewModel.lastSaved.toLocaleString() : '없음'}</span>
             <span>변경사항:</span>
             <span>{configurationViewModel.hasChanges ? '있음' : '없음'}</span>
+            <span>로딩 중:</span>
+            <span>{configurationViewModel.isLoading ? '예' : '아니오'}</span>
+            <span>에러:</span>
+            <span>{configurationViewModel.error || '없음'}</span>
           </div>
+        </div>
+        <div className="mt-3 text-xs text-gray-500">
+          <details>
+            <summary className="cursor-pointer">설정 키 목록 보기</summary>
+            <div className="mt-2 p-2 bg-white rounded border text-xs font-mono">
+              {Object.keys(configurationViewModel.config).length > 0 
+                ? Object.keys(configurationViewModel.config).join(', ') 
+                : '설정 데이터 없음'}
+            </div>
+          </details>
         </div>
       </div>
 

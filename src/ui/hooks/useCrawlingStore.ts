@@ -59,7 +59,10 @@ export function useCrawlingStore() {
     updateConfig: async (config: Partial<CrawlerConfig>) => {
       console.log('useCrawlingStore.updateConfig called with:', config);
       try {
-        await crawlingStore.updateConfig(config);
+        // Load current config and merge with partial config
+        const currentConfig = await crawlingStore.loadConfig();
+        const mergedConfig: CrawlerConfig = { ...currentConfig, ...config };
+        await crawlingStore.updateConfig(mergedConfig);
         console.log('useCrawlingStore.updateConfig completed successfully');
       } catch (error) {
         console.error('useCrawlingStore.updateConfig error:', error);

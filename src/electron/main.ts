@@ -646,6 +646,7 @@ app.on('ready', async () => {
 function setupCrawlerEvents(mainWindow: BrowserWindow): void {
     // 크롤링 진행 상태 이벤트
     crawlerEvents.on('crawlingProgress', (progress: CrawlingProgress) => {
+        log.info(`[MAIN] Received crawlingProgress event: stage=${progress.currentStage}, step="${progress.currentStep}", message="${progress.message}"`);
         mainWindow.webContents.send('crawlingProgress', progress);
     });
     

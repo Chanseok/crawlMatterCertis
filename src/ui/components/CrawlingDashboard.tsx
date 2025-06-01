@@ -1,11 +1,11 @@
 import { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
-import { observer, useLocalObservable } from 'mobx-react-lite';
+import { observer, useLocalObservable } from 'mobx-react-lite'; // Added useLocalObservable
+import type { CrawlingStatusSummary } from '../../../types'; // Only import what's used
 
 // Clean Architecture - Display Components (Single Responsibility)
 import { CrawlingStageDisplay } from './displays/CrawlingStageDisplay';
 import { CrawlingControlsDisplay } from './displays/CrawlingControlsDisplay';
 import { CrawlingMetricsDisplay } from './displays/CrawlingMetricsDisplay';
-import { PageProgressDisplay } from './displays/PageProgressDisplay';
 import { TimeDisplay } from './displays/TimeDisplay';
 
 // Legacy Components (to be migrated)
@@ -22,7 +22,6 @@ import { useTaskStore } from '../hooks/useTaskStore';
 // ViewModel for Complex UI Logic (Secondary Helper)
 import { CrawlingDashboardViewModel } from '../viewmodels/CrawlingDashboardViewModel';
 
-import type { CrawlingStatusSummary } from '../stores/domain/CrawlingStore';
 import { format } from 'date-fns';
 
 interface CrawlingDashboardProps {
@@ -85,6 +84,17 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     elapsedTime: false,
     remainingTime: false
   });
+  // --- NEW: Retain frozen concurrentTasks grid after stage 1 ---
+  const [frozenConcurrentTasks, setFrozenConcurrentTasks] = useState<any[]>([]);
+  const prevStageRef = useRef(progress.currentStage);
+
+  // Watch for stage transition from 1 to 2 to freeze the grid
+  useEffect(() => {
+    if (prevStageRef.current === 1 && progress.currentStage === 2) {
+      setFrozenConcurrentTasks(concurrentTasks ? [...concurrentTasks] : []);
+    }
+    prevStageRef.current = progress.currentStage;
+  }, [progress.currentStage, concurrentTasks]);
 
   // Refs for cleanup
   const completionTimerRef = useRef<number | null>(null);
@@ -342,7 +352,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
         {error && (
           <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
             <div className="flex justify-between items-center">
-              <span>{error}</span>
+              <span>{error.message}</span>
               <button 
                 onClick={clearError}
                 className="text-red-500 hover:text-red-700 font-bold"
@@ -370,12 +380,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           currentStep={progress.currentStep}
         />
 
-        {/* Stage Transition Indicator */}
-        <StageTransitionIndicator 
-          currentStage={progress.currentStage}
-          currentStep={progress.currentStep}
-        />
-
         {/* Metrics Display */}
         <CrawlingMetricsDisplay 
           progress={progress}
@@ -392,8 +396,249 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           isAfterStatusCheck={isAfterStatusCheck}
         />
 
-        {/* Page Progress Display */}
-        <PageProgressDisplay />
+        {/* Redesigned Batch Progress Section */}
+        {progress.currentBatch && progress.totalBatches && progress.totalBatches > 1 && status !== 'completed' && (
+          <div className="mt-6 mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-700">
+            {/* 1. 전체 배치 진행률 */}
+            <div className="flex items-center mb-2">
+              <span className="font-semibold text-amber-700 dark:text-amber-300 mr-2">
+                총 {progress.totalBatches}회 중 {progress.currentBatch}회차 진행 중
+              </span>
+              {progress.batchRetryCount !== undefined && progress.batchRetryCount > 0 && (
+                <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 font-medium">(배치 재시도: {progress.batchRetryCount}/{progress.batchRetryLimit || 3})</span>
+              )}
+            </div>
+            <div className="mb-3">
+              <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400 mb-1">
+                <span>전체 배치 진행률</span>
+                <span>{progress.currentBatch && progress.totalBatches ? `${progress.currentBatch} / ${progress.totalBatches}` : ''}</span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                <div
+                  className="h-2.5 rounded-full transition-all duration-300 bg-amber-400 animate-pulse"
+                  style={{ width: `${Math.min(100, Math.max(0, (progress.currentBatch / progress.totalBatches) * 100))}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 2. 동시 페이지 수집 현황 grid/dot 시각화 (실제 병렬 작업 기준) */}
+            {progress.currentStage === 1 && Array.isArray(concurrentTasks) && concurrentTasks.length > 0 && (
+              <div className="mt-2">
+                <div className="flex items-center mb-1 text-xs text-blue-700 dark:text-blue-300">
+                  <span>동시 페이지 수집 현황</span>
+                  <span className="ml-2 text-gray-500 dark:text-gray-400">(최대 {config.batchSize || config.pageRangeLimit || 12}개 동시)</span>
+                </div>
+                <div className="grid grid-cols-8 gap-1">
+                  {concurrentTasks.slice(0, config.batchSize || config.pageRangeLimit || 12).map((task, idx) => {
+                    let color = 'bg-gray-300 dark:bg-gray-700 text-gray-500';
+                    let icon = '';
+                    switch (task.status) {
+                      case 'success':
+                        color = 'bg-green-400 text-white';
+                        icon = '✔';
+                        break;
+                      case 'error':
+                      case 'failed':
+                        color = 'bg-red-400 text-white animate-pulse';
+                        icon = '!';
+                        break;
+                      case 'running':
+                      case 'attempting':
+                        color = 'bg-blue-400 text-white animate-pulse';
+                        icon = '▶';
+                        break;
+                      case 'incomplete':
+                        color = 'bg-yellow-400 text-white';
+                        icon = '~';
+                        break;
+                      case 'pending':
+                      case 'waiting':
+                      default:
+                        color = 'bg-gray-300 dark:bg-gray-700 text-gray-500';
+                        icon = '';
+                    }
+                    return (
+                      <div key={task.pageNumber || idx} className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${color}`}
+                        title={`페이지 ${task.pageNumber}: ${task.status}`}
+                      >
+                        {icon}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {/* --- NEW: Show frozen grid in stage 2 --- */}
+            {progress.currentStage === 2 && frozenConcurrentTasks.length > 0 && (
+              <div className="mt-2">
+                <div className="flex items-center mb-1 text-xs text-blue-700 dark:text-blue-300">
+                  <span>동시 페이지 수집 현황 (1단계 결과)</span>
+                  <span className="ml-2 text-gray-500 dark:text-gray-400">(최대 {config.batchSize || config.pageRangeLimit || 12}개 동시)</span>
+                </div>
+                <div className="grid grid-cols-8 gap-1">
+                  {frozenConcurrentTasks.slice(0, config.batchSize || config.pageRangeLimit || 12).map((task, idx) => {
+                    let color = 'bg-gray-300 dark:bg-gray-700 text-gray-500';
+                    let icon = '';
+                    switch (task.status) {
+                      case 'success':
+                        color = 'bg-green-400 text-white';
+                        icon = '✔';
+                        break;
+                      case 'error':
+                      case 'failed':
+                        color = 'bg-red-400 text-white animate-pulse';
+                        icon = '!';
+                        break;
+                      case 'running':
+                      case 'attempting':
+                        color = 'bg-blue-400 text-white animate-pulse';
+                        icon = '▶';
+                        break;
+                      case 'incomplete':
+                        color = 'bg-yellow-400 text-white';
+                        icon = '~';
+                        break;
+                      case 'pending':
+                      case 'waiting':
+                      default:
+                        color = 'bg-gray-300 dark:bg-gray-700 text-gray-500';
+                        icon = '';
+                    }
+                    return (
+                      <div key={task.pageNumber || idx} className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${color}`}
+                        title={`페이지 ${task.pageNumber}: ${task.status}`}
+                      >
+                        {icon}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Stage Transition Indicator (Milestone Progress Bar) - Moved below batch progress */}
+        <StageTransitionIndicator 
+          currentStage={progress.currentStage}
+          currentStep={progress.currentStep}
+        />
+
+        {/* Enhanced Progress Display - Shows page progress for stage 1, product progress for stage 2 */}
+        {status !== 'idle' && (
+          (progress.currentStage === 1 && ((progress.totalPages && progress.totalPages > 0) || (Array.isArray(concurrentTasks) && concurrentTasks.length > 0))) ||
+          (progress.currentStage === 2 && (progress.totalItems && progress.totalItems > 0))
+        ) && (
+          <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {progress.currentStage === 1 ? `페이지 진행률 (${progress.currentStage}단계)` : `제품 진행률 (${progress.currentStage}단계)`}
+              </span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {(() => {
+                  if (progress.currentStage === 2) {
+                    // Stage 2: Show product-based progress
+                    const processedItems = progress.processedItems || 0;
+                    const totalItems = progress.totalItems || 0;
+                    return `${processedItems} / ${totalItems}`;
+                  } else {
+                    // Stage 1: Enhanced page detection using concurrentTasks data for more accurate progress
+                    let currentPage = progress.currentPage || 0;
+                    let totalPages = progress.totalPages || 0;
+                    
+                    // If we have concurrentTasks data, use it for better accuracy
+                    if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
+                      const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
+                      currentPage = Math.max(currentPage, successfulPages);
+                      
+                      // If totalPages is not set but we have concurrent tasks, estimate from config
+                      if (totalPages === 0) {
+                        totalPages = config.batchSize || config.pageRangeLimit || 12;
+                      }
+                    }
+                    
+                    return `${currentPage} / ${totalPages}`;
+                  }
+                })()}
+              </span>
+            </div>
+            
+            <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  status === 'completed' ? 'bg-green-500' : 
+                  status === 'error' ? 'bg-red-500' : 'bg-blue-500'
+                }`}
+                style={{ 
+                  width: `${(() => {
+                    if (progress.currentStage === 2) {
+                      // Stage 2: Product-based percentage calculation
+                      const processedItems = progress.processedItems || 0;
+                      const totalItems = progress.totalItems || 0;
+                      const percentage = totalItems > 0 ? (processedItems / totalItems) * 100 : 0;
+                      return Math.min(100, Math.max(0, percentage));
+                    } else {
+                      // Stage 1: Enhanced page percentage calculation using concurrentTasks
+                      let currentPage = progress.currentPage || 0;
+                      let totalPages = progress.totalPages || 0;
+                      
+                      if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
+                        const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
+                        currentPage = Math.max(currentPage, successfulPages);
+                        
+                        if (totalPages === 0) {
+                          totalPages = config.batchSize || config.pageRangeLimit || 12;
+                        }
+                      }
+                      
+                      const percentage = totalPages > 0 ? (currentPage / totalPages) * 100 : 0;
+                      return Math.min(100, Math.max(0, percentage));
+                    }
+                  })()}%` 
+                }}
+              />
+            </div>
+            
+            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <span>
+                {(() => {
+                  let currentPage = progress.currentPage || 0;
+                  let totalPages = progress.totalPages || 0;
+                  
+                  if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
+                    const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
+                    currentPage = Math.max(currentPage, successfulPages);
+                    
+                    if (totalPages === 0) {
+                      totalPages = config.batchSize || config.pageRangeLimit || 12;
+                    }
+                  }
+                  
+                  const percentage = totalPages > 0 ? (currentPage / totalPages) * 100 : 0;
+                  return Math.round(percentage);
+                })()}% 완료
+              </span>
+              <span>
+                {(() => {
+                  let currentPage = progress.currentPage || 0;
+                  let totalPages = progress.totalPages || 0;
+                  
+                  if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
+                    const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
+                    currentPage = Math.max(currentPage, successfulPages);
+                    
+                    if (totalPages === 0) {
+                      totalPages = config.batchSize || config.pageRangeLimit || 12;
+                    }
+                  }
+                  
+                  const remaining = totalPages - currentPage;
+                  return remaining > 0 ? `${remaining}페이지 남음` : '완료';
+                })()}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Collection Results for Stage 2 */}
         {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
@@ -489,13 +734,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
                   기존 {progress.validationSummary.existingProducts}개,
                   중복 {progress.validationSummary.duplicateProducts}개
                 </span></li>
-              )}
-              {progress.currentBatch !== undefined && progress.totalBatches !== undefined && (
-                <li>• 배치 처리: <span className="font-medium text-blue-800 dark:text-blue-300">{progress.currentBatch}/{progress.totalBatches} 배치</span>
-                  {progress.batchRetryCount !== undefined && progress.batchRetryCount > 0 && (
-                    <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium"> (배치 재시도: {progress.batchRetryCount}/{progress.batchRetryLimit || 3})</span>
-                  )}
-                </li>
               )}
             </ul>
           </div>
@@ -639,7 +877,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
               사이트와 로컬 DB 정보를 비교하려면<br/>"상태 체크" 버튼을 클릭하세요.
             </p>
           </div>
-        ) : (
+        ) : statusSummary ? (
           <div className="space-y-3">
             <div className="p-2 bg-green-50 border border-green-200 rounded">
               <p className="text-green-800 font-semibold">✅ 상태 체크 완료!</p>
@@ -722,6 +960,10 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
                 </div>
               </div>
             )}
+          </div>
+        ) : (
+          <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+            상태 정보를 불러오는 중...
           </div>
         )}
       </ExpandableSection>

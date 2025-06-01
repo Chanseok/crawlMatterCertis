@@ -6,461 +6,373 @@
  * and crawling operations. Encapsulates crawling business logic.
  */
 
-import { makeObservable, observable, action, computed, toJS } from 'mobx';
-import type { CrawlingProgress, CrawlingStatus, CrawlerConfig } from '../../../../types';
-import type { CrawlingSummary } from '../../../electron/crawler/utils/types';
-import { IPCService } from '../../services/IPCService';
+import { makeObservable, observable, action, runInAction } from 'mobx';
+import { IPCService, IPCUnsubscribeFunction, ipcService } from '../../services/IPCService'; // Added ipcService import
 
-export interface CrawlingStatusSummary {
-  dbLastUpdated: Date | null;
-  dbProductCount: number;
-  siteTotalPages: number;
-  siteProductCount: number;
-  diff: number;
-  needCrawling: boolean;
-  crawlingRange: { startPage: number; endPage: number };
-  actualTargetPageCountForStage1?: number;
+/*
+interface CrawlingError {
+  name: string;
+  message: string;
+  stack?: string;
 }
+*/
 
-/**
- * Crawling Domain Store
- * Manages crawling state, progress, configuration, and operations
- */
+import type { CrawlingProgress, CrawlingStatus, CrawlerConfig, CrawlingError, CrawlingStatusSummary } from '../../../../types';
+
+const initialProgress: CrawlingProgress = {
+  current: 0,
+  total: 0,
+  percentage: 0,
+  status: 'idle',
+  currentStep: '대기 중...',
+  elapsedTime: 0,
+  startTime: 0,
+  message: '대기 중...',
+  currentStage: 0,
+};
+
 export class CrawlingStore {
-  // Core crawling state
-  public status: CrawlingStatus = 'idle';
-  public progress: CrawlingProgress = {
-    status: 'idle',
-    current: 0,
-    total: 0,
-    percentage: 0,
-    currentStep: '',
-    elapsedTime: 0,
-    currentPage: 0,
-    totalPages: 0,
-    processedItems: 0,
-    totalItems: 0,
-    startTime: Date.now(),
-    estimatedEndTime: 0,
-    newItems: 0,
-    updatedItems: 0,
-    currentStage: 0,
-    message: ''
-  };
+  @observable accessor status: CrawlingStatus = 'idle';
+  @observable accessor progress: CrawlingProgress = { ...initialProgress };
+  @observable accessor error: CrawlingError | null = null;
+  @observable accessor config: CrawlerConfig = {} as CrawlerConfig;
+  @observable accessor statusSummary: CrawlingStatusSummary | null = null;
+  @observable accessor lastStatusSummary: CrawlingStatusSummary | null = null;
+  @observable accessor isCheckingStatus: boolean = false;
+  @observable accessor currentMessage: string = '대기 중...';
 
-  // Configuration
-  public config: CrawlerConfig = {
-    pageRangeLimit: 10,
-    productListRetryCount: 9,
-    productDetailRetryCount: 9,
-    productsPerPage: 12,
-    autoAddToLocalDB: false,
-    autoStatusCheck: true,    // 기본값: 자동 상태 체크 활성화
-    batchSize: 30,
-    batchDelayMs: 2000,
-    enableBatchProcessing: true,
-    batchRetryLimit: 3
-  };
+  private unsubscribeCrawlingProgress: IPCUnsubscribeFunction | null = null;
+  private unsubscribeCrawlingComplete: IPCUnsubscribeFunction | null = null;
+  private unsubscribeCrawlingError: IPCUnsubscribeFunction | null = null;
+  private unsubscribeCrawlingStopped: IPCUnsubscribeFunction | null = null;
+  private unsubscribeCrawlingStatusSummary: IPCUnsubscribeFunction | null = null;
 
-  // Status and summary
-  public statusSummary: CrawlingSummary = {} as CrawlingSummary;
-  public lastStatusSummary: CrawlingSummary = {} as CrawlingSummary;
-  public error: string | null = null;
-
-  // Loading states
-  public isCheckingStatus: boolean = false;
-
-  private ipcService: IPCService;
-  private unsubscribeFunctions: (() => void)[] = [];
-
-  constructor() {
+  constructor(private ipcServiceInstance: IPCService) {
     makeObservable(this, {
-      // Observable state
-      status: observable,
-      progress: observable,
-      config: observable,
-      statusSummary: observable,
-      lastStatusSummary: observable,
-      error: observable,
-      isCheckingStatus: observable,
-      
-      // Actions
-      setStatus: action,
-      setProgress: action,
-      setError: action,
-      setStatusSummary: action,
-      setConfig: action,
-      setCheckingStatus: action,
+      // Note: @observable accessor properties don't need to be listed here
+      // Arrow function properties with @action decorators don't need to be listed here
       startCrawling: action,
       stopCrawling: action,
       checkStatus: action,
-      updateConfig: action,
       updateProgress: action,
       clearError: action,
+      setConfig: action,
       loadConfig: action,
-      
-      // Computed
-      isRunning: computed,
-      canStart: computed,
-      canStop: computed,
-      canPause: computed
+      updateConfig: action,
+      cleanup: action,
     });
-
-    this.ipcService = IPCService.getInstance();
-    this.initializeEventSubscriptions();
+    this.subscribeToEvents();
   }
-
-  /**
-   * Initialize IPC event subscriptions
-   */
-  private initializeEventSubscriptions(): void {
-    // Crawling progress updates
-    const unsubProgress = this.ipcService.subscribeCrawlingProgress((progress: CrawlingProgress) => {
-      const validStatus = this.validateCrawlingStatus(progress.status);
-      const updatedProgress = {
-        ...this.progress,
-        ...progress,
-        status: validStatus
-      };
-      
-      this.setProgress(updatedProgress);
-      this.setStatus(validStatus);
-    });
-    this.unsubscribeFunctions.push(unsubProgress);
-
-    // Crawling completion
-    const unsubComplete = this.ipcService.subscribeCrawlingComplete(
-      (result: { success: boolean; count?: number; autoSavedToDb?: boolean }) => {
-        if (result.success) {
-          this.setStatus('completed');
-        } else {
-          this.setStatus('error');
-          this.setError('크롤링이 실패했습니다.');
-        }
-      }
-    );
-    this.unsubscribeFunctions.push(unsubComplete);
-
-    // Crawling errors
-    const unsubError = this.ipcService.subscribeCrawlingError((errorData: { message: string }) => {
-      this.setStatus('error');
-      this.setError(errorData.message || '크롤링 중 오류가 발생했습니다.');
-    });
-    this.unsubscribeFunctions.push(unsubError);
-
-    // Crawling stopped
-    const unsubStopped = this.ipcService.subscribeCrawlingStopped(() => {
-      this.setStatus('idle');
-    });
-    this.unsubscribeFunctions.push(unsubStopped);
-
-    // Crawling status summary (for 사이트 로컬 비교 panel)
-    console.log('[CrawlingStore] Setting up crawlingStatusSummary subscription...');
-    const unsubStatusSummary = this.ipcService.subscribeCrawlingStatusSummary((statusSummary: any) => {
-      console.log('[CrawlingStore] ✅ Received status summary event!', statusSummary);
-      console.log('[CrawlingStore] Status summary type:', typeof statusSummary);
-      console.log('[CrawlingStore] Status summary keys:', Object.keys(statusSummary || {}));
-      console.log('[CrawlingStore] About to call setStatusSummary...');
-      this.setStatusSummary(statusSummary);
-      console.log('[CrawlingStore] setStatusSummary call completed');
-    });
-    this.unsubscribeFunctions.push(unsubStatusSummary);
-    console.log('[CrawlingStore] crawlingStatusSummary subscription set up successfully');
-  }
-
-  // Action methods
-  setStatus = (status: CrawlingStatus) => {
-    this.status = status;
-  };
-
-  setProgress = (progress: CrawlingProgress) => {
-    this.progress = progress;
-  };
-
-  setError = (error: string | null) => {
-    this.error = error;
-  };
-
-  setStatusSummary = (summary: CrawlingSummary) => {
-    console.log('[CrawlingStore] 🔄 setStatusSummary() called with:', summary);
-    console.log('[CrawlingStore] Summary type:', typeof summary);
-    console.log('[CrawlingStore] Summary keys:', summary ? Object.keys(summary) : 'null/undefined');
-    
-    // Store previous summary
-    if (this.statusSummary && Object.keys(this.statusSummary).length > 0) {
-      this.lastStatusSummary = this.statusSummary;
-      console.log('[CrawlingStore] Previous statusSummary moved to lastStatusSummary:', this.lastStatusSummary);
-    }
-    
-    console.log('[CrawlingStore] Before assignment - this.statusSummary:', this.statusSummary);
-    this.statusSummary = summary;
-    console.log('[CrawlingStore] After assignment - this.statusSummary:', this.statusSummary);
-    console.log('[CrawlingStore] 🔍 Assigned summary properties:');
-    console.log('[CrawlingStore] - dbProductCount:', this.statusSummary?.dbProductCount);
-    console.log('[CrawlingStore] - siteProductCount:', this.statusSummary?.siteProductCount);
-    console.log('[CrawlingStore] - diff:', this.statusSummary?.diff);
-    console.log('[CrawlingStore] - needCrawling:', this.statusSummary?.needCrawling);
-    console.log('[CrawlingStore] ✅ setStatusSummary() completed');
-  };
-
-  setConfig = (config: CrawlerConfig) => {
-    this.config = config;
-  };
-
-  setCheckingStatus = (isChecking: boolean) => {
-    this.isCheckingStatus = isChecking;
-  };
-
-  clearError = () => {
-    this.error = null;
-  };
-
-  updateProgress = (progressUpdate: Partial<CrawlingProgress>) => {
-    this.progress = { ...this.progress, ...progressUpdate };
-    if (progressUpdate.status) {
-      this.status = progressUpdate.status;
-    }
-  };
 
   // Computed properties
-  get isRunning() {
-    return this.status === 'running' || this.status === 'paused';
+  public get isRunning(): boolean {
+    return this.status === 'running' || this.status === 'initializing';
   }
 
-  get canStart() {
-    return this.status === 'idle' || this.status === 'completed' || this.status === 'error';
+  public get canStart(): boolean {
+    return this.status === 'idle' || this.status === 'error' || this.status === 'completed';
   }
 
-  get canStop() {
-    return this.status === 'running' || this.status === 'paused';
+  public get canStop(): boolean {
+    return this.status === 'running' || this.status === 'initializing' || this.status === 'paused';
   }
 
-  get canPause() {
-    return false; // Pause/resume functionality not implemented
+  public get canPause(): boolean {
+    return this.status === 'running';
   }
 
-  /**
-   * Start crawling
-   */
-  async startCrawling(): Promise<void> {
-    try {
-      this.clearError();
-      this.setStatus('running');
+  private subscribeToEvents(): void {
+    console.log('[CrawlingStore] Subscribing to IPC events');
+    this.unsubscribeCrawlingProgress = this.ipcServiceInstance.subscribeCrawlingProgress(
+      this.handleCrawlingProgress
+    );
+    this.unsubscribeCrawlingComplete = this.ipcServiceInstance.subscribeCrawlingComplete(
+      this.handleCrawlingComplete
+    );
+    this.unsubscribeCrawlingError = this.ipcServiceInstance.subscribeCrawlingError(
+      this.handleCrawlingError
+    );
+    this.unsubscribeCrawlingStopped = this.ipcServiceInstance.subscribeCrawlingStopped(
+      this.handleCrawlingStopped
+    );
+    this.unsubscribeCrawlingStatusSummary = this.ipcServiceInstance.subscribeCrawlingStatusSummary(
+      this.handleCrawlingStatusSummary
+    );
+  }
 
-      // 직렬화 가능한 깔끔한 config 객체 생성
-      const serializedConfig = {
-        pageRangeLimit: this.config.pageRangeLimit,
-        productListRetryCount: this.config.productListRetryCount,
-        productDetailRetryCount: this.config.productDetailRetryCount,
-        productsPerPage: this.config.productsPerPage,
-        autoAddToLocalDB: this.config.autoAddToLocalDB,
-        // Batch processing configuration
-        batchSize: this.config.batchSize,
-        batchDelayMs: this.config.batchDelayMs,
-        enableBatchProcessing: this.config.enableBatchProcessing,
-        batchRetryLimit: this.config.batchRetryLimit
-      };
-
-      const success = await this.ipcService.startCrawling(serializedConfig);
-
-      if (!success) {
-        this.setStatus('error');
-        this.setError('크롤링을 시작할 수 없습니다.');
-        throw new Error('크롤링을 시작할 수 없습니다.');
+  @action
+  private handleCrawlingProgress = (progress: CrawlingProgress): void => {
+    console.log('[CrawlingStore] handleCrawlingProgress invoked. Data:', JSON.stringify(progress));
+    runInAction(() => {
+      const newProgress = { ...this.progress, ...progress };
+      if (progress.currentStage === undefined && this.progress.currentStage !== undefined) {
+        newProgress.currentStage = this.progress.currentStage;
+        console.log(`[CrawlingStore] Preserving currentStage: ${newProgress.currentStage}`);
       }
-    } catch (error) {
-      this.setStatus('error');
-      this.setError(error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.');
-      throw error;
-    }
-  }
-
-  /**
-   * Stop crawling
-   */
-  async stopCrawling(): Promise<void> {
-    try {
-      const success = await this.ipcService.stopCrawling();
-      
-      if (success) {
-        this.setStatus('idle');
-        this.clearError();
-      } else {
-        throw new Error('크롤링을 중지할 수 없습니다.');
+      if (progress.currentStep === undefined && this.progress.currentStep !== undefined) {
+        newProgress.currentStep = this.progress.currentStep;
+        console.log(`[CrawlingStore] Preserving currentStep: "${newProgress.currentStep}"`);
       }
-    } catch (error) {
-      this.setError(error instanceof Error ? error.message : '크롤링 중지에 실패했습니다.');
-      throw error;
-    }
-  }
-
-  /**
-   * Check crawling status
-   */
-  async checkStatus(): Promise<void> {
-    try {
-      console.log('[CrawlingStore] 🔍 checkStatus() called - starting status check...');
-      this.setCheckingStatus(true);
-      
-      // Save previous status
-      if (this.statusSummary && Object.keys(this.statusSummary).length > 0) {
-        this.lastStatusSummary = this.statusSummary;
-        console.log('[CrawlingStore] Previous status saved:', this.lastStatusSummary);
+      this.progress = newProgress;
+      this.status = progress.status || this.status;
+      if (progress.message) {
+        this.currentMessage = progress.message;
       }
-
-      console.log('[CrawlingStore] 📡 Calling ipcService.checkCrawlingStatus()...');
-      const status = await this.ipcService.checkCrawlingStatus();
-      console.log('[CrawlingStore] 📨 Received status from IPC:', status);
-      console.log('[CrawlingStore] Status type:', typeof status);
-      console.log('[CrawlingStore] Status keys:', status ? Object.keys(status) : 'null/undefined');
-
-      if (status) {
-        console.log('[CrawlingStore] ✅ Setting status summary via setStatusSummary()...');
-        console.log('[CrawlingStore] Before setStatusSummary - current statusSummary:', this.statusSummary);
-        this.setStatusSummary(status);
-        console.log('[CrawlingStore] After setStatusSummary - new statusSummary:', this.statusSummary);
-        console.log('[CrawlingStore] 🎯 Status summary update completed!');
-      } else {
-        console.log('[CrawlingStore] ❌ No status received from IPC');
-        throw new Error('상태 체크 실패');
-      }
-    } catch (error) {
-      console.error('[CrawlingStore] 💥 Error in checkStatus():', error);
-      this.setError(error instanceof Error ? error.message : '상태 체크에 실패했습니다.');
-      throw error;
-    } finally {
-      console.log('[CrawlingStore] 🏁 checkStatus() completed, setting isCheckingStatus to false');
-      this.setCheckingStatus(false);
-    }
-  }
-
-  /**
-   * Update configuration
-   */
-  async updateConfig(newConfig: Partial<CrawlerConfig>): Promise<void> {
-    try {
-      console.log('CrawlingStore.updateConfig called with:', newConfig);
-      const updatedConfig = { ...this.config, ...newConfig };
-      console.log('CrawlingStore.updateConfig merged config:', updatedConfig);
-      
-      // Update memory state
-      this.setConfig(updatedConfig);
-      console.log('CrawlingStore memory state updated');
-      
-      // Save to configuration service (if available)
-      try {
-        console.log('CrawlingStore attempting to save config to file');
-        // Convert MobX observable to plain object before IPC transmission
-        // (toJS만으로는 Proxy가 남을 수 있으므로 JSON.stringify/parse로 완전한 plain object 보장)
-        const plainConfig = JSON.parse(JSON.stringify(toJS(updatedConfig)));
-        console.log('CrawlingStore plainConfig for IPC:', plainConfig);
-        const result = await this.ipcService.updateConfig(plainConfig);
-        console.log('Configuration saved to file result:', result);
-        
-        // Verify the saved config matches what we sent
-        if (result.success && result.config) {
-          console.log('Saved config from response:', result.config);
-          // Update memory state again with the config from the main process
-          this.setConfig(result.config);
-        } else {
-          console.warn('Config save response indicates failure:', result);
-        }
-      } catch (saveError) {
-        console.warn('Failed to save config to file, but memory state updated:', saveError);
-      }
-      
-    } catch (error) {
-      console.error('Failed to update config:', error);
-      this.setError('설정 저장에 실패했습니다.');
-      throw error;
-    }
-  }
-
-  /**
-   * Load configuration
-   */
-  loadConfig = async (): Promise<CrawlerConfig> => {
-    try {
-      console.log('CrawlingStore.loadConfig called');
-      
-      // Check if IPC service is available
-      if (!this.ipcService) {
-        console.error('IPC service is not available');
-        throw new Error('IPC service is not available');
-      }
-      
-      // Attempt to get the configuration
-      console.log('Calling this.ipcService.getConfig()');
-      const result = await this.ipcService.getConfig();
-      console.log('Raw response from getConfig:', result);
-      
-      // Check if we have a proper config object
-      let config: CrawlerConfig;
-      if (result && typeof result === 'object') {
-        if (result.success && result.config) {
-          // Standard success response format
-          config = result.config;
-        } else if (Object.prototype.hasOwnProperty.call(result, 'pageRangeLimit')) {
-          // Direct config object (not wrapped)
-          config = result as unknown as CrawlerConfig;
-        } else {
-          console.error('Invalid config format received:', result);
-          throw new Error('Invalid configuration format received');
-        }
-      } else {
-        console.error('Invalid response received:', result);
-        throw new Error('Invalid response received from configuration service');
-      }
-      
-      console.log('Configuration loaded from file:', config);
-      
-      // Update store state
-      this.setConfig(config);
-      
-      return config;
-    } catch (error) {
-      console.error('Failed to load config:', error);
-      throw error;
-    }
+      console.log('[CrawlingStore] Progress updated in store. New currentStage:', this.progress.currentStage, 'New currentStep:', this.progress.currentStep);
+    });
   };
 
-  /**
-   * Validate crawling status
-   */
-  private validateCrawlingStatus(status: string | undefined): CrawlingStatus {
-    if (!status) return 'idle';
+  @action
+  private handleCrawlingComplete = (data: any): void => {
+    console.log('[CrawlingStore] Crawling complete:', data);
+    runInAction(() => {
+      this.status = 'completed';
+      this.progress = {
+        ...this.progress,
+        status: 'completed',
+        percentage: 100,
+        currentStep: '크롤링 완료',
+        message: data?.message || '크롤링이 성공적으로 완료되었습니다.'
+      };
+    });
+  };
+
+  @action
+  private handleCrawlingError = (error: CrawlingError): void => {
+    console.error('[CrawlingStore] Crawling error:', error);
+    runInAction(() => {
+      this.error = error;
+      this.status = 'error';
+      this.progress = {
+        ...this.progress,
+        status: 'error',
+        currentStep: '오류 발생',
+        message: error?.message || '크롤링 중 오류가 발생했습니다.'
+      };
+    });
+  };
+
+  @action
+  private handleCrawlingStopped = (data: any): void => {
+    console.log('[CrawlingStore] Crawling stopped:', data);
+    runInAction(() => {
+      this.status = 'idle';
+      this.progress = {
+        ...this.progress,
+        status: 'idle',
+        currentStep: '크롤링 중단됨',
+        message: data?.message || '크롤링이 중단되었습니다.'
+      };
+    });
+  };
+
+  @action
+  private handleCrawlingStatusSummary = (summary: CrawlingStatusSummary): void => {
+    console.log('[CrawlingStore] Crawling status summary received:', JSON.stringify(summary));
+    runInAction(() => {
+      this.lastStatusSummary = this.statusSummary ? { ...this.statusSummary } : null;
+      this.statusSummary = summary;
+    });
+  };
+
+  // Helper method to extract only serializable properties from config
+  private extractSerializableConfig(config: any): any {
+    if (!config || typeof config !== 'object') {
+      return {};
+    }
     
-    const validStatuses: CrawlingStatus[] = [
-      'idle', 'running', 'paused', 'completed', 'error', 'initializing', 'stopped', 'completed_stage_1'
-    ];
+    const serializable: any = {};
     
-    return validStatuses.includes(status as CrawlingStatus) 
-      ? (status as CrawlingStatus) 
-      : 'running';
+    // config의 각 속성을 검사하여 직렬화 가능한 것만 추출
+    for (const [key, value] of Object.entries(config)) {
+      if (this.isSerializable(value)) {
+        serializable[key] = value;
+      } else {
+        console.warn(`[CrawlingStore] Skipping non-serializable property: ${key}`);
+      }
+    }
+    
+    return serializable;
+  }
+  
+  // Check if a value is serializable
+  private isSerializable(value: any): boolean {
+    if (value === null || value === undefined) {
+      return true;
+    }
+    
+    const type = typeof value;
+    if (type === 'string' || type === 'number' || type === 'boolean') {
+      return true;
+    }
+    
+    if (type === 'object') {
+      // Arrays and plain objects are serializable
+      if (Array.isArray(value)) {
+        return value.every(item => this.isSerializable(item));
+      }
+      
+      // Check if it's a plain object
+      if (value.constructor === Object) {
+        return Object.values(value).every(val => this.isSerializable(val));
+      }
+      
+      // Other objects (functions, classes, etc.) are not serializable
+      return false;
+    }
+    
+    // Functions and other types are not serializable
+    return false;
   }
 
-  /**
-   * Cleanup subscriptions
-   */
-  async cleanup(): Promise<void> {
-    this.unsubscribeFunctions.forEach(unsubscribe => unsubscribe());
-    this.unsubscribeFunctions = [];
+  @action
+  public startCrawling(startConfig?: Partial<CrawlerConfig>): Promise<boolean> {
+    console.log('[CrawlingStore] Attempting to start crawling...', startConfig);
+    this.error = null;
+    this.status = 'initializing';
+    this.progress = { ...initialProgress, status: 'initializing', currentStep: '크롤링 시작 중...', startTime: Date.now() }; 
+    
+    // 간단하고 안전한 config 객체 생성
+    let configToSend: any = {};
+    
+    if (startConfig) {
+      // startConfig가 있으면 직접 사용하되, 직렬화 가능한 부분만 추출
+      try {
+        configToSend = this.extractSerializableConfig(startConfig);
+      } catch (error) {
+        console.error('[CrawlingStore] Failed to serialize startConfig:', error);
+        configToSend = {};
+      }
+    } else {
+      // this.config에서 실제 config 부분만 추출
+      try {
+        const currentConfig = this.config as any;
+        if (currentConfig && typeof currentConfig === 'object') {
+          if (currentConfig.config) {
+            configToSend = this.extractSerializableConfig(currentConfig.config);
+          } else if (currentConfig.success && currentConfig.config) {
+            configToSend = this.extractSerializableConfig(currentConfig.config);
+          } else {
+            configToSend = this.extractSerializableConfig(currentConfig);
+          }
+        }
+      } catch (error) {
+        console.error('[CrawlingStore] Failed to serialize config:', error);
+        configToSend = {};
+      }
+    }
+    
+    console.log('[CrawlingStore] Sending config to IPC:', JSON.stringify(configToSend));
+    
+    return this.ipcServiceInstance.startCrawling(configToSend);
   }
 
-  /**
-   * Debug information
-   */
-  getDebugInfo(): object {
+  @action
+  public stopCrawling(): Promise<boolean> {
+    console.log('[CrawlingStore] Attempting to stop crawling...');
+    this.status = 'idle';
+    return this.ipcServiceInstance.stopCrawling();
+  }
+
+  @action
+  public async checkStatus(): Promise<void> {
+    console.log('[CrawlingStore] Checking status...');
+    this.isCheckingStatus = true;
+    try {
+      const summary = await this.ipcServiceInstance.checkCrawlingStatus();
+      if (summary) {
+        runInAction(() => {
+            this.handleCrawlingStatusSummary(summary as CrawlingStatusSummary);
+        });
+      }
+    } catch (err) {
+      console.error('[CrawlingStore] Error checking status:', err);
+      runInAction(() => {
+        this.error = { message: ' 상태 확인 실패', name: 'StatusCheckError' };
+      });
+    } finally {
+      runInAction(() => {
+        this.isCheckingStatus = false;
+      });
+    }
+  }
+
+  @action
+  public updateProgress(progressUpdate: Partial<CrawlingProgress>): void {
+    console.log('[CrawlingStore] Manual progress update:', JSON.stringify(progressUpdate));
+    this.progress = { ...this.progress, ...progressUpdate };
+  }
+
+  @action
+  public clearError(): void {
+    this.error = null;
+  }
+
+  @action
+  public setConfig(newConfig: CrawlerConfig): void {
+    this.config = { ...this.config, ...newConfig };
+  }
+
+  @action
+  public async loadConfig(): Promise<CrawlerConfig> {
+    try {
+      const config = await this.ipcServiceInstance.getConfig();
+      runInAction(() => {
+        this.config = config || {} as CrawlerConfig;
+      });
+      return this.config;
+    } catch (err) {
+      console.error('[CrawlingStore] Error loading config:', err);
+      runInAction(() => {
+        this.error = { message: '설정 로드 실패', name: 'ConfigLoadError' };
+      });
+      throw err;
+    }
+  }
+
+  @action
+  public async updateConfig(newConfig: CrawlerConfig): Promise<void> {
+    try {
+      await this.ipcServiceInstance.updateConfig(newConfig);
+      runInAction(() => {
+        this.config = { ...newConfig };
+      });
+    } catch (err) {
+      console.error('[CrawlingStore] Error updating config:', err);
+      runInAction(() => {
+        this.error = { message: '설정 저장 실패', name: 'ConfigSaveError' };
+      });
+      throw err;
+    }
+  }
+
+  public getDebugInfo(): any {
     return {
       status: this.status,
       progress: this.progress,
-      config: this.config,
       error: this.error,
-      isCheckingStatus: this.isCheckingStatus,
-      subscriptionsCount: this.unsubscribeFunctions.length
+      config: this.config,
+      statusSummary: this.statusSummary,
+      isRunning: this.isRunning,
+      canStart: this.canStart,
+      canStop: this.canStop,
+      canPause: this.canPause,
     };
+  }
+
+  @action
+  public cleanup(): void {
+    console.log('[CrawlingStore] Cleaning up subscriptions');
+    this.unsubscribeCrawlingProgress?.();
+    this.unsubscribeCrawlingComplete?.();
+    this.unsubscribeCrawlingError?.();
+    this.unsubscribeCrawlingStopped?.();
+    this.unsubscribeCrawlingStatusSummary?.();
+    this.progress = { ...initialProgress };
+    this.status = 'idle';
+    this.error = null;
+    this.currentMessage = '대기 중...';
   }
 }
 
-// Singleton instance
-export const crawlingStore = new CrawlingStore();
+export const crawlingStore = new CrawlingStore(ipcService);

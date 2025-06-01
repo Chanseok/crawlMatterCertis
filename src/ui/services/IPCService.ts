@@ -9,7 +9,7 @@
  * - 단일 책임 원칙에 따른 통신 계층 분리
  */
 
-import type { CrawlingProgress } from '../../../types';
+import type { CrawlingProgress, CrawlingStatusSummary, AppMode } from '../../../types';
 
 export type IPCEventHandler<T = any> = (data: T) => void;
 export type IPCUnsubscribeFunction = () => void;
@@ -27,6 +27,8 @@ export class IPCService {
     if (!this.isElectronAvailable) {
       console.warn('[IPCService] Electron API not available - running in web mode');
     }
+    // Removed problematic window.ipc.on and this.eventEmitter logic
+    // Subscriptions are now handled by specific subscribe methods like subscribeCrawlingProgress
   }
 
   /**
@@ -52,12 +54,24 @@ export class IPCService {
    * 크롤링 진행 상태 이벤트 구독
    */
   public subscribeCrawlingProgress(handler: IPCEventHandler<CrawlingProgress>): IPCUnsubscribeFunction {
-    if (!this.isElectronAvailable) {
+    if (!this.isElectronAvailable || !window.electron?.subscribeCrawlingProgress) { // Added check for method existence
+      console.warn('[IPCService] subscribeCrawlingProgress not available.');
       return () => {}; // No-op unsubscribe
     }
 
     try {
-      const unsubscribe = window.electron.subscribeCrawlingProgress(handler);
+      console.log('[IPCService] Setting up crawling progress subscription...');
+      const wrappedHandler = (progress: CrawlingProgress) => {
+        console.log('[IPCService] Progress event received, calling handler. Data:', JSON.stringify(progress));
+        try {
+          handler(progress);
+          console.log('[IPCService] Handler called successfully for crawlingProgress');
+        } catch (error) {
+          console.error('[IPCService] Error in crawlingProgress handler:', error);
+        }
+      };
+      
+      const unsubscribe = window.electron.subscribeCrawlingProgress(wrappedHandler);
       console.log('[IPCService] Subscribed to crawling progress events');
       return unsubscribe;
     } catch (error) {
@@ -70,7 +84,8 @@ export class IPCService {
    * 크롤링 완료 이벤트 구독
    */
   public subscribeCrawlingComplete(handler: IPCEventHandler): IPCUnsubscribeFunction {
-    if (!this.isElectronAvailable) {
+    if (!this.isElectronAvailable || !window.electron?.subscribeCrawlingComplete) { // Added check
+      console.warn('[IPCService] subscribeCrawlingComplete not available.');
       return () => {};
     }
 
@@ -88,10 +103,10 @@ export class IPCService {
    * 크롤링 오류 이벤트 구독
    */
   public subscribeCrawlingError(handler: IPCEventHandler): IPCUnsubscribeFunction {
-    if (!this.isElectronAvailable) {
+     if (!this.isElectronAvailable || !window.electron?.subscribeCrawlingError) { // Added check
+      console.warn('[IPCService] subscribeCrawlingError not available.');
       return () => {};
     }
-
     try {
       const unsubscribe = window.electron.subscribeCrawlingError(handler);
       console.log('[IPCService] Subscribed to crawling error events');
@@ -106,10 +121,10 @@ export class IPCService {
    * 크롤링 중단 이벤트 구독
    */
   public subscribeCrawlingStopped(handler: IPCEventHandler): IPCUnsubscribeFunction {
-    if (!this.isElectronAvailable) {
+    if (!this.isElectronAvailable || !window.electron?.subscribeCrawlingStopped) { // Added check
+      console.warn('[IPCService] subscribeCrawlingStopped not available.');
       return () => {};
     }
-
     try {
       const unsubscribe = window.electron.subscribeCrawlingStopped(handler);
       console.log('[IPCService] Subscribed to crawling stopped events');
@@ -119,35 +134,25 @@ export class IPCService {
       return () => {};
     }
   }
-
+  
   /**
    * 크롤링 상태 요약 이벤트 구독 
-   * 사이트 로컬 비교 패널을 위한 정보 수신
    */
-  public subscribeCrawlingStatusSummary(handler: IPCEventHandler): IPCUnsubscribeFunction {
-    if (!this.isElectronAvailable) {
-      console.warn('[IPCService] Cannot subscribe to crawling status summary - Electron not available');
+  public subscribeCrawlingStatusSummary(handler: IPCEventHandler<CrawlingStatusSummary>): IPCUnsubscribeFunction {
+    if (!this.isElectronAvailable || !window.electron?.subscribeCrawlingStatusSummary) {
+      console.warn('[IPCService] Cannot subscribe to crawling status summary - Electron or method not available');
       return () => {};
     }
 
     try {
       console.log('[IPCService] Setting up crawlingStatusSummary subscription...');
-      
-      // Test if the preload API is available
-      if (!window.electron || !window.electron.subscribeCrawlingStatusSummary) {
-        console.error('[IPCService] window.electron.subscribeCrawlingStatusSummary is not available!');
-        console.log('[IPCService] Available electron methods:', Object.keys(window.electron || {}));
-        return () => {};
-      }
-      
-      const unsubscribe = window.electron.subscribeCrawlingStatusSummary((data) => {
-        console.log('[IPCService] ✅ Raw crawlingStatusSummary event received!', data);
-        console.log('[IPCService] Event data type:', typeof data);
-        console.log('[IPCService] Event data keys:', data ? Object.keys(data) : 'null/undefined');
-        console.log('[IPCService] Calling handler with data...');
+      const wrappedHandler = (data: CrawlingStatusSummary) => { // Ensure data is typed
+        console.log('[IPCService] ✅ Raw crawlingStatusSummary event received!', JSON.stringify(data));
         handler(data);
-        console.log('[IPCService] Handler called successfully');
-      });
+        console.log('[IPCService] Handler called successfully for crawlingStatusSummary');
+      };
+      
+      const unsubscribe = window.electron.subscribeCrawlingStatusSummary(wrappedHandler);
       console.log('[IPCService] Successfully subscribed to crawling status summary events');
       return unsubscribe;
     } catch (error) {
@@ -203,8 +208,26 @@ export class IPCService {
     }
 
     try {
-      // config가 이미 직렬화된 깔끔한 객체로 전달됨
-      await window.electron.startCrawling(config);
+      // 완전히 순수한 객체로 변환하여 IPC 직렬화 문제 방지
+      let cleanConfig = null;
+      if (config) {
+        try {
+          cleanConfig = JSON.parse(JSON.stringify(config));
+          console.log('[IPCService] Config serialized successfully:', Object.keys(cleanConfig));
+        } catch (serError) {
+          console.error('[IPCService] Config serialization failed:', serError);
+          cleanConfig = {};
+        }
+      }
+      
+      // Main process expects an object with 'mode' and 'config' properties
+      const argsForMainProcess = {
+        mode: 'development' as AppMode,
+        config: cleanConfig
+      };
+      
+      console.log('[IPCService] Calling window.electron.startCrawling with args:', argsForMainProcess);
+      await window.electron.startCrawling(argsForMainProcess);
       console.log('[IPCService] Crawling started successfully');
       return true;
     } catch (error) {
@@ -303,8 +326,10 @@ export class IPCService {
     }
 
     try {
-      console.log('[IPCService] Updating config with:', config);
-      const result = await window.electron.updateConfig(config);
+      // Serialize the config to ensure it can be cloned for IPC
+      const cleanConfig = JSON.parse(JSON.stringify(config));
+      console.log('[IPCService] Updating config with:', cleanConfig);
+      const result = await window.electron.updateConfig(cleanConfig);
       console.log('[IPCService] Update config result:', result);
       return result;
     } catch (error) {

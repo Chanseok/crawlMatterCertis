@@ -217,10 +217,30 @@ export class ConfigurationViewModel extends BaseViewModel {
       // CrawlingStore에서 현재 설정 로드
       const loadedConfig = await this.crawlingStore.loadConfig();
       
+      console.log('[ConfigurationViewModel] DEBUG: loadedConfig from CrawlingStore:', loadedConfig);
+      console.log('[ConfigurationViewModel] DEBUG: loadedConfig keys:', Object.keys(loadedConfig || {}));
+      
+      // 백엔드에서 {success: true, config: {...}} 형태로 반환하므로 실제 config 추출
+      let actualConfig = loadedConfig;
+      if (loadedConfig && typeof loadedConfig === 'object' && 'success' in loadedConfig && 'config' in loadedConfig) {
+        actualConfig = loadedConfig.config as CrawlerConfig;
+        console.log('[ConfigurationViewModel] DEBUG: Extracted actual config from wrapper:', actualConfig);
+      }
+      
+      console.log('[ConfigurationViewModel] DEBUG: actualConfig keys:', Object.keys(actualConfig || {}));
+      console.log('[ConfigurationViewModel] DEBUG: actualConfig sample values:', {
+        pageRangeLimit: actualConfig?.pageRangeLimit,
+        baseUrl: actualConfig?.baseUrl,
+        logging: actualConfig?.logging
+      });
+      
       // 비동기 작업 후 observable 속성 수정은 runInAction으로 감싸기
       runInAction(() => {
-        this.config = mobxObservable({ ...loadedConfig });
-        this.originalConfig = mobxObservable({ ...loadedConfig });
+        this.config = mobxObservable({ ...actualConfig });
+        this.originalConfig = mobxObservable({ ...actualConfig });
+        
+        console.log('[ConfigurationViewModel] DEBUG: After setting config, this.config keys:', Object.keys(this.config));
+        console.log('[ConfigurationViewModel] DEBUG: After setting config, this.config:', this.config);
       });
       
       // 유효성 검사

@@ -77,16 +77,17 @@ export class StatusTabViewModel {
   async checkStatus(): Promise<void> {
     if (this.isStatusChecking || this.showAnimation) return;
 
+    this.setStatusChecking(true);
+    this.setShowAnimation(true);
     try {
-      this.setShowAnimation(true);
-      const result = await this.crawlingService.checkCrawlingStatus();
-      if (!result.success) {
-        throw new Error(result.error?.message || 'Status check failed');
-      }
+      await this.crawlingService.checkCrawlingStatus();
       // Status summary is handled by the store subscriptions
     } catch (error) {
       console.error('Status check failed:', error);
       // Error is handled by the service layer
+    } finally {
+      this.setStatusChecking(false);
+      this.setShowAnimation(false);
     }
   }
 
