@@ -33,8 +33,8 @@ const DEFAULT_CONFIG: CrawlerConfig = {
   // Fields previously in core/config.ts's defaultConfig
   baseUrl: 'https://csa-iot.org/csa-iot_products/',
   matterFilterUrl: 'https://csa-iot.org/csa-iot_products/?p_keywords=&p_type%5B%5D=14&p_program_type%5B%5D=1049&p_certificate=&p_family=&p_firmware_ver=',
-  pageTimeoutMs: 20000,
-  productDetailTimeoutMs: 20000,
+  pageTimeoutMs: 45000, // 개선: 30초에서 45초로 증가
+  productDetailTimeoutMs: 45000, // 개선: 30초에서 45초로 증가
   initialConcurrency: 16,
   detailConcurrency: 16,
   retryConcurrency: 9,

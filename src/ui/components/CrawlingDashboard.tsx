@@ -106,23 +106,54 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   const targetPageCount = viewModel.targetPageCount;
   const calculatedPercentage = viewModel.calculatedPercentage;
 
-  // DEBUG: Add real-time progress monitoring
+  // DEBUG: Add real-time progress monitoring (with optimization)
   useEffect(() => {
-    console.log('[CrawlingDashboard] 🔍 Progress Data Debug:', {
-      status,
-      currentStage: viewModel.currentStage,
-      currentStep: viewModel.currentStep,
-      currentPage: progress.currentPage,
-      totalPages: progress.totalPages,
-      processedItems: progress.processedItems,
-      totalItems: progress.totalItems,
-      percentage: progress.percentage,
-      calculatedPercentage,
-      targetPageCount,
-      concurrentTasksLength: concurrentTasks?.length || 0,
-      message: progress.message
-    });
-  }, [status, viewModel.currentStage, viewModel.currentStep, progress, calculatedPercentage, targetPageCount, concurrentTasks]);
+    // 상태가 변경될 때나 중요한 값이 바뀔 때만 로깅하여 콘솔 부담 감소
+    if (
+      !hasLoggedDebugInfo.current || 
+      progress.currentPage !== prevProgress.current?.currentPage ||
+      progress.processedItems !== prevProgress.current?.processedItems ||
+      status !== prevProgress.current?.status ||
+      viewModel.currentStage !== prevProgress.current?.currentStage
+    ) {
+      console.log('[CrawlingDashboard] 🔍 Progress Data Debug:', {
+        status,
+        currentStage: viewModel.currentStage,
+        currentStep: viewModel.currentStep,
+        currentPage: progress.currentPage,
+        totalPages: progress.totalPages,
+        processedItems: progress.processedItems,
+        totalItems: progress.totalItems,
+        percentage: progress.percentage,
+        calculatedPercentage,
+        targetPageCount,
+        concurrentTasksLength: concurrentTasks?.length || 0,
+        message: progress.message
+      });
+      
+      // 중요 값들 업데이트 (다음 비교를 위해)
+      prevProgress.current = {
+        ...progress,
+        status,
+        currentStage: viewModel.currentStage
+      };
+      
+      hasLoggedDebugInfo.current = true;
+    }
+  }, [
+    status, 
+    viewModel.currentStage, 
+    viewModel.currentStep, 
+    progress.currentPage,
+    progress.totalPages,
+    progress.processedItems,
+    progress.totalItems, 
+    progress.percentage,
+    progress.message,
+    calculatedPercentage, 
+    targetPageCount, 
+    concurrentTasks?.length
+  ]);
 
   const isBeforeStatusCheck = useMemo(() => 
     status === 'idle' && !statusSummary?.dbLastUpdated, 
@@ -133,6 +164,9 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     status === 'idle' && !!statusSummary?.dbLastUpdated, 
     [status, statusSummary?.dbLastUpdated]
   );
+  
+  // 디버그 정보를 한번만 로깅하기 위한 변수
+  const hasLoggedDebugInfo = useRef(false);
 
   // === EVENT HANDLERS (Clean Code Pattern) ===
   const toggleCompareSection = useCallback(() => {
@@ -382,18 +416,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           </div>
         )}
 
-        {/* Control Buttons */}
-        <CrawlingControlsDisplay 
-          status={status}
-          isStatusChecking={isStatusChecking}
-          onCheckStatus={handleCheckStatus}
-          onStartCrawling={startCrawling}
-          onStopCrawling={stopCrawling}
-        />
-
-
-
-        {        /* Stage Information */}
+        {/* Stage Information */}
         <CrawlingStageDisplay 
           getStageBadge={getStageBadge}
           currentStep={viewModel.currentStep}
@@ -594,7 +617,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
                   if (currentStage === 2) {
                     return '제품 데이터 검증 중...';
                   } else if (currentStage === 3) {
-                    return '제품 상세정보 수집 진행률';
+                    return '제품 상세정보 수집 중...';
                   } else {
                     return `진행률 (${viewModel.currentStage}단계)`;
                   }
@@ -783,6 +806,189 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           isCompleted={status === 'completed'}
           hasErrors={status === 'error'}
         />
+
+        {/* Enhanced Stage 3 Progress Panel */}
+        {viewModel.currentStage === 3 && status === 'running' && (
+          <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-lg border border-purple-200 dark:border-purple-700">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-purple-800 dark:text-purple-300 flex items-center">
+                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm2 2a1 1 0 000 2h.01a1 1 0 100-2H5zm3 0a1 1 0 000 2h.01a1 1 0 100-2H8zm3 0a1 1 0 000 2h.01a1 1 0 100-2H11z" clipRule="evenodd" />
+                </svg>
+                3단계: 제품 상세정보 수집
+              </h3>
+              <div className="text-sm text-purple-600 dark:text-purple-400 font-medium">
+                {(() => {
+                  const processed = progress.processedItems || progress.current || 0;
+                  const total = progress.totalItems || progress.total || 0;
+                  const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
+                  return `${percentage}% 완료`;
+                })()}
+              </div>
+            </div>
+
+            {/* Enhanced Multi-Level Progress Visualization */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">전체 진행률</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {(() => {
+                    const processed = progress.processedItems || progress.current || 0;
+                    const total = progress.totalItems || progress.total || 0;
+                    const percentage = total > 0 ? ((processed / total) * 100) : 0;
+                    return `${processed.toLocaleString()} / ${total.toLocaleString()} (${percentage.toFixed(1)}%)`;
+                  })()}
+                </span>
+              </div>
+
+              {/* Main Progress Bar with Multiple Visual Indicators */}
+              <div className="relative">
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden shadow-inner">
+                  <div
+                    className="h-full bg-gradient-to-r from-purple-500 via-purple-600 to-indigo-600 transition-all duration-500 ease-out relative"
+                    style={{ 
+                      width: `${(() => {
+                        const processed = progress.processedItems || progress.current || 0;
+                        const total = progress.totalItems || progress.total || 0;
+                        const percentage = total > 0 ? (processed / total) * 100 : 0;
+                        return Math.min(100, Math.max(0, percentage));
+                      })()}%`
+                    }}
+                  >
+                    {/* Animated shimmer effect for active progress */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 animate-pulse"></div>
+                  </div>
+                </div>
+                
+                {/* Progress milestones */}
+                <div className="flex justify-between mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  <span>0%</span>
+                  <span>25%</span>
+                  <span>50%</span>
+                  <span>75%</span>
+                  <span>100%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Detailed Metrics Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-purple-100 dark:border-purple-800 text-center">
+                <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">처리완료</div>
+                <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                  {(progress.processedItems || progress.current || 0).toLocaleString()}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  {(() => {
+                    const processed = progress.processedItems || progress.current || 0;
+                    const total = progress.totalItems || progress.total || 0;
+                    return total > 0 ? `${((processed / total) * 100).toFixed(1)}%` : '0%';
+                  })()}
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-purple-100 dark:border-purple-800 text-center">
+                <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">남은수량</div>
+                <div className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                  {(() => {
+                    const processed = progress.processedItems || progress.current || 0;
+                    const total = progress.totalItems || progress.total || 0;
+                    return Math.max(0, total - processed).toLocaleString();
+                  })()}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  {(() => {
+                    const processed = progress.processedItems || progress.current || 0;
+                    const total = progress.totalItems || progress.total || 0;
+                    const remaining = Math.max(0, total - processed);
+                    return total > 0 ? `${((remaining / total) * 100).toFixed(1)}%` : '0%';
+                  })()}
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-purple-100 dark:border-purple-800 text-center">
+                <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">처리속도</div>
+                <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                  {(() => {
+                    const processed = progress.processedItems || progress.current || 0;
+                    if (processed > 0 && progress.startTime) {
+                      const elapsed = Date.now() - new Date(progress.startTime).getTime();
+                      const elapsedMinutes = elapsed / (1000 * 60);
+                      if (elapsedMinutes > 0) {
+                        const rate = processed / elapsedMinutes;
+                        return rate >= 1 ? `${Math.round(rate)}` : `${rate.toFixed(1)}`;
+                      }
+                    }
+                    return '계산중';
+                  })()}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">개/분</div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-purple-100 dark:border-purple-800 text-center">
+                <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">예상완료</div>
+                <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                  {(() => {
+                    const processed = progress.processedItems || progress.current || 0;
+                    const total = progress.totalItems || progress.total || 0;
+                    const remaining = total - processed;
+                    
+                    if (remaining <= 0) return '완료!';
+                    if (processed === 0) return '--';
+                    
+                    if (progress.startTime) {
+                      const elapsed = Date.now() - new Date(progress.startTime).getTime();
+                      const elapsedMinutes = elapsed / (1000 * 60);
+                      if (elapsedMinutes > 0) {
+                        const rate = processed / elapsedMinutes;
+                        const remainingMinutes = remaining / rate;
+                        
+                        if (remainingMinutes < 1) return '<1분';
+                        if (remainingMinutes < 60) return `${Math.round(remainingMinutes)}분`;
+                        
+                        const hours = Math.floor(remainingMinutes / 60);
+                        const minutes = Math.round(remainingMinutes % 60);
+                        return hours > 0 ? `${hours}h${minutes}m` : `${minutes}분`;
+                      }
+                    }
+                    return '--';
+                  })()}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">남음</div>
+              </div>
+            </div>
+
+            {/* Success/Error Indicators */}
+            {(progress.newItems > 0 || progress.updatedItems > 0 || (progress.errors && progress.errors > 0)) && (
+              <div className="flex gap-4 text-sm">
+                {progress.newItems > 0 && (
+                  <div className="flex items-center text-green-600 dark:text-green-400">
+                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    신규: {progress.newItems.toLocaleString()}개
+                  </div>
+                )}
+                {progress.updatedItems > 0 && (
+                  <div className="flex items-center text-blue-600 dark:text-blue-400">
+                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                    </svg>
+                    업데이트: {progress.updatedItems.toLocaleString()}개
+                  </div>
+                )}
+                {progress.errors && progress.errors > 0 && (
+                  <div className="flex items-center text-red-600 dark:text-red-400">
+                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    오류: {progress.errors.toLocaleString()}개
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {getRetryInfo()}
         {getEstimatedEndTime()}
@@ -1058,6 +1264,17 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           </div>
         )}
       </ExpandableSection>
+
+      {/* Control Buttons - Moved below site comparison section */}
+      <div className="mt-6">
+        <CrawlingControlsDisplay 
+          status={status}
+          isStatusChecking={isStatusChecking}
+          onCheckStatus={handleCheckStatus}
+          onStartCrawling={startCrawling}
+          onStopCrawling={stopCrawling}
+        />
+      </div>
     </>
   );
 }

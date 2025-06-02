@@ -20,6 +20,9 @@ export type IPCUnsubscribeFunction = () => void;
 export class IPCService {
   private static instance: IPCService | null = null;
   private isElectronAvailable: boolean;
+  // 구독 상태 관리를 위한 맵
+  private readonly subscriptions = new Map<string, boolean>();
+  private readonly unsubscribeFunctions = new Map<string, () => void>();
 
   constructor() {
     this.isElectronAvailable = typeof window !== 'undefined' && !!window.electron;
@@ -51,19 +54,28 @@ export class IPCService {
   // === 크롤링 진행 상태 관련 ===
 
   /**
-   * 크롤링 진행 상태 이벤트 구독
+   * 크롤링 진행 상태 이벤트 구독 (개선된 버전)
    */
-  public subscribeCrawlingProgress(handler: IPCEventHandler<CrawlingProgress>): IPCUnsubscribeFunction {
-    if (!this.isElectronAvailable || !window.electron?.subscribeCrawlingProgress) { // Added check for method existence
-      console.warn('[IPCService] subscribeCrawlingProgress not available.');
-      return () => {}; // No-op unsubscribe
+  public subscribeToCrawlingProgress(handler: IPCEventHandler<CrawlingProgress>): boolean {
+    const channelKey = 'crawlingProgress';
+    
+    // 이미 구독 중인 경우 중복 구독 방지
+    if (this.subscriptions.get(channelKey)) {
+      console.log('[IPCService] Already subscribed to crawling progress events');
+      return true;
+    }
+
+    if (!this.isElectronAvailable || !window.electron) {
+      console.warn('[IPCService] Electron API not available for crawling progress subscription');
+      return false;
     }
 
     try {
       console.log('[IPCService] Setting up crawling progress subscription...');
+      
       const wrappedHandler = (progress: CrawlingProgress) => {
-        console.log('[IPCService] Progress event received, calling handler. Data:', JSON.stringify(progress));
         try {
+          console.log(`[IPCService] Progress event received, calling handler. Data: ${JSON.stringify(progress)}`);
           handler(progress);
           console.log('[IPCService] Handler called successfully for crawlingProgress');
         } catch (error) {
@@ -71,93 +83,195 @@ export class IPCService {
         }
       };
       
-      const unsubscribe = window.electron.subscribeCrawlingProgress(wrappedHandler);
+      // Electron API를 통한 구독
+      window.electron.on('crawlingProgress', wrappedHandler);
+      
+      // 구독 상태 및 해제 함수 저장
+      this.subscriptions.set(channelKey, true);
+      this.unsubscribeFunctions.set(channelKey, () => {
+        window.electron?.removeAllListeners?.('crawlingProgress');
+        this.subscriptions.set(channelKey, false);
+        this.unsubscribeFunctions.delete(channelKey);
+      });
+      
       console.log('[IPCService] Subscribed to crawling progress events');
-      return unsubscribe;
+      return true;
     } catch (error) {
       console.error('[IPCService] Failed to subscribe to crawling progress:', error);
-      return () => {};
+      return false;
     }
   }
 
   /**
-   * 크롤링 완료 이벤트 구독
+   * 크롤링 완료 이벤트 구독 (개선된 버전)
    */
-  public subscribeCrawlingComplete(handler: IPCEventHandler): IPCUnsubscribeFunction {
-    if (!this.isElectronAvailable || !window.electron?.subscribeCrawlingComplete) { // Added check
-      console.warn('[IPCService] subscribeCrawlingComplete not available.');
-      return () => {};
+  public subscribeToCrawlingComplete(handler: IPCEventHandler): boolean {
+    const channelKey = 'crawlingComplete';
+    
+    if (this.subscriptions.get(channelKey)) {
+      console.log('[IPCService] Already subscribed to crawling complete events');
+      return true;
+    }
+
+    if (!this.isElectronAvailable || !window.electron) {
+      console.warn('[IPCService] Electron API not available for crawling complete subscription');
+      return false;
     }
 
     try {
-      const unsubscribe = window.electron.subscribeCrawlingComplete(handler);
+      const wrappedHandler = (data: any) => {
+        try {
+          handler(data);
+          console.log('[IPCService] Handler called successfully for crawlingComplete');
+        } catch (error) {
+          console.error('[IPCService] Error in crawlingComplete handler:', error);
+        }
+      };
+
+      window.electron.on('crawlingComplete', wrappedHandler);
+      
+      this.subscriptions.set(channelKey, true);
+      this.unsubscribeFunctions.set(channelKey, () => {
+        window.electron?.removeAllListeners?.('crawlingComplete');
+        this.subscriptions.set(channelKey, false);
+        this.unsubscribeFunctions.delete(channelKey);
+      });
+      
       console.log('[IPCService] Subscribed to crawling complete events');
-      return unsubscribe;
+      return true;
     } catch (error) {
       console.error('[IPCService] Failed to subscribe to crawling complete:', error);
-      return () => {};
+      return false;
     }
   }
 
   /**
-   * 크롤링 오류 이벤트 구독
+   * 크롤링 오류 이벤트 구독 (개선된 버전)
    */
-  public subscribeCrawlingError(handler: IPCEventHandler): IPCUnsubscribeFunction {
-     if (!this.isElectronAvailable || !window.electron?.subscribeCrawlingError) { // Added check
-      console.warn('[IPCService] subscribeCrawlingError not available.');
-      return () => {};
+  public subscribeToCrawlingError(handler: IPCEventHandler): boolean {
+    const channelKey = 'crawlingError';
+    
+    if (this.subscriptions.get(channelKey)) {
+      console.log('[IPCService] Already subscribed to crawling error events');
+      return true;
     }
+
+    if (!this.isElectronAvailable || !window.electron) {
+      console.warn('[IPCService] Electron API not available for crawling error subscription');
+      return false;
+    }
+
     try {
-      const unsubscribe = window.electron.subscribeCrawlingError(handler);
+      const wrappedHandler = (error: any) => {
+        try {
+          handler(error);
+          console.log('[IPCService] Handler called successfully for crawlingError');
+        } catch (err) {
+          console.error('[IPCService] Error in crawlingError handler:', err);
+        }
+      };
+
+      window.electron.on('crawlingError', wrappedHandler);
+      
+      this.subscriptions.set(channelKey, true);
+      this.unsubscribeFunctions.set(channelKey, () => {
+        window.electron?.removeAllListeners?.('crawlingError');
+        this.subscriptions.set(channelKey, false);
+        this.unsubscribeFunctions.delete(channelKey);
+      });
+      
       console.log('[IPCService] Subscribed to crawling error events');
-      return unsubscribe;
+      return true;
     } catch (error) {
       console.error('[IPCService] Failed to subscribe to crawling error:', error);
-      return () => {};
+      return false;
     }
   }
 
   /**
-   * 크롤링 중단 이벤트 구독
+   * 크롤링 중단 이벤트 구독 (개선된 버전)
    */
-  public subscribeCrawlingStopped(handler: IPCEventHandler): IPCUnsubscribeFunction {
-    if (!this.isElectronAvailable || !window.electron?.subscribeCrawlingStopped) { // Added check
-      console.warn('[IPCService] subscribeCrawlingStopped not available.');
-      return () => {};
+  public subscribeCrawlingStopped(handler: IPCEventHandler): boolean {
+    const channelKey = 'crawlingStopped';
+    
+    if (this.subscriptions.get(channelKey)) {
+      console.log('[IPCService] Already subscribed to crawling stopped events');
+      return true;
     }
+
+    if (!this.isElectronAvailable || !window.electron) {
+      console.warn('[IPCService] Electron API not available for crawling stopped subscription');
+      return false;
+    }
+
     try {
-      const unsubscribe = window.electron.subscribeCrawlingStopped(handler);
+      const wrappedHandler = (data: any) => {
+        try {
+          handler(data);
+          console.log('[IPCService] Handler called successfully for crawlingStopped');
+        } catch (error) {
+          console.error('[IPCService] Error in crawlingStopped handler:', error);
+        }
+      };
+
+      window.electron.on('crawlingStopped', wrappedHandler);
+      
+      this.subscriptions.set(channelKey, true);
+      this.unsubscribeFunctions.set(channelKey, () => {
+        window.electron?.removeAllListeners?.('crawlingStopped');
+        this.subscriptions.set(channelKey, false);
+        this.unsubscribeFunctions.delete(channelKey);
+      });
+      
       console.log('[IPCService] Subscribed to crawling stopped events');
-      return unsubscribe;
+      return true;
     } catch (error) {
       console.error('[IPCService] Failed to subscribe to crawling stopped:', error);
-      return () => {};
+      return false;
     }
   }
   
   /**
-   * 크롤링 상태 요약 이벤트 구독 
+   * 크롤링 상태 요약 이벤트 구독 (개선된 버전)
    */
-  public subscribeCrawlingStatusSummary(handler: IPCEventHandler<CrawlingStatusSummary>): IPCUnsubscribeFunction {
-    if (!this.isElectronAvailable || !window.electron?.subscribeCrawlingStatusSummary) {
-      console.warn('[IPCService] Cannot subscribe to crawling status summary - Electron or method not available');
-      return () => {};
+  public subscribeCrawlingStatusSummary(handler: IPCEventHandler<CrawlingStatusSummary>): boolean {
+    const channelKey = 'crawlingStatusSummary';
+    
+    if (this.subscriptions.get(channelKey)) {
+      console.log('[IPCService] Already subscribed to crawling status summary events');
+      return true;
+    }
+
+    if (!this.isElectronAvailable || !window.electron) {
+      console.warn('[IPCService] Electron API not available for crawling status summary subscription');
+      return false;
     }
 
     try {
-      console.log('[IPCService] Setting up crawlingStatusSummary subscription...');
-      const wrappedHandler = (data: CrawlingStatusSummary) => { // Ensure data is typed
-        console.log('[IPCService] ✅ Raw crawlingStatusSummary event received!', JSON.stringify(data));
-        handler(data);
-        console.log('[IPCService] Handler called successfully for crawlingStatusSummary');
+      const wrappedHandler = (data: CrawlingStatusSummary) => {
+        try {
+          console.log('[IPCService] ✅ Raw crawlingStatusSummary event received!', JSON.stringify(data));
+          handler(data);
+          console.log('[IPCService] Handler called successfully for crawlingStatusSummary');
+        } catch (error) {
+          console.error('[IPCService] Error in crawlingStatusSummary handler:', error);
+        }
       };
+
+      window.electron.on('crawlingStatusSummary', wrappedHandler);
       
-      const unsubscribe = window.electron.subscribeCrawlingStatusSummary(wrappedHandler);
-      console.log('[IPCService] Successfully subscribed to crawling status summary events');
-      return unsubscribe;
+      this.subscriptions.set(channelKey, true);
+      this.unsubscribeFunctions.set(channelKey, () => {
+        window.electron?.removeAllListeners?.('crawlingStatusSummary');
+        this.subscriptions.set(channelKey, false);
+        this.unsubscribeFunctions.delete(channelKey);
+      });
+      
+      console.log('[IPCService] Subscribed to crawling status summary events');
+      return true;
     } catch (error) {
       console.error('[IPCService] Failed to subscribe to crawling status summary:', error);
-      return () => {};
+      return false;
     }
   }
 
@@ -316,17 +430,61 @@ export class IPCService {
   }
 
   /**
-   * 모든 구독 한번에 해제
+   * 포괄적인 구독 정리 관리
    */
-  public unsubscribeAll(unsubscribeFunctions: IPCUnsubscribeFunction[]): void {
-    unsubscribeFunctions.forEach(unsubscribe => {
+  
+  /**
+   * 특정 채널의 구독을 정리합니다
+   */
+  public unsubscribe(channelKey: string): boolean {
+    const unsubscribeFunction = this.unsubscribeFunctions.get(channelKey);
+    if (unsubscribeFunction) {
       try {
-        unsubscribe();
+        unsubscribeFunction();
+        console.log(`[IPCService] Successfully unsubscribed from ${channelKey}`);
+        return true;
       } catch (error) {
-        console.warn('[IPCService] Error during unsubscribe:', error);
+        console.error(`[IPCService] Error unsubscribing from ${channelKey}:`, error);
+        return false;
       }
-    });
-    console.log(`[IPCService] ${unsubscribeFunctions.length} subscriptions cleaned up`);
+    } else {
+      console.log(`[IPCService] No active subscription found for ${channelKey}`);
+      return true;
+    }
+  }
+
+  /**
+   * 모든 구독을 정리합니다
+   */
+  public unsubscribeAll(): void {
+    console.log('[IPCService] Cleaning up all subscriptions...');
+    
+    const channels = Array.from(this.unsubscribeFunctions.keys());
+    for (const channel of channels) {
+      this.unsubscribe(channel);
+    }
+    
+    // 상태 맵 초기화
+    this.subscriptions.clear();
+    this.unsubscribeFunctions.clear();
+    
+    console.log('[IPCService] All subscriptions cleaned up');
+  }
+
+  /**
+   * 현재 활성 구독 상태를 반환합니다
+   */
+  public getActiveSubscriptions(): string[] {
+    return Array.from(this.subscriptions.entries())
+      .filter(([_, isActive]) => isActive)
+      .map(([channel, _]) => channel);
+  }
+
+  /**
+   * 특정 채널의 구독 상태를 확인합니다
+   */
+  public isSubscribed(channelKey: string): boolean {
+    return this.subscriptions.get(channelKey) === true;
   }
 
   // === 설정 관련 ===

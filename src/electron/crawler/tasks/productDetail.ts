@@ -216,7 +216,7 @@ export class ProductDetailCollector {
     
     try {
       // Axios 타임아웃 설정 (Playwright보다 짧게 설정하여 빠른 실패를 유도)
-      const axiosTimeout = config.axiosTimeoutMs ?? 30000;
+      const axiosTimeout = config.axiosTimeoutMs ?? 45000; // 개선: 30초에서 45초로 증가
       
       // 향상된 HTTP 헤더 사용
       const headers = this.getEnhancedHeaders();
@@ -252,7 +252,7 @@ export class ProductDetailCollector {
   private async extractProductDetailsWithAxios(
     product: Product,
     headers: Record<string, string>,
-    timeoutMs: number = 30000
+    timeoutMs: number = 45000 // 개선: 30초에서 45초로 증가
   ): Promise<Partial<any>> {
     try {
       const response = await axios.get(product.url, {
@@ -1570,7 +1570,7 @@ export class ProductDetailCollector {
             })
           });
         },
-        (retryAttempt, err) => {
+        (_retryAttempt, _err) => {
           // 재시도 포기 조건: 중지 신호가 발생한 경우
           return signal.aborted;
         }
@@ -2108,8 +2108,6 @@ export class ProductDetailCollector {
    */
   private validateFinalCompletionStatus(
     totalProducts: number,
-
-    
     failedCount: number
   ): { isComplete: boolean; status: 'success' | 'partial' | 'failed'; message: string } {
     

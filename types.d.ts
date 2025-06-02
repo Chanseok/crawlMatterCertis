@@ -592,5 +592,136 @@ declare global {
     }
 }
 
+/**
+ * =====================================================
+ * Phase 1 개선: 단계별 진행 상황 타입 시스템
+ * =====================================================
+ */
+
+/**
+ * 크롤링 단계 식별자
+ * 각 단계는 고유한 ID와 설명을 가집니다.
+ */
+export type CrawlingStageId = 
+    | 'status-check'      // 사이트 상태 체크
+    | 'product-list'      // 제품 목록 수집 (1단계)
+    | 'db-comparison'     // 로컬 DB 비교 (1.5단계)
+    | 'product-detail';   // 제품 상세 정보 수집 (2단계)
+
+/**
+ * 단계별 진행 상황 상태
+ */
+export type StageStatus = 
+    | 'pending'    // 대기 중
+    | 'running'    // 실행 중
+    | 'completed'  // 완료됨
+    | 'failed'     // 실패함
+    | 'skipped';   // 건너뜀
+
+/**
+ * 단계별 진행 상황 정보
+ * CrawlingProgress의 복잡성을 단계별로 분리하여 관리
+ */
+export interface StageProgress {
+    /** 단계 식별자 */
+    stageId: CrawlingStageId;
+    
+    /** 단계 상태 */
+    status: StageStatus;
+    
+    /** 현재 진행량 */
+    current: number;
+    
+    /** 전체 작업량 */
+    total: number;
+    
+    /** 진행률 (0-100) */
+    percentage: number;
+    
+    /** 현재 작업 설명 */
+    currentStep: string;
+    
+    /** 시작 시간 */
+    startTime?: Date;
+    
+    /** 완료 시간 */
+    endTime?: Date;
+    
+    /** 경과 시간 (ms) */
+    elapsedTime: number;
+    
+    /** 예상 남은 시간 (ms) */
+    remainingTime?: number;
+    
+    /** 재시도 횟수 */
+    retryCount?: number;
+    
+    /** 최대 재시도 횟수 */
+    maxRetries?: number;
+    
+    /** 에러 정보 */
+    error?: CrawlingError;
+    
+    /** 추가 메타데이터 */
+    metadata?: Record<string, any>;
+}
+
+/**
+ * 전체 크롤링 세션의 진행 상황
+ * 여러 단계의 진행 상황을 통합 관리
+ */
+export interface CrawlingSessionProgress {
+    /** 세션 ID */
+    sessionId: string;
+    
+    /** 전체 상태 */
+    overallStatus: CrawlingStatus;
+    
+    /** 각 단계별 진행 상황 */
+    stages: Record<CrawlingStageId, StageProgress>;
+    
+    /** 현재 활성 단계 */
+    currentStage: CrawlingStageId | null;
+    
+    /** 전체 시작 시간 */
+    startTime: Date;
+    
+    /** 전체 완료 시간 */
+    endTime?: Date;
+    
+    /** 전체 경과 시간 (ms) */
+    totalElapsedTime: number;
+    
+    /** 전체 예상 남은 시간 (ms) */
+    totalRemainingTime?: number;
+}
+
+/**
+ * 배치 처리 진행 상황 (기존 배치 UI 호환)
+ * 단계 내에서 배치 단위로 처리되는 작업의 진행 상황
+ */
+export interface BatchProgress {
+    /** 현재 배치 번호 */
+    currentBatch: number;
+    
+    /** 전체 배치 수 */
+    totalBatches: number;
+    
+    /** 배치 내 현재 처리량 */
+    currentInBatch: number;
+    
+    /** 배치 내 전체 작업량 */
+    totalInBatch: number;
+    
+    /** 배치 재시도 횟수 */
+    batchRetryCount?: number;
+    
+    /** 배치 최대 재시도 횟수 */
+    batchRetryLimit?: number;
+    
+    /** 페이지별 처리 상태 (1단계용) */
+    pageStatuses?: PageProcessingStatusItem[];
+}
+
 // 모듈로서 이 파일을 다루도록 빈 export 추가
 export {};

@@ -10,6 +10,7 @@ console.log('[CrawlingStore] 🔄 MODULE LOADING - CrawlingStore.ts module is be
 
 import { makeObservable, observable, action, runInAction } from 'mobx';
 import { IPCService, IPCUnsubscribeFunction, ipcService } from '../../services/IPCService'; // Added ipcService import
+import { crawlingProgressViewModel } from '../../viewmodels/CrawlingProgressViewModel';
 import { getPlatformApi } from '../../platform/api';
 
 /*
@@ -43,6 +44,7 @@ export class CrawlingStore {
   @observable accessor lastStatusSummary: CrawlingStatusSummary | null = null;
   @observable accessor isCheckingStatus: boolean = false;
   @observable accessor currentMessage: string = '대기 중...';
+  @observable accessor explicitlyStopped: boolean = false; // 명시적 중단 플래그
   
   // Track the highest stage reached to prevent stage regression
   @observable accessor highestStageReached: number = 0;
@@ -151,8 +153,15 @@ export class CrawlingStore {
       currentStatus: this.status,
       currentStage: this.progress.currentStage,
       currentStep: this.progress.currentStep,
-      currentMessage: this.currentMessage
+      currentMessage: this.currentMessage,
+      explicitlyStopped: this.explicitlyStopped
     });
+    
+    // 명시적으로 중단된 상태에서는 진행률 업데이트를 무시
+    if (this.explicitlyStopped) {
+      console.log('[CrawlingStore] 🚀 Ignoring progress update - explicitly stopped');
+      return;
+    }
     
     runInAction(() => {
       const newProgress = { ...this.progress, ...progress };
@@ -164,11 +173,15 @@ export class CrawlingStore {
         newProgress.currentStep = this.progress.currentStep;
         console.log(`[CrawlingStore] Preserving currentStep: "${newProgress.currentStep}"`);
       }
+      
       this.progress = newProgress;
       this.status = progress.status || this.status;
       if (progress.message) {
         this.currentMessage = progress.message;
       }
+      
+      // CrawlingProgressViewModel 업데이트
+      crawlingProgressViewModel.updateProgress(newProgress);
       
       console.log('[CrawlingStore] 🚀 Store state AFTER update:', {
         newStatus: this.status,
@@ -185,6 +198,7 @@ export class CrawlingStore {
     console.log('[CrawlingStore] Crawling complete:', data);
     runInAction(() => {
       this.status = 'completed';
+      this.explicitlyStopped = false; // 정상 완료 시 플래그 리셋
       this.progress = {
         ...this.progress,
         status: 'completed',
@@ -192,6 +206,9 @@ export class CrawlingStore {
         currentStep: '크롤링 완료',
         message: data?.message || '크롤링이 성공적으로 완료되었습니다.'
       };
+      
+      // CrawlingProgressViewModel을 완료 상태로 설정
+      crawlingProgressViewModel.setCompleted();
     });
   };
 
@@ -215,12 +232,16 @@ export class CrawlingStore {
     console.log('[CrawlingStore] Crawling stopped:', data);
     runInAction(() => {
       this.status = 'idle';
+      this.explicitlyStopped = false; // 중단 완료 후 플래그 리셋
       this.progress = {
         ...this.progress,
         status: 'idle',
         currentStep: '크롤링 중단됨',
         message: data?.message || '크롤링이 중단되었습니다.'
       };
+      
+      // CrawlingProgressViewModel 리셋
+      crawlingProgressViewModel.reset();
     });
   };
 
@@ -453,10 +474,14 @@ export class CrawlingStore {
   public startCrawling(startConfig?: Partial<CrawlerConfig>): Promise<boolean> {
     console.log('[CrawlingStore] Attempting to start crawling...', startConfig);
     this.error = null;
+    this.explicitlyStopped = false; // 새로운 크롤링 시작 시 플래그 리셋
     this.status = 'initializing';
     this.progress = { ...initialProgress, status: 'initializing', currentStep: '크롤링 시작 중...', startTime: Date.now() };
     // Reset stage tracking when starting new crawling session
-    this.highestStageReached = 0; 
+    this.highestStageReached = 0;
+    
+    // CrawlingProgressViewModel 리셋
+    crawlingProgressViewModel.reset(); 
     
     // 간단하고 안전한 config 객체 생성
     let configToSend: any = {};
@@ -496,7 +521,12 @@ export class CrawlingStore {
   @action
   public stopCrawling(): Promise<boolean> {
     console.log('[CrawlingStore] Attempting to stop crawling...');
+    this.explicitlyStopped = true; // 명시적 중단 플래그 설정
     this.status = 'idle';
+    
+    // 구독 해제 방지: 활성 크롤링 중에는 구독을 유지
+    console.log('[CrawlingStore] Explicit stop - maintaining subscriptions for proper cleanup');
+    
     return this.ipcServiceInstance.stopCrawling();
   }
 
@@ -589,6 +619,39 @@ export class CrawlingStore {
   @action
   public cleanup(): void {
     console.log('[CrawlingStore] Cleaning up subscriptions');
+    
+    // 활성 크롤링 중에는 구독 해제를 지연
+    if (this.isRunning && !this.explicitlyStopped) {
+      console.log('[CrawlingStore] Delaying cleanup - crawling is active');
+      return;
+    }
+    
+    console.log('[CrawlingStore] Proceeding with cleanup');
+    this.unsubscribeCrawlingProgress?.();
+    this.unsubscribeCrawlingComplete?.();
+    this.unsubscribeCrawlingError?.();
+    this.unsubscribeCrawlingStopped?.();
+    this.unsubscribeCrawlingStatusSummary?.();
+    this.unsubscribeCrawlingTaskStatus?.();
+    
+    // 상태 초기화
+    this.progress = { ...initialProgress };
+    this.status = 'idle';
+    this.error = null;
+    this.currentMessage = '대기 중...';
+    this.explicitlyStopped = false;
+    this.highestStageReached = 0;
+    
+    // CrawlingProgressViewModel 정리
+    crawlingProgressViewModel.reset();
+  }
+
+  /**
+   * 강제 정리 - 앱 종료 시 사용
+   */
+  @action
+  public forceCleanup(): void {
+    console.log('[CrawlingStore] Force cleaning up all subscriptions');
     this.unsubscribeCrawlingProgress?.();
     this.unsubscribeCrawlingComplete?.();
     this.unsubscribeCrawlingError?.();

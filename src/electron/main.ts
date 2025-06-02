@@ -20,6 +20,8 @@ import {
 } from './database.js';
 import { startCrawling, stopCrawling, checkCrawlingStatus } from './crawler/index.js';
 import { crawlerEvents } from './crawler/utils/progress.js';
+// 진행 상황 관리자 추가
+import { ProgressManager } from './progress/ProgressManager.js';
 // UI 타입이 아닌 공유 타입 사용
 import type { AppMode, CrawlingProgress } from '../../types.js';
 import type { FailedPageReport, CrawlingResultReport } from './crawler/utils/types.js';
@@ -648,20 +650,21 @@ function setupCrawlerEvents(mainWindow: BrowserWindow): void {
     console.log(`[MAIN] crawlerEvents object:`, crawlerEvents);
     console.log(`[MAIN] crawlerEvents listeners count:`, crawlerEvents.listenerCount('crawlingProgress'));
     
+    // 진행 관리자 인스턴스 생성
+    const progressManager = new ProgressManager((progress: CrawlingProgress) => {
+        if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('crawlingProgress', progress);
+        }
+    });
+    
     // 크롤링 진행 상태 이벤트
     crawlerEvents.on('crawlingProgress', (progress: CrawlingProgress) => {
         const logMessage = `[MAIN] Received crawlingProgress event: stage=${progress.currentStage}, step="${progress.currentStep}", message="${progress.message}", progress=${progress.current}/${progress.total}`;
         log.info(logMessage);
         console.log(logMessage); // 콘솔에도 출력
         
-        // 웹 콘텐츠로 전송하기 전에 확인
-        if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-            console.log(`[MAIN] Sending crawlingProgress to frontend...`);
-            mainWindow.webContents.send('crawlingProgress', progress);
-            console.log(`[MAIN] crawlingProgress sent successfully`);
-        } else {
-            console.error(`[MAIN] Cannot send crawlingProgress - webContents not available`);
-        }
+        // ProgressManager를 통한 업데이트 전송
+        progressManager.throttledSend('crawlingProgress', progress);
     });
     
     console.log(`[MAIN] crawlingProgress listener registered. Total listeners:`, crawlerEvents.listenerCount('crawlingProgress'));
