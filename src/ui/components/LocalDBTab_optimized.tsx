@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
-import { useDatabaseStore } from '../hooks';
+import { useDatabaseStore, useCrawlingStore } from '../hooks';
 import type { MatterProduct } from '../../../types';
 import { format } from 'date-fns';
 import { intToHexDisplay, jsonArrayToHexDisplay } from '../utils/hexDisplayUtils';
@@ -8,29 +8,31 @@ import { intToHexDisplay, jsonArrayToHexDisplay } from '../utils/hexDisplayUtils
 // 최적화된 LocalDBTab 컴포넌트 - 전체 조회 방식
 export const LocalDBTab: React.FC = observer(() => {
   // Domain Store Hooks
-  const {
-    products,
-    summary: dbSummary,
+  const { 
+    products, 
+    summary: dbSummary, 
     isLoading,
     error: dbError,
     loadAllProducts,
-    loadSummary,
+    loadSummary, 
     exportToExcel,
     deleteRecordsByPageRange,
     clearError
   } = useDatabaseStore();
-
+  
+  const { config } = useCrawlingStore();
+  
   // Local state - 전체 조회 최적화
   const [allProducts, setAllProducts] = useState<MatterProduct[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deleteRange, setDeleteRange] = useState({ startPageId: 0, endPageId: 0 });
-
+  
   // Section expansion state
   const [dbSectionExpanded, setDbSectionExpanded] = useState(true);
   const [productsSectionExpanded, setProductsSectionExpanded] = useState(true);
-
+  
   const itemsPerPage = 12; // 사이트 구조와 일치
 
   // 🚀 최적화 1: 초기 데이터 로딩 - 전체 데이터를 한 번에 로드
@@ -45,7 +47,7 @@ export const LocalDBTab: React.FC = observer(() => {
         console.error('LocalDBTab: Failed to load initial data:', error);
       }
     };
-
+    
     loadInitialData();
   }, [loadAllProducts, loadSummary]);
 
@@ -53,23 +55,23 @@ export const LocalDBTab: React.FC = observer(() => {
   useEffect(() => {
     if (products && products.length > 0) {
       console.log(`LocalDBTab: Caching ${products.length} products for client-side operations`);
-
+      
       // 정렬된 전체 데이터 캐시
       const sortedProducts = [...products].sort((a, b) => {
         const aPageId = a.pageId ?? 0;
         const bPageId = b.pageId ?? 0;
         const aIndex = a.indexInPage ?? 0;
         const bIndex = b.indexInPage ?? 0;
-
+        
         if (aPageId !== bPageId) {
           return bPageId - aPageId; // 페이지 ID 내림차순
         }
         return bIndex - aIndex; // 같은 페이지 내에서는 인덱스 내림차순
       });
-
+      
       setAllProducts(sortedProducts);
       setCurrentPage(1); // 첫 페이지로 리셋
-
+      
       // 삭제 범위 초기화
       if (sortedProducts.length > 0) {
         const maxId = Math.max(...sortedProducts.map(p => p.pageId ?? 0));
@@ -85,14 +87,14 @@ export const LocalDBTab: React.FC = observer(() => {
     if (!searchQuery.trim()) {
       return allProducts;
     }
-
+    
     const query = searchQuery.toLowerCase();
-    const filtered = allProducts.filter(product =>
+    const filtered = allProducts.filter(product => 
       (product.manufacturer?.toLowerCase().includes(query)) ||
       (product.model?.toLowerCase().includes(query)) ||
       (product.certificateId?.toLowerCase().includes(query))
     );
-
+    
     console.log(`LocalDBTab: Real-time search filtered ${filtered.length} products from ${allProducts.length}`);
     return filtered;
   }, [allProducts, searchQuery]);
@@ -103,7 +105,7 @@ export const LocalDBTab: React.FC = observer(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     const paged = filteredProducts.slice(startIndex, endIndex);
-
+    
     return {
       displayProducts: paged,
       totalPages: total
@@ -185,10 +187,10 @@ export const LocalDBTab: React.FC = observer(() => {
   // 🚀 최적화 5: 효율적인 페이지네이션 렌더링
   const renderPagination = useCallback(() => {
     if (totalPages <= 1) return null;
-
+    
     const pages = [];
     const maxVisiblePages = 7;
-
+    
     if (totalPages <= maxVisiblePages) {
       // 페이지가 적으면 모두 표시
       for (let i = 1; i <= totalPages; i++) {
@@ -212,7 +214,7 @@ export const LocalDBTab: React.FC = observer(() => {
         pages.push(totalPages);
       }
     }
-
+    
     return (
       <div className="flex justify-center items-center mt-4 space-x-2">
         <button
@@ -223,7 +225,7 @@ export const LocalDBTab: React.FC = observer(() => {
         >
           &laquo;
         </button>
-
+        
         <button
           onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
@@ -231,7 +233,7 @@ export const LocalDBTab: React.FC = observer(() => {
         >
           &lt;
         </button>
-
+        
         {pages.map((page, index) => (
           page === '...' ? (
             <span key={`ellipsis-${index}`} className="px-3 py-2">...</span>
@@ -239,16 +241,17 @@ export const LocalDBTab: React.FC = observer(() => {
             <button
               key={`page-${page}`}
               onClick={() => handlePageChange(page as number)}
-              className={`px-3 py-2 rounded ${currentPage === page
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                }`}
+              className={`px-3 py-2 rounded ${
+                currentPage === page 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+              }`}
             >
               {page}
             </button>
           )
         ))}
-
+        
         <button
           onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage === totalPages}
@@ -256,7 +259,7 @@ export const LocalDBTab: React.FC = observer(() => {
         >
           &gt;
         </button>
-
+        
         <button
           onClick={() => handlePageChange(totalPages)}
           disabled={currentPage === totalPages}
@@ -275,7 +278,7 @@ export const LocalDBTab: React.FC = observer(() => {
       {dbError && (
         <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
           {dbError}
-          <button
+          <button 
             onClick={clearError}
             className="ml-2 text-red-500 hover:text-red-700"
           >
@@ -283,33 +286,33 @@ export const LocalDBTab: React.FC = observer(() => {
           </button>
         </div>
       )}
-
+      
       {/* 로딩 상태 표시 */}
       {isLoading && (
         <div className="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded">
           초기 데이터를 로딩 중입니다... (전체 {allProducts.length || 0}개 제품)
         </div>
       )}
-
+      
       {/* 로컬 데이터베이스 섹션 */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-        <div
+        <div 
           className="flex justify-between items-center p-4 bg-gray-50 dark:bg-gray-750 cursor-pointer"
           onClick={() => setDbSectionExpanded(!dbSectionExpanded)}
         >
           <h2 className="text-xl font-semibold text-gray-800 dark:text-white">
             로컬 데이터베이스 ⚡ 최적화됨
           </h2>
-          <svg
-            className={`w-6 h-6 text-gray-500 transition-transform ${dbSectionExpanded ? 'transform rotate-180' : ''}`}
-            fill="none"
-            stroke="currentColor"
+          <svg 
+            className={`w-6 h-6 text-gray-500 transition-transform ${dbSectionExpanded ? 'transform rotate-180' : ''}`} 
+            fill="none" 
+            stroke="currentColor" 
             viewBox="0 0 24 24"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
           </svg>
         </div>
-
+        
         {dbSectionExpanded && (
           <div className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -320,7 +323,7 @@ export const LocalDBTab: React.FC = observer(() => {
                 </div>
                 <div className="text-xs text-green-600 dark:text-green-400 mt-1">실시간 검색 가능</div>
               </div>
-
+              
               <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
                 <div className="text-gray-600 dark:text-gray-400 mb-2">검색 결과</div>
                 <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
@@ -330,17 +333,17 @@ export const LocalDBTab: React.FC = observer(() => {
                   {searchQuery ? `"${searchQuery}" 검색` : '전체 표시'}
                 </div>
               </div>
-
+              
               <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
                 <div className="text-gray-600 dark:text-gray-400 mb-2">최근 업데이트</div>
                 <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
-                  {dbSummary?.lastUpdated
-                    ? format(new Date(dbSummary.lastUpdated), 'yyyy-MM-dd HH:mm')
+                  {dbSummary?.lastUpdated 
+                    ? format(new Date(dbSummary.lastUpdated), 'yyyy-MM-dd HH:mm') 
                     : '없음'}
                 </div>
               </div>
             </div>
-
+            
             <div className="flex justify-end space-x-3 mt-4">
               <button
                 onClick={openDeleteModal}
@@ -358,26 +361,26 @@ export const LocalDBTab: React.FC = observer(() => {
           </div>
         )}
       </div>
-
+      
       {/* 수집된 제품 정보 섹션 */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-        <div
+        <div 
           className="flex justify-between items-center p-4 bg-gray-50 dark:bg-gray-750 cursor-pointer"
           onClick={() => setProductsSectionExpanded(!productsSectionExpanded)}
         >
           <h2 className="text-xl font-semibold text-gray-800 dark:text-white">
             수집된 제품 정보 🔍 실시간 검색
           </h2>
-          <svg
-            className={`w-6 h-6 text-gray-500 transition-transform ${productsSectionExpanded ? 'transform rotate-180' : ''}`}
-            fill="none"
-            stroke="currentColor"
+          <svg 
+            className={`w-6 h-6 text-gray-500 transition-transform ${productsSectionExpanded ? 'transform rotate-180' : ''}`} 
+            fill="none" 
+            stroke="currentColor" 
             viewBox="0 0 24 24"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
           </svg>
         </div>
-
+        
         {productsSectionExpanded && (
           <div className="p-4">
             {/* 🚀 최적화된 실시간 검색 */}
@@ -400,20 +403,20 @@ export const LocalDBTab: React.FC = observer(() => {
                 </button>
               </div>
             </div>
-
+            
             {/* 제품 테이블 */}
-            <div className="overflow-x-auto max-w-2xl mx-auto">
-              <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-fixed">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
-                    <th className="px-2 py-3 w-16 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">No.</th>
-                    <th className="px-1 py-3 w-20 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">제조사</th>
-                    <th className="px-2 py-3 w-48 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">모델명</th>
-                    <th className="px-2 py-3 w-20 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">VID</th>
-                    <th className="px-2 py-3 w-20 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">PID</th>
-                    <th className="px-2 py-3 w-24 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Device Type</th>
-                    <th className="px-2 py-3 w-32 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">인증 ID</th>
-                    <th className="px-2 py-3 w-20 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">페이지 ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">No.</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">제조사</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">모델명</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">VID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">PID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Device Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">인증 ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">페이지 ID</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -428,47 +431,47 @@ export const LocalDBTab: React.FC = observer(() => {
                   ) : (
                     displayProducts.map((product, idx) => (
                       <tr key={`${product.pageId}-${product.indexInPage}`} className="hover:bg-gray-50 dark:hover:bg-gray-750">
-                        <td className="px-2 py-4 w-16 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200">
                             {(currentPage - 1) * itemsPerPage + idx + 1}
                           </div>
                         </td>
-                        <td className="px-1 py-3 w-20 whitespace-nowrap text-sm text-gray-900">
-                          <div className="text-sm text-gray-900 dark:text-gray-200 truncate" title={product.manufacturer || '-'}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 dark:text-gray-200">
                             {product.manufacturer || '-'}
                           </div>
                         </td>
-                        <td className="px-2 py-4 w-48 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <a
                             href={product.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate block"
+                            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
                           >
                             {product.model || '-'}
                           </a>
                         </td>
-                        <td className="px-2 py-4 w-20 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">
                             {intToHexDisplay(typeof product.vid === 'number' ? product.vid : (typeof product.vid === 'string' ? parseInt(product.vid, 10) : undefined))}
                           </div>
                         </td>
-                        <td className="px-2 py-4 w-20 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">
                             {intToHexDisplay(typeof product.pid === 'number' ? product.pid : (typeof product.pid === 'string' ? parseInt(product.pid, 10) : undefined))}
                           </div>
                         </td>
-                        <td className="px-2 py-4 w-24 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-gray-200 font-mono truncate">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">
                             {jsonArrayToHexDisplay(product.primaryDeviceTypeId as string)}
                           </div>
                         </td>
-                        <td className="px-2 py-4 w-32 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-gray-200 truncate">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 dark:text-gray-200">
                             {product.certificateId || '-'}
                           </div>
                         </td>
-                        <td className="px-2 py-4 w-20 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200">
                             {product.pageId !== undefined ? product.pageId + 1 : '-'}
                           </div>
@@ -479,7 +482,7 @@ export const LocalDBTab: React.FC = observer(() => {
                 </tbody>
               </table>
             </div>
-
+            
             {/* 페이지네이션 */}
             <div className="flex flex-col md:flex-row justify-between items-center mt-4">
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-2 md:mb-0">
@@ -491,7 +494,7 @@ export const LocalDBTab: React.FC = observer(() => {
           </div>
         )}
       </div>
-
+      
       {/* 레코드 삭제 모달 */}
       {deleteModalVisible && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -500,7 +503,7 @@ export const LocalDBTab: React.FC = observer(() => {
             <p className="text-gray-600 dark:text-gray-400 mb-4">
               삭제할 페이지 범위를 선택하세요 (내림차순, 연속적인 페이지만 선택 가능)
             </p>
-
+            
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -520,7 +523,7 @@ export const LocalDBTab: React.FC = observer(() => {
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                 />
               </div>
-
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   종료 페이지 (오래된)
@@ -540,7 +543,7 @@ export const LocalDBTab: React.FC = observer(() => {
                 />
               </div>
             </div>
-
+            
             <div className="flex justify-end mt-6 space-x-3">
               <button
                 onClick={closeDeleteModal}

@@ -21,17 +21,20 @@ export function useDatabaseStore() {
   // MobX store provides direct access to reactive properties
   // No need for useStore() - MobX observer will handle reactivity
 
-  // 메서드들을 useCallback으로 메모이제이션하여 불필요한 리렌더링 방지
-  const loadAllProducts = useCallback(async (page: number = 1, limit: number = 100) => {
+  // 🚀 최적화: 전체 조회를 기본으로 하는 메서드들
+  const loadAllProducts = useCallback(async (page: number = 1, limit?: number) => {
+    // limit이 제공되지 않으면 전체 데이터 로딩
+    console.log(`[Database Store] Loading products - page: ${page}, limit: ${limit || 'unlimited'}`);
     await databaseStore.loadProducts(undefined, page, limit);
   }, []);
 
-  const searchProducts = useCallback(async (query: string = '', page: number = 1, limit: number = 100) => {
+  const searchProducts = useCallback(async (query: string = '', page: number = 1, limit?: number) => {
     if (!query || query.trim() === '') {
       console.log('Empty search query, loading all products instead');
       await databaseStore.loadProducts(undefined, page, limit);
       return;
     }
+    console.log(`[Database Store] Searching products - query: "${query}", limit: ${limit || 'unlimited'}`);
     await databaseStore.searchProducts(query.trim(), page, limit);
   }, []);
 
