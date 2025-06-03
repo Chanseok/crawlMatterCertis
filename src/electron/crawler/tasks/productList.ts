@@ -10,7 +10,7 @@ import {
 } from '../utils/concurrency.js';
 
 import type { CrawlResult, CrawlError } from '../utils/types.js';
-import type { Product, PageProcessingStatusItem, PageProcessingStatusValue } from '../../../../types.js';
+import type { Product, PageProcessingStatusValue, MutablePageProcessingStatusItem } from '../../../../types.js';
 import { type CrawlerConfig } from '../core/config.js';
 import { logger } from '../../../shared/utils/Logger.js';
 import { crawlerEvents, updateRetryStatus } from '../utils/progress.js';
@@ -38,7 +38,7 @@ const sitePageInfoCache = new PageCacheManager<SitePageInfo>();
 export type EnhancedProgressCallback = (
   processedSuccessfully: number,
   totalPagesInStage: number,
-  stage1PageStatuses: PageProcessingStatusItem[],
+  stage1PageStatuses: MutablePageProcessingStatusItem[],
   currentOverallRetryCountForStage: number,
   stage1StartTime: number,
   isStageComplete?: boolean
@@ -59,7 +59,7 @@ export class ProductListCollector {
   private productCache: Map<number, Product[]>;
 
   // New members for detailed stage 1 progress
-  private stage1PageStatuses: PageProcessingStatusItem[] = [];
+  private stage1PageStatuses: MutablePageProcessingStatusItem[] = [];
   private currentStageRetryCount: number = 0; // Tracks the number of retry *cycles* for the stage
   // Track total number of pages to process
   

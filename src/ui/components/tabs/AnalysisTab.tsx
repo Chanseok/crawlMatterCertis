@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, 
   Pie, Cell, ResponsiveContainer, LineChart, Line
 } from 'recharts';
-import type { MatterProduct } from '../../../../types.d.ts';
+import { toUIMatterProducts, type UIMatterProduct } from '../../types/ui-types';
 
 // 차트 색상 설정
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1'];
@@ -13,7 +13,7 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
  * 수집된 MatterProduct 데이터를 다양하게 분석하고 시각화합니다.
  */
 export function AnalysisTab() {
-  const [products, setProducts] = useState<MatterProduct[]>([]);
+  const [products, setProducts] = useState<UIMatterProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterType, setFilterType] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,7 +25,7 @@ export function AnalysisTab() {
       try {
         setIsLoading(true);
         const result = await window.electron.getProducts({ limit: 1000 });
-        setProducts(result.products);
+        setProducts(toUIMatterProducts(result.products));
       } catch (error) {
         console.error('데이터 로드 실패:', error);
       } finally {

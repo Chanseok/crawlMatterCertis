@@ -3,7 +3,7 @@
  * Matter 제품 상세 정보를 웹 페이지 DOM에서 추출하는 파서 클래스
  */
 
-import type { Product, MatterProduct } from '../../../../types.d.ts';
+import type { Product, MatterProduct, MutableMatterProduct } from '../../../../types.d.ts';
 
 // No need to redeclare document - just add @ts-ignore comments where needed
 
@@ -22,7 +22,7 @@ export class MatterProductParser {
     type ProductDetails = Record<string, string | undefined>;
 
     // 추출된 데이터로 구축할 객체 초기화
-    const extractedFields: Partial<Omit<MatterProduct, 'url' | 'pageId' | 'indexInPage' | 'id'>> = {
+    const extractedFields: Partial<Omit<MutableMatterProduct, 'url' | 'pageId' | 'indexInPage' | 'id'>> = {
       manufacturer: baseProductForContext.manufacturer,
       model: baseProductForContext.model,
       certificateId: baseProductForContext.certificateId,

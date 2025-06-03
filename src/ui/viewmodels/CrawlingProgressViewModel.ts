@@ -7,7 +7,8 @@
  */
 
 import { makeObservable, observable, computed, action, reaction, IReactionDisposer } from 'mobx';
-import type { CrawlingProgress, CrawlingStageId } from '../../../types';
+import type { CrawlingStageId } from '../../../types';
+import type { UICrawlingProgress } from '../types/ui-types';
 
 // 숫자 단계를 문자열 ID로 매핑
 const STAGE_NUMBER_TO_ID: Record<number, CrawlingStageId> = {
@@ -52,7 +53,7 @@ const STAGE_ORDER: Record<CrawlingStageId, number> = {
  * 크롤링 진행 상태 전용 ViewModel
  */
 export class CrawlingProgressViewModel {
-  @observable accessor currentProgress: CrawlingProgress | null = null;
+  @observable accessor currentProgress: UICrawlingProgress | null = null;
   @observable accessor highestStageReached: CrawlingStageId = 'ready';
   @observable accessor isRegressing = false; // UI 퇴행 상태 표시
   @observable accessor lastProgressUpdate: number = 0; // 마지막 업데이트 시간
@@ -166,7 +167,7 @@ export class CrawlingProgressViewModel {
    * 진행 상황 업데이트
    */
   @action
-  updateProgress(progress: CrawlingProgress): void {
+  updateProgress(progress: UICrawlingProgress): void {
     this.currentProgress = progress;
     this.lastProgressUpdate = Date.now();
     

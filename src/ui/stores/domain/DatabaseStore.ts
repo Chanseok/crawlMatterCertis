@@ -5,6 +5,8 @@
 
 import { makeObservable, observable, action, computed, runInAction } from 'mobx';
 import type { DatabaseSummary, MatterProduct } from '../../../../types';
+import type { UIMatterProduct } from '../../types/ui-types';
+import { toUIMatterProducts } from '../../types/ui-types';
 import { getPlatformApi } from '../../platform/api';
 import { DatabaseService } from '../../services/domain/DatabaseService';
 import { ExportService } from '../../services/domain/ExportService';
@@ -25,7 +27,7 @@ export interface ProductDetail {
 export class DatabaseStore {
   // State properties - all observable
   public summary: DatabaseSummary | null = null;
-  public products: MatterProduct[] = [];
+  public products: UIMatterProduct[] = [];
   public loading: boolean = false;
   public saving: boolean = false;
   public lastSaveResult: { success: boolean; message?: string } | null = null;
@@ -137,7 +139,7 @@ export class DatabaseStore {
         }));
         
         runInAction(() => {
-          this.products = convertedProducts as MatterProduct[];
+          this.products = toUIMatterProducts(convertedProducts as MatterProduct[]);
           this.totalPages = result.data?.totalPages || 0;
           this.currentPage = page;
           if (query !== undefined) {
@@ -167,19 +169,20 @@ export class DatabaseStore {
   /**
    * Save products to database
    */
-  async saveProducts(products: MatterProduct[]): Promise<void> {
+  async saveProducts(products: UIMatterProduct[]): Promise<void> {
     runInAction(() => {
       this.saving = true;
     });
 
     try {
-      // Transform products to include required database fields
+      // Transform products to shared type with required database fields
       const dbProducts = products.map(product => ({
         ...product,
         id: product.id || crypto.randomUUID(),
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }));
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        applicationCategories: product.applicationCategories ? [...product.applicationCategories] : undefined
+      })) as any; // Type assertion to handle type compatibility
       
       const result = await this.databaseService.saveProducts({
         products: dbProducts,
@@ -250,7 +253,7 @@ export class DatabaseStore {
         }));
         
         runInAction(() => {
-          this.products = convertedProducts as MatterProduct[];
+          this.products = toUIMatterProducts(convertedProducts as MatterProduct[]);
           this.totalPages = searchResult.totalPages || 0;
           this.currentPage = page;
           if (query !== undefined) {

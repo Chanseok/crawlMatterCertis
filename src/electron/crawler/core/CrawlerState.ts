@@ -14,20 +14,12 @@ import type {
 import { crawlerEvents } from '../utils/progress.js';
 import { PageValidator, PageValidationResult } from '../utils/page-validator.js';
 import { logger } from '../../../shared/utils/Logger.js';
+import type { CrawlingStage } from '../../../../types.js';
 
-export type CrawlingStage =
-  | 'preparation'
-  | 'productList:init'
-  | 'productList:fetching'
-  | 'productList:processing'
-  | 'validation:init'
-  | 'validation:processing'
-  | 'validation:complete'
-  | 'productDetail:init'
-  | 'productDetail:fetching'
-  | 'productDetail:processing'
-  | 'completed'
-  | 'failed';
+// Mutable version of CrawlingProgress for internal state management
+type MutableCrawlingProgress = {
+  -readonly [K in keyof CrawlingProgress]: CrawlingProgress[K]
+};
 
 // ProgressData 인터페이스를 CrawlingProgress 타입으로 대체
 // 내부 stage 필드를 위한 CrawlingStage 매핑 유틸리티
@@ -68,7 +60,7 @@ export class CrawlerState {
   private failedPages: number[] = [];
   private failedPageErrors: Record<number, string[]> = {};
   private failedProductErrors: Record<string, string[]> = {};
-  private progressData: CrawlingProgress;
+  private progressData: MutableCrawlingProgress;
   private detailStageProcessedCount: number = 0;
   private detailStageNewCount: number = 0;
   private detailStageUpdatedCount: number = 0;
@@ -596,7 +588,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     logger.debug(`Detail stage total product count set to: ${count}`, 'CrawlerState');
     
     // Stage 3에 있는 경우, UI를 위해 progressData.totalItems 및 total도 업데이트
-    if (this.currentStage.startsWith('productDetail') || this.currentStage === 'completed') {
+    if ((typeof this.currentStage === 'string' && this.currentStage.startsWith('productDetail')) || this.currentStage === 'completed') {
       this.updateProgress({ 
         total: count,
         totalItems: count 

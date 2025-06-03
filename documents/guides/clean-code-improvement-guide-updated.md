@@ -22,8 +22,6 @@
 
 ## 📋 Phase 1: 타입 시스템 통합 (Type System Consolidation)
 
-## 📋 Phase 1: 타입 시스템 통합 (Type System Consolidation)
-
 ### 1.1 중복 타입 정의 제거
 
 **문제점**: 여러 파일에 분산된 중복 타입 정의로 인한 복잡성 증가
@@ -94,8 +92,6 @@ type ConditionalProps<T extends CrawlingStatus> =
 
 ## 📋 Phase 2: ViewModel 패턴 완성 (Complete ViewModel Pattern)
 
-## 📋 Phase 2: ViewModel 패턴 완성 (Complete ViewModel Pattern)
-
 ### 2.1 BaseViewModel 추상 클래스 완성
 
 **구현 대상**:
@@ -147,144 +143,73 @@ class LocalDbViewModel extends BaseViewModel {
 
 ## 📋 Phase 3: 아키텍처 일관성 강화 (Architecture Consistency)
 
-### 1.3 중복 코드 제거
-
-**중복 발견 영역**:
-- [ ] Config 읽기 로직이 여러 클래스에 분산
-- [ ] 타임아웃 처리가 각 크롤러마다 별도 구현
-- [ ] 진행률 계산 로직이 여러 곳에서 중복
+### 3.1 레이어드 아키텍처 일관성
 
 **구현 방안**:
 ```typescript
-// 공통 유틸리티 클래스 통합
-class CrawlingUtils {
-  // 재시도 로직 통합
-  static async withRetry<T>(
-    operation: () => Promise<T>,
-    maxRetries: number = 3,
-    delay: number = 1000
-  ): Promise<T> {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        return await operation();
-      } catch (error) {
-        if (attempt === maxRetries) throw error;
-        await new Promise(resolve => setTimeout(resolve, delay * attempt));
-      }
-    }
-    throw new Error('Max retries exceeded');
-  }
+// 1. Domain Layer - Clean & Compact
+interface DomainEntity {
+  readonly id: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+type Product = DomainEntity & {
+  readonly name: string;
+  readonly price: number;
+  readonly category: string;
+};
+
+// 2. Application Layer - Services
+class CrawlingService {
+  constructor(
+    private readonly crawler: CrawlerInterface,
+    private readonly storage: StorageInterface
+  ) {}
   
-  // 진행률 계산 통합
-  static calculateProgress(current: number, total: number): number {
-    return total > 0 ? Math.round((current / total) * 100) : 0;
-  }
-  
-  // 시간 포맷팅 통합
-  static formatDuration(ms: number): string {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    if (hours > 0) return `${hours}시간 ${minutes % 60}분`;
-    if (minutes > 0) return `${minutes}분 ${seconds % 60}초`;
-    return `${seconds}초`;
-  }
-  
-  // 페이지 범위 검증 통합
-  static validatePageRange(start: number, end: number, max: number): boolean {
-    return start >= 0 && end >= start && end <= max;
+  async startCrawling(config: CrawlingConfig): Promise<void> {
+    // Clean service logic
   }
 }
+
+// 3. Infrastructure Layer - Adapters
+class ElectronCrawlerAdapter implements CrawlerInterface {
+  // Implementation details
+}
+```
+
+### 3.2 모던 TypeScript 활용
+
+**구현 방안**:
+```typescript
+// 1. Branded Types for Type Safety
+type ProductId = string & { readonly brand: unique symbol };
+type CategoryId = string & { readonly brand: unique symbol };
+
+// 2. Template Literal Types
+type ApiEndpoint = `/api/${string}`;
+type CrawlingEvent = `crawling:${CrawlingStage}:${CrawlingStatus}`;
+
+// 3. Utility Types for DRY
+type CreatePayload<T> = Omit<T, 'id' | 'createdAt' | 'updatedAt'>;
+type UpdatePayload<T> = Partial<CreatePayload<T>>;
 ```
 
 ---
 
-## 📋 Phase 2: UI 컴포넌트 최적화 (Medium Priority)
+## ✅ 완료된 개선 사항 (Recent Updates)
 
-### 2.1 컴포넌트 책임 분리
+### 🎯 Stopping Overlay 및 상태 관리 개선 (완료)
+- ✅ **StoppingOverlay 컴포넌트 생성**: 로딩 애니메이션과 메시지 포함
+- ✅ **CrawlingStore isStopping 상태 추가**: Observable 상태 관리
+- ✅ **UI 연동 완성**: CrawlingDashboard에서 StoppingOverlay 표시
+- ✅ **디버깅 로그 추가**: 상태 변화 추적을 위한 로그 시스템
 
-**문제점**: 일부 UI 컴포넌트가 너무 많은 책임을 담당
-
-**개선 대상**:
-- [ ] `CrawlingDashboard.tsx` - 단일 책임 원칙 적용
-- [ ] `SettingsTab.tsx` - 설정 로직과 UI 분리
-- [ ] `LocalDbTab.tsx` - 데이터 로직과 UI 분리
-
-**구현 방안**:
-```typescript
-// 1. Container-Presenter 패턴 적용
-// CrawlingDashboardContainer.tsx (로직)
-const CrawlingDashboardContainer: React.FC = () => {
-  const viewModel = useCrawlingViewModel();
-  
-  return <CrawlingDashboardPresenter viewModel={viewModel} />;
-};
-
-// CrawlingDashboardPresenter.tsx (UI)
-interface Props {
-  viewModel: CrawlingViewModel;
-}
-
-const CrawlingDashboardPresenter: React.FC<Props> = ({ viewModel }) => {
-  // 순수 UI 렌더링만 담당
-};
-```
-
-### 2.2 상태 관리 최적화
-
-**개선 대상**:
-- [ ] 불필요한 리렌더링 방지
-- [ ] 메모이제이션 적용
-- [ ] 상태 정규화
-
-**구현 방안**:
-```typescript
-// useMemo, useCallback 적절한 사용
-const CrawlingProgress: React.FC = () => {
-  const { progress } = useCrawlingStore();
-  
-  const progressPercentage = useMemo(() => 
-    CrawlingUtils.calculateProgress(progress.current, progress.total),
-    [progress.current, progress.total]
-  );
-  
-  const formatTime = useCallback((ms: number) => 
-    CrawlingUtils.formatDuration(ms),
-    []
-  );
-  
-  return (
-    <div>
-      <ProgressBar percentage={progressPercentage} />
-      <TimeDisplay formatter={formatTime} />
-    </div>
-  );
-};
-```
-
----
-
-## 📋 Phase 3: 성능 및 안정성 개선 (Low Priority)
-
-### 3.1 세션 기반 Configuration 관리 강화
-
-**개선 대상**:
-- [ ] Runtime 설정 변경 즉시 반영
-- [ ] 크롤링 세션 중 설정 불일치 방지
-
-### 3.2 브라우저 관리 최적화
-
-**개선 대상**:
-- [ ] Context별 브라우저 인스턴스 관리
-- [ ] 메모리 리크 방지
-- [ ] 타임아웃 처리 개선
-
-### 3.3 DB 비교 단계 완성
-
-**개선 대상**:
-- [ ] 1단계와 2단계 사이 DB 비교 로직 구현
-- [ ] UI 표현 최적화
+### 🎯 성능 및 사용성 개선 (완료)
+- ✅ **Timeout 설정 최적화**: 5초 → 30초로 변경
+- ✅ **Import 중복 제거**: React, hooks 관련 중복 import 정리
+- ✅ **Console 로그 정리**: 무한 로그 문제 해결
+- ✅ **애니메이션 겹침 문제 해결**: 중앙 이모지 표시 조건 단순화
 
 ---
 
@@ -337,6 +262,6 @@ const CrawlingProgress: React.FC = () => {
 
 ---
 
-**마지막 업데이트**: 2025년 6월 2일  
+**마지막 업데이트**: 2025년 1월 28일  
 **완성도**: 80% → 100% 목표  
 **예상 작업 기간**: 2-3주

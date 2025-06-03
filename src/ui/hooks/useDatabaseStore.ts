@@ -10,6 +10,7 @@ import { useEffect, useCallback } from 'react';
 
 import type { MatterProduct } from '../../../types';
 import { databaseStore } from '../stores/domain/DatabaseStore';
+import { toUIMatterProducts } from '../types/ui-types';
 
 
 /**
@@ -71,7 +72,7 @@ export function useDatabaseStore() {
     error: databaseStore.error,
     
     // Core database actions
-    saveProducts: (products: MatterProduct[]) => databaseStore.saveProducts(products),
+    saveProducts: (products: MatterProduct[]) => databaseStore.saveProducts(toUIMatterProducts(products)),
     loadSummary,
     loadAllProducts,
     

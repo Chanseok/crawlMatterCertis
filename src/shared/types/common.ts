@@ -44,47 +44,14 @@ export interface ProgressInfo {
 }
 
 /**
- * 시스템 자원 사용 통계 (기존 types.d.ts에서 이관)
+ * 시스템 자원 사용 통계 - re-export from main types
  */
-export interface Statistics {
-  timestamp: number;
-  cpuUsage: number;
-  memoryUsage: number;
-  ramUsage?: number; // 이전 호환성을 위해 선택적으로 유지
-  storageUsage?: number; // 이전 호환성을 위해 선택적으로 유지
-}
+export type { Statistics } from '../../../types.js';
 
 /**
- * 크롤링 상태 열거형
+ * 크롤링 관련 타입 - re-export from main types
  */
-export type CrawlingStatus = 
-  | 'idle' 
-  | 'running' 
-  | 'paused' 
-  | 'completed' 
-  | 'error' 
-  | 'initializing' 
-  | 'stopped' 
-  | 'completed_stage_1';
-
-/**
- * 크롤링 단계 열거형
- */
-export type CrawlingStage = 
-  | 'idle' 
-  | 'productList:init' 
-  | 'productList:collecting' 
-  | 'productList:retrying' 
-  | 'productList:complete'
-  | 'validation:init'
-  | 'validation:processing'
-  | 'validation:complete'
-  | 'productDetail:init' 
-  | 'productDetail:collecting' 
-  | 'productDetail:retrying' 
-  | 'productDetail:complete'
-  | 'complete' 
-  | 'error';
+export type { CrawlingStatus, CrawlingStage } from '../../../types.js';
 
 /**
  * 작업 통계 정보

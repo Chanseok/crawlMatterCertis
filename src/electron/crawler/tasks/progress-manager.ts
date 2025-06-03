@@ -3,7 +3,7 @@
  * 진행 상황 관리 및 보고를 담당하는 클래스
  */
 
-import { PageProcessingStatusItem, PageProcessingStatusValue } from '../../../../types.js';
+import { PageProcessingStatusValue, MutablePageProcessingStatusItem } from '../../../../types.js';
 import { crawlerEvents, updateRetryStatus } from '../utils/progress.js';
 import { CrawlerState } from '../core/CrawlerState.js';
 import { ProductListProgressCallback } from './product-list-types.js';
@@ -16,7 +16,7 @@ export class ProgressManager {
   // private statusUpdates: PageStatusUpdate[] = [];
   private state: CrawlerState;
   private progressCallback: ProductListProgressCallback | null = null;
-  private pageStatuses: PageProcessingStatusItem[] = [];
+  private pageStatuses: MutablePageProcessingStatusItem[] = [];
   private retryCount: number = 0;
   private processedSuccessfully: number = 0;
   private totalPagesCount: number = 0;

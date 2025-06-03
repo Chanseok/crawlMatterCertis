@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { electronResourcePaths } from './resourceManager.js';
-import { CrawlerConfig } from '../../types.js';
+import { CrawlerConfig, MutableCrawlerConfig } from '../../types.js';
 
 // Define constants for validation limits
 const MIN_RETRY_COUNT = 3;
@@ -14,7 +14,7 @@ const MIN_BATCH_RETRY_LIMIT = 1;
 const MAX_BATCH_RETRY_LIMIT = 10;
 
 // 기본 설정 값 (Consolidated DEFAULT_CONFIG)
-const DEFAULT_CONFIG: CrawlerConfig = {
+const DEFAULT_CONFIG: MutableCrawlerConfig = {
   // Fields from original ConfigManager's DEFAULT_CONFIG, reconciled
   pageRangeLimit: 10, // Default within validated range 1-100
   productListRetryCount: 9, // Default within validated range 3-20
@@ -57,7 +57,7 @@ const DEFAULT_CONFIG: CrawlerConfig = {
  */
 export class ConfigManager {
   private configPath: string;
-  private config: CrawlerConfig;
+  private config: MutableCrawlerConfig;
 
   constructor() {
     this.configPath = path.join(electronResourcePaths.dataPath, 'crawler-config.json');
@@ -69,7 +69,7 @@ export class ConfigManager {
   /**
    * 설정 파일을 로드합니다.
    */
-  private loadConfig(): CrawlerConfig {
+  private loadConfig(): MutableCrawlerConfig {
     try {
       console.log(`[ConfigManager] 설정 파일 로드 시도: ${this.configPath}`);
       

@@ -15,14 +15,15 @@ import { crawlingStore } from '../stores/domain/CrawlingStore';
 import { logStore } from '../stores/domain/LogStore';
 import { SessionConfigManager } from '../services/domain/SessionConfigManager';
 import { Logger, LogLevel } from '../../shared/utils/Logger';
+import type { UICrawlerConfig } from '../types/ui-types';
 import type { CrawlerConfig } from '../../../types';
 
 /**
  * 설정 변경 상태 인터페이스
  */
 export interface ConfigurationState {
-  config: CrawlerConfig;
-  originalConfig: CrawlerConfig;
+  config: UICrawlerConfig;
+  originalConfig: UICrawlerConfig;
   hasChanges: boolean;
   isLoading: boolean;
   isSaving: boolean;
@@ -107,8 +108,8 @@ export class ConfigurationViewModel extends BaseViewModel {
 
   @computed get configurationState(): ConfigurationState {
     return {
-      config: this.config,
-      originalConfig: this.originalConfig,
+      config: this.toUICrawlerConfig(this.config),
+      originalConfig: this.toUICrawlerConfig(this.originalConfig),
       hasChanges: this.hasChanges,
       isLoading: this.isLoading,
       isSaving: this.isSaving,
@@ -633,13 +634,20 @@ export class ConfigurationViewModel extends BaseViewModel {
         enableTimestamp: true
       };
     }
-    if (!config.logging.components) {
-      config.logging.components = {};
-    }
     
-    // Type assertion for components to allow dynamic string keys
-    (config.logging.components as any)[component] = this.logLevelToString(level);
-    this.updateConfig('logging', config.logging);
+    // Create a mutable copy of logging
+    const mutableLogging = {
+      level: config.logging.level || 'INFO',
+      enableStackTrace: config.logging.enableStackTrace || false,
+      enableTimestamp: config.logging.enableTimestamp || true,
+      components: { ...(config.logging.components || {}) }
+    };
+    
+    // Update the component level
+    (mutableLogging.components as any)[component] = this.logLevelToString(level);
+    
+    // Update the config with the new logging object
+    this.updateConfig('logging', mutableLogging as any);
     
     // Logger에 즉시 적용
     Logger.getInstance().setComponentLogLevel(component, level);
@@ -662,8 +670,15 @@ export class ConfigurationViewModel extends BaseViewModel {
       };
     }
     
-    config.logging.level = this.logLevelToString(level) as any;
-    this.updateConfig('logging', config.logging);
+    // Create a mutable copy of logging
+    const mutableLogging = {
+      level: this.logLevelToString(level),
+      enableStackTrace: config.logging.enableStackTrace || false,
+      enableTimestamp: config.logging.enableTimestamp || true,
+      components: { ...(config.logging.components || {}) }
+    };
+    
+    this.updateConfig('logging', mutableLogging as any);
     
     // Logger에 즉시 적용
     Logger.getInstance().setGlobalLogLevel(level);
@@ -686,9 +701,15 @@ export class ConfigurationViewModel extends BaseViewModel {
       };
     }
     
-    config.logging.enableStackTrace = enableStackTrace;
-    config.logging.enableTimestamp = enableTimestamp;
-    this.updateConfig('logging', config.logging);
+    // Create a mutable copy of logging
+    const mutableLogging = {
+      level: config.logging.level || 'INFO',
+      enableStackTrace: enableStackTrace,
+      enableTimestamp: enableTimestamp,
+      components: { ...(config.logging.components || {}) }
+    };
+    
+    this.updateConfig('logging', mutableLogging as any);
     
     // Logger에 즉시 적용
     const logger = Logger.getInstance();
@@ -786,5 +807,18 @@ export class ConfigurationViewModel extends BaseViewModel {
     logger.setEnableTimestamp(loggingConfig.enableTimestamp !== false);
     
     this.addLog('Applied logging configuration', 'info');
+  }
+
+  // Helper function to convert CrawlerConfig to UICrawlerConfig
+  private toUICrawlerConfig(config: CrawlerConfig): UICrawlerConfig {
+    return {
+      ...config,
+      logging: {
+        level: config.logging?.level || 'INFO',
+        enableStackTrace: config.logging?.enableStackTrace || false,
+        enableTimestamp: config.logging?.enableTimestamp || true,
+        components: { ...(config.logging?.components || {}) }
+      }
+    } as UICrawlerConfig;
   }
 }

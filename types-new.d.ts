@@ -3,27 +3,6 @@
 
 /**
  * =====================================================
- * UTILITY TYPES FOR INTERNAL USE
- * =====================================================
- */
-
-/**
- * Utility type to make all properties mutable (remove readonly)
- */
-type Mutable<T> = {
-    -readonly [K in keyof T]: T[K]
-};
-
-/**
- * Mutable versions for internal state management
- * These allow modification while keeping public interfaces readonly
- */
-export type MutableCrawlerConfig = Mutable<CrawlerConfig>;
-export type MutableMatterProduct = Mutable<MatterProduct>;
-export type MutablePageProcessingStatusItem = Mutable<PageProcessingStatusItem>;
-
-/**
- * =====================================================
  * CORE DOMAIN TYPES (Modern TypeScript)
  * =====================================================
  */

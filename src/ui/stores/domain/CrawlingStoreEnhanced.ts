@@ -20,13 +20,14 @@ import type {
   CrawlerConfig,
   CrawlingError,
   CrawlingStatusSummary,
-  // 새로운 타입들
   StageProgress,
   CrawlingSessionProgress,
   BatchProgress,
   CrawlingStageId,
   StageStatus
-} from '../../../../types';
+} from '../../../../types.d.ts';
+
+
 
 // 기본 StageProgress 생성 함수
 const createInitialStageProgress = (stageId: CrawlingStageId): StageProgress => ({
@@ -89,7 +90,7 @@ export class CrawlingStoreEnhanced {
   @observable highestStageReached: number = 0;
 
   // 새로운 필드들
-  @observable session: CrawlingSessionProgress = createInitialSessionProgress();
+  @observable session: any = createInitialSessionProgress();
   @observable batchProgress: BatchProgress | null = null;
   
   // 타이머 및 구독 관리

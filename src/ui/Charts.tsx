@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useState } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 import { observer } from 'mobx-react-lite';
 import { BaseChart } from "./BaseChart";
 import type { ConcurrentCrawlingTask } from './types';

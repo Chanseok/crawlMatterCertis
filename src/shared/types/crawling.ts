@@ -1,109 +1,74 @@
 /**
  * 크롤링 관련 타입 정의
  * 크롤링 프로세스, 상태, 구성 등에 관련된 모든 타입들
+ * 
+ * Phase 1 Clean Code: 중복 타입 정의 제거 완료
+ * 모든 타입은 루트 레벨 types.d.ts에서 가져옵니다.
  */
 
-import { ProgressInfo } from './common';
+// 모든 크롤링 관련 타입을 루트 types.d.ts에서 re-export
+export type {
+    CrawlingStatus,
+    CrawlingStage,
+    CrawlingStageId,
+    StageStatus,
+    CrawlingProgress,
+    StageProgress,
+    CrawlingSessionProgress,
+    BatchProgress,
+    CrawlingError,
+    CrawlerConfig,
+    PageProcessingStatusValue,
+    PageProcessingStatusItem
+} from '../../../types.js';
 
-/**
- * 크롤링 상태를 나타내는 타입
- */
-export type CrawlingStatus = 
-    | 'idle' 
-    | 'running' 
-    | 'paused' 
-    | 'completed' 
-    | 'error' 
-    | 'initializing' 
-    | 'stopped' 
-    | 'completed_stage_1';
+// Import types for local use
+import type {
+    CrawlingStatus,
+    CrawlingStage,
+    CrawlingProgress,
+    CrawlerConfig,
+    PageProcessingStatusValue
+} from '../../../types.js';
 
-/**
- * 크롤링 단계를 세부적으로 나타내는 타입
- */
-export type CrawlingStage = 
-    | 'idle' 
-    | 'productList:init' 
-    | 'productList:collecting' 
-    | 'productList:retrying' 
-    | 'productList:complete'
-    | 'validation:init'
-    | 'validation:processing'
-    | 'validation:complete'
-    | 'productDetail:init' 
-    | 'productDetail:collecting' 
-    | 'productDetail:retrying' 
-    | 'productDetail:complete'
-    | 'complete' 
-    | 'error';
+// Create alias for backward compatibility
+export type CrawlingConfig = CrawlerConfig;
 
 /**
- * 개별 페이지 처리 상태
+ * 크롤링 통계
  */
-export type PageProcessingStatusValue = 'waiting' | 'attempting' | 'success' | 'failed' | 'incomplete';
-
-/**
- * 크롤링 진행 상황
- */
-export interface CrawlingProgress extends ProgressInfo {
-  currentStage: 1 | 2;
-  currentPage: number;
-  totalPages: number;
-  processedItems: number;
-  totalItems: number;
-  newItems?: number;
-  updatedItems?: number;
-  errorCount: number;
-  estimatedTimeRemaining?: number;
+export interface CrawlingStatistics {
+    totalRequests: number;
+    successfulRequests: number;
+    failedRequests: number;
+    averageResponseTime: number;
+    bytesDownloaded: number;
+    pagesProcessed: number;
+    productsCollected: number;
 }
 
 /**
- * 크롤링 설정
+ * 페이지 처리 상태 (확장된 버전)
  */
-export interface CrawlingConfig {
-  pageLimit: number;
-  retryCount: number;
-  delayBetweenRequests: number;
-  batchSize: number;
-  enableRetry?: boolean;
-  retryDelay?: number;
+export interface PageProcessingStatus {
+    pageId: number;
+    status: PageProcessingStatusValue;
+    attempts: number;
+    lastAttempt?: Date;
+    error?: string;
+    itemsCollected?: number;
 }
 
 /**
  * 크롤링 세션 정보
  */
 export interface CrawlingSession {
-  id: string;
-  status: CrawlingStatus;
-  stage: CrawlingStage;
-  startTime: Date;
-  endTime?: Date;
-  config: CrawlingConfig;
-  progress: CrawlingProgress;
-  statistics: CrawlingStatistics;
-}
-
-/**
- * 크롤링 통계
- */
-export interface CrawlingStatistics {
-  totalRequests: number;
-  successfulRequests: number;
-  failedRequests: number;
-  averageResponseTime: number;
-  bytesDownloaded: number;
-  pagesProcessed: number;
-  productsCollected: number;
-}
-
-/**
- * 페이지 처리 상태
- */
-export interface PageProcessingStatus {
-  pageId: number;
-  status: PageProcessingStatusValue;
-  attempts: number;
-  lastAttempt?: Date;
-  error?: string;
-  itemsCollected?: number;
+    id: string;
+    status: CrawlingStatus;
+    stage: CrawlingStage;
+    startTime: Date;
+    endTime?: Date;
+    config: CrawlerConfig;
+    progress: CrawlingProgress;
+    statistics: CrawlingStatistics;
 }
