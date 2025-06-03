@@ -35,6 +35,7 @@ export function useCrawlingStore() {
     lastStatusSummary: crawlingStore.lastStatusSummary,
     error: crawlingStore.error,
     isCheckingStatus: crawlingStore.isCheckingStatus,
+    isStopping: crawlingStore.isStopping,
 
     // Computed properties
     isRunning: crawlingStore.isRunning,

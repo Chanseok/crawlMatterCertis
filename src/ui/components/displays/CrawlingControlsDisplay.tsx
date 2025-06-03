@@ -9,6 +9,7 @@ import React from 'react';
 interface CrawlingControlsDisplayProps {
   status: string;
   isStatusChecking: boolean;
+  isStopping?: boolean; // 중지 중 상태 추가
   onCheckStatus: () => void;
   onStartCrawling: () => void;
   onStopCrawling: () => void;
@@ -17,6 +18,7 @@ interface CrawlingControlsDisplayProps {
 export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = ({
   status,
   isStatusChecking,
+  isStopping = false, // 기본값 false
   onCheckStatus,
   onStartCrawling,
   onStopCrawling
@@ -40,16 +42,21 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
       {status === 'running' ? (
         <button
           onClick={onStopCrawling}
-          className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded font-medium transition-colors"
+          disabled={isStopping}
+          className={`px-4 py-2 rounded font-medium transition-colors ${
+            isStopping 
+              ? 'bg-gray-400 text-gray-200 cursor-not-allowed animate-pulse'
+              : 'bg-red-500 hover:bg-red-600 text-white'
+          }`}
         >
-          중지
+          {isStopping ? '중지 중...' : '중지'}
         </button>
       ) : (
         <button
           onClick={onStartCrawling}
-          disabled={status === 'running'}
+          disabled={status === 'running' || isStopping}
           className={`px-4 py-2 rounded font-medium transition-colors ${
-            status === 'running'
+            status === 'running' || isStopping
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
               : 'bg-green-500 hover:bg-green-600 text-white'
           }`}

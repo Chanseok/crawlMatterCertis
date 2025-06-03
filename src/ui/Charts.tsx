@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect, useState } from "react";
+import React, { useMemo, useRef, useEffect, useState } from "react";
 import { observer } from 'mobx-react-lite';
 import { BaseChart } from "./BaseChart";
 import type { ConcurrentCrawlingTask } from './types';
@@ -113,21 +113,13 @@ export const ConcurrentTasksVisualizer = observer(() => {
     >
       {tasksArray.length === 0 && <span className="text-gray-400">아직 동시 작업 없음</span>}
       {tasksArray.map((task: ConcurrentCrawlingTask) => {
-        const taskDetail = activeTasks[task.pageNumber];
-        const startTime = taskDetail?.startTime || 0;
         const isActive = task.status === 'running' || task.status === 'attempting';
-        
-        const DEFAULT_TASK_DURATION = 30000; // 30초
-        const elapsedTime = startTime ? Date.now() - startTime : 0;
-        const remainingTime = Math.max(0, DEFAULT_TASK_DURATION - elapsedTime);
         
         const taskChanged = lastChangedTasks.includes(task.pageNumber);
         const highlightClass = taskChanged ? 'ring-2 ring-yellow-400 dark:ring-yellow-600' : '';
         
-        // 9초 이하이고 활성 상태일 때는 중앙 이모지 숨김
-        // 명확하게 하기 위해 아래 조건을 task.status 값으로 명시적 검사
-        const showCentralEmoji = !(isActive && remainingTime <= 9000 && 
-          (task.status === 'running' || task.status === 'attempting'));
+        // 활성 상태일 때는 중앙 이모지 숨김 (TaskProgressIndicator에서 애니메이션이나 상태 표시)
+        const showCentralEmoji = !isActive;
 
         return (
           <div

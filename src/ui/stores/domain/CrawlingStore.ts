@@ -45,6 +45,7 @@ export class CrawlingStore {
   @observable accessor isCheckingStatus: boolean = false;
   @observable accessor currentMessage: string = '대기 중...';
   @observable accessor explicitlyStopped: boolean = false; // 명시적 중단 플래그
+  @observable accessor isStopping: boolean = false; // 중지 중 상태 플래그
   
   // Track the highest stage reached to prevent stage regression
   @observable accessor highestStageReached: number = 0;
@@ -234,10 +235,13 @@ export class CrawlingStore {
 
   @action
   private handleCrawlingStopped = (data: any): void => {
-    console.log('[CrawlingStore] Crawling stopped:', data);
+    console.log('[CrawlingStore] 🛑 Crawling stopped event received:', data);
+    console.log('[CrawlingStore] 🛑 Current isStopping state before reset:', this.isStopping);
+    
     runInAction(() => {
       this.status = 'idle';
       this.explicitlyStopped = false; // 중단 완료 후 플래그 리셋
+      this.isStopping = false; // 중지 중 상태 해제
       this.progress = {
         ...this.progress,
         status: 'idle',
@@ -248,6 +252,10 @@ export class CrawlingStore {
       // CrawlingProgressViewModel 리셋
       crawlingProgressViewModel.reset();
     });
+    
+    // 중지 완료 로그 추가
+    console.log('[CrawlingStore] 🔄 Stopping state cleared - isStopping:', this.isStopping);
+    console.log('[CrawlingStore] 🔄 Final status:', this.status);
   };
 
   @action
@@ -527,10 +535,21 @@ export class CrawlingStore {
   public stopCrawling(): Promise<boolean> {
     console.log('[CrawlingStore] Attempting to stop crawling...');
     this.explicitlyStopped = true; // 명시적 중단 플래그 설정
+    this.isStopping = true; // 중지 중 상태 설정
     this.status = 'idle';
     
     // 구독 해제 방지: 활성 크롤링 중에는 구독을 유지
     console.log('[CrawlingStore] Explicit stop - maintaining subscriptions for proper cleanup');
+    
+    // 만약 중지 이벤트가 3초 이내에 오지 않으면 강제로 상태 해제
+    setTimeout(() => {
+      if (this.isStopping) {
+        console.log('[CrawlingStore] 🔄 Timeout: Forcing isStopping to false after 3 seconds');
+        runInAction(() => {
+          this.isStopping = false;
+        });
+      }
+    }, 3000);
     
     return this.ipcServiceInstance.stopCrawling();
   }
@@ -645,6 +664,8 @@ export class CrawlingStore {
     this.error = null;
     this.currentMessage = '대기 중...';
     this.explicitlyStopped = false;
+    this.isStopping = false; // 중지 중 상태도 리셋
+    this.isStopping = false; // 중지 중 상태도 리셋
     this.highestStageReached = 0;
     
     // CrawlingProgressViewModel 정리

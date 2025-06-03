@@ -206,14 +206,11 @@ export class CrawlingDashboardViewModel {
     const currentStage = crawlingStore.progress.currentStage || 0;
     const currentStep = crawlingStore.progress.currentStep || '';
     
-    console.log('[ViewModel] stageInfo - currentStage:', currentStage, 'currentStep:', currentStep);
-    
     // 1. Stage 2 (validation) 우선 체크
     if (currentStage === 2 || currentStep.includes('2/4단계') || 
         currentStep.includes('2단계') || currentStep.includes('로컬db') || 
         currentStep.includes('검증') || currentStep.includes('db 중복') ||
         currentStep.includes('DB 중복 검증')) {
-      console.log('[ViewModel] Detected Stage 2 (validation) via currentStage/currentStep');
       return {
         text: '2단계: 제품 검증',
         color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
@@ -222,7 +219,6 @@ export class CrawlingDashboardViewModel {
     
     // 2. Stage 3 체크 - currentStage 우선
     if (currentStage === 3) {
-      console.log('[ViewModel] Detected Stage 3 via currentStage');
       return {
         text: '3단계: 상세 수집',
         color: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300'
@@ -231,7 +227,6 @@ export class CrawlingDashboardViewModel {
     
     // 3. currentStep을 통한 3단계 감지
     if (currentStep.includes('3단계') || currentStep.includes('상세') || currentStep.includes('제품 상세')) {
-      console.log('[ViewModel] Detected Stage 3 via currentStep');
       return {
         text: '3단계: 상세 수집',
         color: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300'
@@ -240,7 +235,6 @@ export class CrawlingDashboardViewModel {
     
     // 4. Stage 1 처리
     if (currentStage === 1 || currentStep.includes('1단계') || currentStep.includes('목록')) {
-      console.log('[ViewModel] Detected Stage 1 via currentStage/currentStep');
       return {
         text: '1단계: 목록 수집',
         color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300'
