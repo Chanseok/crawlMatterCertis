@@ -270,16 +270,26 @@ async function writeSummary(summary: DbSummaryData): Promise<void> {
 
 export async function getDatabaseSummaryFromDb(): Promise<DatabaseSummary> {
     return new Promise((resolve, reject) => {
-        const countQuery = `SELECT COUNT(*) as total FROM products`;
+        // product_details 테이블에서 레코드 수를 조회하여 getProductsFromDb()와 일치시킴
+        const countQuery = `SELECT COUNT(*) as total FROM product_details`;
         db.get(countQuery, async (err, row: { total: number }) => {
             if (err) {
                 return reject(err);
             }
             const summaryData = await readSummary();
             
-            // Get the max pageId from the database
+            // Get the max pageId from the database (product_details 테이블에서)
             try {
-                const maxPageId = await getMaxPageIdFromDb();
+                const maxPageId = await new Promise<number>((resolve, reject) => {
+                    db.get(`SELECT MAX(pageId) as maxPageId FROM product_details`, (err, row: { maxPageId: number | null }) => {
+                        if (err) {
+                            return reject(err);
+                        }
+                        const maxPageId = row.maxPageId !== null ? row.maxPageId : 0;
+                        resolve(maxPageId);
+                    });
+                });
+                
                 resolve({
                     totalProducts: row.total,
                     productCount: row.total, // 'productCount'를 'totalProducts'와 동일한 값으로 추가
@@ -668,15 +678,17 @@ export async function saveProductsToDb(products: MatterProduct[]): Promise<{
                 ? product.certificationDate.toISOString() 
                 : product.certificationDate;
               
-              // vid와 pid를 정수로 변환
+              // vid와 pid를 정수로 변환 - 이미 정수인 경우 그대로 사용
               let vidValue: number | null = null;
-              if (product.vid) {
-                vidValue = hexIdToInteger(product.vid);
+              if (product.vid !== undefined && product.vid !== null) {
+                // 이미 정수인 경우 그대로 사용, 문자열인 경우에만 변환
+                vidValue = typeof product.vid === 'number' ? product.vid : hexIdToInteger(product.vid);
               }
               
               let pidValue: number | null = null;
-              if (product.pid) {
-                pidValue = hexIdToInteger(product.pid);
+              if (product.pid !== undefined && product.pid !== null) {
+                // 이미 정수인 경우 그대로 사용, 문자열인 경우에만 변환
+                pidValue = typeof product.pid === 'number' ? product.pid : hexIdToInteger(product.pid);
               }
               
               // primaryDeviceTypeId를 JSON 배열로 변환

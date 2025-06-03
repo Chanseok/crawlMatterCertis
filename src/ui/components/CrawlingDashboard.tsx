@@ -613,8 +613,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
         {/* Enhanced Progress Display - Shows page progress for stage 1, validation for stage 1.5, product progress for stage 2 */}
         {status !== 'idle' &&        (
           (viewModel.currentStage === 1 && ((progress.totalPages && progress.totalPages > 0) || (Array.isArray(concurrentTasks) && concurrentTasks.length > 0))) ||
-          (viewModel.currentStage === 2) ||
-          (viewModel.currentStage === 3 && (progress.totalItems && progress.totalItems > 0))
+          (viewModel.currentStage === 2)
         ) && (
           <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div className="flex justify-between items-center mb-2">
@@ -623,8 +622,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
                   const currentStage = viewModel.currentStage;
                   if (currentStage === 2) {
                     return '제품 데이터 검증 중...';
-                  } else if (currentStage === 3) {
-                    return '제품 상세정보 수집 중...';
                   } else {
                     return `진행률 (${viewModel.currentStage}단계)`;
                   }
@@ -636,12 +633,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
                   if (currentStage === 2) {
                     // Stage 2: Show validation progress
                     return '검증 중...';
-                  } else if (currentStage === 3) {
-                    // Stage 3: Show product-based progress with improved calculation
-                    const processedItems = progress.processedItems || progress.current || 0;
-                    const totalItems = progress.totalItems || progress.total || 0;
-                    
-                    return `${processedItems} / ${totalItems}`;
                   } else {
                     // Stage 1: Enhanced page detection using concurrentTasks data for more accurate progress
                     let currentPage = progress.currentPage || 0;
@@ -678,14 +669,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
                       const totalItems = progress.totalItems || 0;
                       const percentage = totalItems > 0 ? (processedItems / totalItems) * 100 : 0;
                       return Math.min(100, Math.max(0, percentage));
-                    } else if (viewModel.currentStage === 3) {
-                      // Stage 3: Improved product detail progress calculation
-                      const processedItems = progress.processedItems || progress.current || 0;
-                      const totalItems = progress.totalItems || progress.total || 0;
-                      const percentage = totalItems > 0 ? (processedItems / totalItems) * 100 : 0;
-                      const safePercentage = Math.min(100, Math.max(0, percentage));
-                      
-                      return safePercentage;
                     } else {
                       // Stage 1: Enhanced page percentage calculation using concurrentTasks
                       let currentPage = progress.currentPage || 0;
@@ -711,56 +694,40 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
             <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
               <span>
                 {(() => {
-                  if (viewModel.currentStage === 3) {
-                    // Stage 3: Product detail progress percentage
-                    const processedItems = progress.processedItems || progress.current || 0;
-                    const totalItems = progress.totalItems || progress.total || 0;
-                    const percentage = totalItems > 0 ? (processedItems / totalItems) * 100 : 0;
-                    return `${Math.round(percentage)}% 완료`;
-                  } else {
-                    // Stage 1: Page progress percentage
-                    let currentPage = progress.currentPage || 0;
-                    let totalPages = progress.totalPages || 0;
+                  // Stage 1: Page progress percentage
+                  let currentPage = progress.currentPage || 0;
+                  let totalPages = progress.totalPages || 0;
+                  
+                  if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
+                    const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
+                    currentPage = Math.max(currentPage, successfulPages);
                     
-                    if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
-                      const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
-                      currentPage = Math.max(currentPage, successfulPages);
-                      
-                      if (totalPages === 0) {
-                        totalPages = config.batchSize || config.pageRangeLimit || 12;
-                      }
+                    if (totalPages === 0) {
+                      totalPages = config.batchSize || config.pageRangeLimit || 12;
                     }
-                    
-                    const percentage = totalPages > 0 ? (currentPage / totalPages) * 100 : 0;
-                    return Math.round(percentage);
                   }
+                  
+                  const percentage = totalPages > 0 ? (currentPage / totalPages) * 100 : 0;
+                  return Math.round(percentage);
                 })()}% 완료
               </span>
               <span>
                 {(() => {
-                  if (viewModel.currentStage === 3) {
-                    // Stage 3: Remaining products
-                    const processedItems = progress.processedItems || progress.current || 0;
-                    const totalItems = progress.totalItems || progress.total || 0;
-                    const remaining = totalItems - processedItems;
-                    return remaining > 0 ? `${remaining}개 제품 남음` : '완료';
-                  } else {
-                    // Stage 1: Remaining pages
-                    let currentPage = progress.currentPage || 0;
-                    let totalPages = progress.totalPages || 0;
+                  // Stage 1: Remaining pages
+                  let currentPage = progress.currentPage || 0;
+                  let totalPages = progress.totalPages || 0;
+                  
+                  if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
+                    const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
+                    currentPage = Math.max(currentPage, successfulPages);
                     
-                    if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
-                      const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
-                      currentPage = Math.max(currentPage, successfulPages);
-                      
-                      if (totalPages === 0) {
-                        totalPages = config.batchSize || config.pageRangeLimit || 12;
-                      }
+                    if (totalPages === 0) {
+                      totalPages = config.batchSize || config.pageRangeLimit || 12;
                     }
-                    
-                    const remaining = totalPages - currentPage;
-                    return remaining > 0 ? `${remaining}페이지 남음` : '완료';
                   }
+                  
+                  const remaining = totalPages - currentPage;
+                  return remaining > 0 ? `${remaining}페이지 남음` : '완료';
                 })()}
               </span>
             </div>

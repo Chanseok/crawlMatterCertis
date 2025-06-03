@@ -13,7 +13,7 @@
     "noImplicitAny": false,
     "strictNullChecks": false
   },
-  "include": ["scripts/**/*.ts"],
+  "include": ["scripts/**/*.ts", "scripts/test-database-fix.ts.backup"],
   "exclude": [
     "node_modules", 
     "dist",
