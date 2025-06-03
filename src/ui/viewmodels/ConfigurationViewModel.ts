@@ -19,6 +19,28 @@ import type { UICrawlerConfig } from '../types/ui-types';
 import type { CrawlerConfig } from '../../../types';
 
 /**
+ * Type definitions for logging configuration to replace type assertions
+ */
+type LogLevelString = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+
+interface LoggingComponents {
+  CrawlerState?: LogLevelString;
+  CrawlerEngine?: LogLevelString;
+  ProductListCollector?: LogLevelString;
+  ProductDetailCollector?: LogLevelString;
+  PageCrawler?: LogLevelString;
+  BrowserManager?: LogLevelString;
+  [component: string]: LogLevelString | undefined;
+}
+
+interface MutableLoggingConfig {
+  level: LogLevelString;
+  enableStackTrace: boolean;
+  enableTimestamp: boolean;
+  components: LoggingComponents;
+}
+
+/**
  * 설정 변경 상태 인터페이스
  */
 export interface ConfigurationState {
@@ -635,19 +657,19 @@ export class ConfigurationViewModel extends BaseViewModel {
       };
     }
     
-    // Create a mutable copy of logging
-    const mutableLogging = {
-      level: config.logging.level || 'INFO',
+    // Create a mutable copy of logging with proper typing
+    const mutableLogging: MutableLoggingConfig = {
+      level: (config.logging.level || 'INFO') as LogLevelString,
       enableStackTrace: config.logging.enableStackTrace || false,
       enableTimestamp: config.logging.enableTimestamp || true,
       components: { ...(config.logging.components || {}) }
     };
     
-    // Update the component level
-    (mutableLogging.components as any)[component] = this.logLevelToString(level);
+    // Update the component level with type safety
+    mutableLogging.components[component] = this.logLevelToString(level);
     
     // Update the config with the new logging object
-    this.updateConfig('logging', mutableLogging as any);
+    this.updateConfig('logging', mutableLogging);
     
     // Logger에 즉시 적용
     Logger.getInstance().setComponentLogLevel(component, level);
@@ -736,14 +758,15 @@ export class ConfigurationViewModel extends BaseViewModel {
    */
   getComponentLogLevel(component: string): LogLevel {
     const loggingConfig = this.getLoggingConfig();
-    const levelString = (loggingConfig.components as any)?.[component] || loggingConfig.level || 'INFO';
+    const components = loggingConfig.components as LoggingComponents | undefined;
+    const levelString = components?.[component] || loggingConfig.level || 'INFO';
     return this.stringToLogLevel(levelString);
   }
 
   /**
    * 로그 레벨을 문자열로 변환
    */
-  logLevelToString(level: LogLevel): string {
+  logLevelToString(level: LogLevel): LogLevelString {
     switch (level) {
       case LogLevel.ERROR: return 'ERROR';
       case LogLevel.WARN: return 'WARN';

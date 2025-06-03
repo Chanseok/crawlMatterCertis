@@ -12,6 +12,7 @@ import { makeObservable, observable, action, runInAction } from 'mobx';
 import { IPCService, ipcService } from '../../services/IPCService'; // Added ipcService import
 import { crawlingProgressViewModel } from '../../viewmodels/CrawlingProgressViewModel';
 import { getPlatformApi } from '../../platform/api';
+import { storeEventBus, STORE_EVENTS } from '../../services/EventBus';
 
 /*
 interface CrawlingError {
@@ -56,6 +57,7 @@ export class CrawlingStore {
   private unsubscribeCrawlingStopped: (() => void) | null = null;
   private unsubscribeCrawlingStatusSummary: (() => void) | null = null;
   private unsubscribeCrawlingTaskStatus: (() => void) | null = null;
+  private unsubscribeEventBus: (() => void) | null = null;
 
   constructor(private ipcServiceInstance: IPCService) {
     console.log('[CrawlingStore] Constructor called');
@@ -145,6 +147,13 @@ export class CrawlingStore {
         console.warn('[CrawlingStore] Platform API not available for crawlingTaskStatus subscription');
         this.unsubscribeCrawlingTaskStatus = () => {};
       }
+
+      // Subscribe to EventBus for store communication
+      console.log('[CrawlingStore] 🔗 Subscribing to EventBus events...');
+      this.unsubscribeEventBus = storeEventBus.on(STORE_EVENTS.CRAWLING_TASK_STATUS, (data: any) => {
+        console.log('[CrawlingStore] 🎯 Received crawlingTaskStatus via EventBus. Data:', JSON.stringify(data, null, 2));
+        this.handleCrawlingTaskStatus(data);
+      });
       
       console.log('[CrawlingStore] 🔗 All event subscriptions completed successfully');
     } catch (error) {
@@ -657,6 +666,7 @@ export class CrawlingStore {
     this.unsubscribeCrawlingStopped?.();
     this.unsubscribeCrawlingStatusSummary?.();
     this.unsubscribeCrawlingTaskStatus?.();
+    this.unsubscribeEventBus?.();
     
     // 상태 초기화
     this.progress = { ...initialProgress };
@@ -684,6 +694,7 @@ export class CrawlingStore {
     this.unsubscribeCrawlingStopped?.();
     this.unsubscribeCrawlingStatusSummary?.();
     this.unsubscribeCrawlingTaskStatus?.();
+    this.unsubscribeEventBus?.();
     this.progress = { ...initialProgress };
     this.status = 'idle';
     this.error = null;

@@ -8,6 +8,7 @@
 
 import { makeObservable, observable, action, reaction } from 'mobx';
 import { getPlatformApi } from '../../platform/api';
+import { storeEventBus, STORE_EVENTS } from '../../services/EventBus';
 import type { ConcurrentCrawlingTask } from '../../types';
 
 /**
@@ -156,21 +157,13 @@ export class TaskStore {
     const unsubConcurrentTasks = this.platformApi.subscribeToEvent('crawlingTaskStatus', (taskStatus: any) => {
       console.log('[TaskStore] Received crawlingTaskStatus event:', taskStatus);
       
-      // Forward the event to CrawlingStore to update progress
+      // Forward the event to CrawlingStore via EventBus
       try {
-        // Get CrawlingStore instance and forward the event
-        import('./CrawlingStore').then(({ crawlingStore }) => {
-          if (crawlingStore && typeof crawlingStore.handleCrawlingTaskStatusFromTaskStore === 'function') {
-            console.log('[TaskStore] Forwarding crawlingTaskStatus to CrawlingStore...');
-            crawlingStore.handleCrawlingTaskStatusFromTaskStore(taskStatus);
-          } else {
-            console.warn('[TaskStore] CrawlingStore instance not available or method not found');
-          }
-        }).catch((error) => {
-          console.error('[TaskStore] Error importing CrawlingStore:', error);
-        });
+        console.log('[TaskStore] Forwarding crawlingTaskStatus to CrawlingStore via EventBus...');
+        storeEventBus.emit(STORE_EVENTS.CRAWLING_TASK_STATUS, taskStatus);
+        console.log('[TaskStore] Successfully forwarded crawlingTaskStatus via EventBus');
       } catch (error) {
-        console.error('[TaskStore] Error forwarding crawlingTaskStatus to CrawlingStore:', error);
+        console.error('[TaskStore] Error forwarding crawlingTaskStatus via EventBus:', error);
       }
       
       if (Array.isArray(taskStatus)) {
