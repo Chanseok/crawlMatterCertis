@@ -205,9 +205,11 @@ export type CrawlingProgress = {
     estimatedEndTime?: number;
     newItems?: number;
     updatedItems?: number;
+    errors?: number;
     currentStage?: number; 
     message?: string; 
     criticalError?: string; 
+    progress?: number;
     
     retryCount?: number;      
     maxRetries?: number;      
@@ -544,11 +546,18 @@ export interface IPlatformAPI {
 
 // 구현체는 실제 구현에서 각 플랫폼별 API로 연결됩니다
 export interface IElectronAPI extends IPlatformAPI {
+    // 이벤트 리스너 메서드
+    on: (channel: string, listener: (...args: any[]) => void) => void;
+    removeAllListeners: (channel: string) => void;
+    
     // 구독 메서드
     subscribeStatistics: (callback: (statistics: Statistics) => void) => UnsubscribeFunction;
     subscribeCrawlingProgress: (callback: (progress: CrawlingProgress) => void) => UnsubscribeFunction;
+    subscribeToCrawlingProgress: (callback: (progress: CrawlingProgress) => void) => boolean;
     subscribeCrawlingComplete: (callback: (data: EventPayloadMapping['crawlingComplete']) => void) => UnsubscribeFunction;
+    subscribeToCrawlingComplete: (callback: (data: EventPayloadMapping['crawlingComplete']) => void) => boolean;
     subscribeCrawlingError: (callback: (data: EventPayloadMapping['crawlingError']) => void) => UnsubscribeFunction;
+    subscribeToCrawlingError: (callback: (data: EventPayloadMapping['crawlingError']) => void) => boolean;
     subscribeCrawlingTaskStatus: (callback: (tasks: ConcurrentCrawlingTask[]) => void) => UnsubscribeFunction;
     subscribeCrawlingStopped: (callback: (tasks: ConcurrentCrawlingTask[]) => void) => UnsubscribeFunction;
     subscribeCrawlingFailedPages: (callback: (failedPages: EventPayloadMapping['crawlingFailedPages']) => void) => UnsubscribeFunction;
@@ -603,6 +612,11 @@ declare global {
  * 각 단계는 고유한 ID와 설명을 가집니다.
  */
 export type CrawlingStageId = 
+    | 'ready'             // 준비 상태
+    | 'initialization'    // 초기화
+    | 'category-extraction' // 카테고리 추출
+    | 'product-search'    // 제품 검색
+    | 'completion'        // 완료
     | 'status-check'      // 사이트 상태 체크
     | 'product-list'      // 제품 목록 수집 (1단계)
     | 'db-comparison'     // 로컬 DB 비교 (1.5단계)

@@ -9,7 +9,7 @@
 console.log('[CrawlingStore] 🔄 MODULE LOADING - CrawlingStore.ts module is being imported');
 
 import { makeObservable, observable, action, runInAction } from 'mobx';
-import { IPCService, IPCUnsubscribeFunction, ipcService } from '../../services/IPCService'; // Added ipcService import
+import { IPCService, ipcService } from '../../services/IPCService'; // Added ipcService import
 import { crawlingProgressViewModel } from '../../viewmodels/CrawlingProgressViewModel';
 import { getPlatformApi } from '../../platform/api';
 
@@ -49,12 +49,12 @@ export class CrawlingStore {
   // Track the highest stage reached to prevent stage regression
   @observable accessor highestStageReached: number = 0;
 
-  private unsubscribeCrawlingProgress: IPCUnsubscribeFunction | null = null;
-  private unsubscribeCrawlingComplete: IPCUnsubscribeFunction | null = null;
-  private unsubscribeCrawlingError: IPCUnsubscribeFunction | null = null;
-  private unsubscribeCrawlingStopped: IPCUnsubscribeFunction | null = null;
-  private unsubscribeCrawlingStatusSummary: IPCUnsubscribeFunction | null = null;
-  private unsubscribeCrawlingTaskStatus: IPCUnsubscribeFunction | null = null;
+  private unsubscribeCrawlingProgress: (() => void) | null = null;
+  private unsubscribeCrawlingComplete: (() => void) | null = null;
+  private unsubscribeCrawlingError: (() => void) | null = null;
+  private unsubscribeCrawlingStopped: (() => void) | null = null;
+  private unsubscribeCrawlingStatusSummary: (() => void) | null = null;
+  private unsubscribeCrawlingTaskStatus: (() => void) | null = null;
 
   constructor(private ipcServiceInstance: IPCService) {
     console.log('[CrawlingStore] Constructor called');
@@ -102,30 +102,35 @@ export class CrawlingStore {
     
     try {
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingProgress...');
-      this.unsubscribeCrawlingProgress = this.ipcServiceInstance.subscribeCrawlingProgress(
+      const progressSuccess = this.ipcServiceInstance.subscribeToCrawlingProgress(
         this.handleCrawlingProgress
       );
-      console.log('[CrawlingStore] 🔗 crawlingProgress subscription result:', !!this.unsubscribeCrawlingProgress);
+      this.unsubscribeCrawlingProgress = progressSuccess ? (() => {}) : null;
+      console.log('[CrawlingStore] 🔗 crawlingProgress subscription result:', progressSuccess);
       
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingComplete...');
-      this.unsubscribeCrawlingComplete = this.ipcServiceInstance.subscribeCrawlingComplete(
+      const completeSuccess = this.ipcServiceInstance.subscribeToCrawlingComplete(
         this.handleCrawlingComplete
       );
+      this.unsubscribeCrawlingComplete = completeSuccess ? (() => {}) : null;
       
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingError...');
-      this.unsubscribeCrawlingError = this.ipcServiceInstance.subscribeCrawlingError(
+      const errorSuccess = this.ipcServiceInstance.subscribeToCrawlingError(
         this.handleCrawlingError
       );
+      this.unsubscribeCrawlingError = errorSuccess ? (() => {}) : null;
       
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingStopped...');
-      this.unsubscribeCrawlingStopped = this.ipcServiceInstance.subscribeCrawlingStopped(
+      const stoppedSuccess = this.ipcServiceInstance.subscribeCrawlingStopped(
         this.handleCrawlingStopped
       );
+      this.unsubscribeCrawlingStopped = stoppedSuccess ? (() => {}) : null;
       
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingStatusSummary...');
-      this.unsubscribeCrawlingStatusSummary = this.ipcServiceInstance.subscribeCrawlingStatusSummary(
+      const summarySuccess = this.ipcServiceInstance.subscribeToCrawlingStatusSummary(
         this.handleCrawlingStatusSummary
       );
+      this.unsubscribeCrawlingStatusSummary = summarySuccess ? (() => {}) : null;
       
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingTaskStatus via platform API...');
       // Use the same platform API subscription mechanism as TaskStore to avoid conflicts

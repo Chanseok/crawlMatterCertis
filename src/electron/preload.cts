@@ -144,6 +144,14 @@ function createMethodHandler<K extends keyof MethodParamsMapping>(
 
 // API 객체 정의
 const electronAPI: IElectronAPI = {
+    // 이벤트 리스너 메서드 (IElectronAPI 확장 인터페이스용)
+    on: (channel: string, listener: (...args: any[]) => void) => {
+        ipcRenderer.on(channel, (_event, ...args) => listener(...args));
+    },
+    removeAllListeners: (channel: string) => {
+        ipcRenderer.removeAllListeners(channel);
+    },
+
     // 구독 기반 API
     subscribeToEvent: <K extends keyof EventPayloadMapping>(
         eventName: K,
@@ -156,9 +164,23 @@ const electronAPI: IElectronAPI = {
         };
     },
     
-    // 각 이벤트 채널 구독 핸들러
+    // 각 이벤트 채널 구독 핸들러 - 기존 방식
     subscribeStatistics: createSubscriptionHandler('statistics'),
     subscribeCrawlingProgress: createSubscriptionHandler('crawlingProgress'),
+    
+    // 새로운 방식의 구독 핸들러
+    subscribeToCrawlingProgress: (callback: (data: EventPayloadMapping['crawlingProgress']) => void) => {
+        ipcRenderer.on('crawlingProgress', (_event, data) => callback(data));
+        return true;
+    },
+    subscribeToCrawlingComplete: (callback: (data: EventPayloadMapping['crawlingComplete']) => void) => {
+        ipcRenderer.on('crawlingComplete', (_event, data) => callback(data));
+        return true;
+    },
+    subscribeToCrawlingError: (callback: (data: EventPayloadMapping['crawlingError']) => void) => {
+        ipcRenderer.on('crawlingError', (_event, data) => callback(data));
+        return true;
+    },
     subscribeCrawlingComplete: createSubscriptionHandler('crawlingComplete'),
     subscribeCrawlingError: createSubscriptionHandler('crawlingError'),
     subscribeCrawlingTaskStatus: createSubscriptionHandler('crawlingTaskStatus'),

@@ -959,22 +959,22 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
             </div>
 
             {/* Success/Error Indicators */}
-            {(progress.newItems > 0 || progress.updatedItems > 0 || (progress.errors && progress.errors > 0)) && (
+            {((progress.newItems ?? 0) > 0 || (progress.updatedItems ?? 0) > 0 || (progress.errors && progress.errors > 0)) && (
               <div className="flex gap-4 text-sm">
-                {progress.newItems > 0 && (
+                {(progress.newItems ?? 0) > 0 && (
                   <div className="flex items-center text-green-600 dark:text-green-400">
                     <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
-                    신규: {progress.newItems.toLocaleString()}개
+                    신규: {(progress.newItems ?? 0).toLocaleString()}개
                   </div>
                 )}
-                {progress.updatedItems > 0 && (
+                {(progress.updatedItems ?? 0) > 0 && (
                   <div className="flex items-center text-blue-600 dark:text-blue-400">
                     <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
                     </svg>
-                    업데이트: {progress.updatedItems.toLocaleString()}개
+                    업데이트: {(progress.updatedItems ?? 0).toLocaleString()}개
                   </div>
                 )}
                 {progress.errors && progress.errors > 0 && (

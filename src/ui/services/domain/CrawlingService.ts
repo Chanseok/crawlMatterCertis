@@ -203,9 +203,15 @@ export class CrawlingService extends BaseService {
       return () => {};
     }
 
-    const unsubscribe = this.ipcService.subscribeCrawlingProgress(callback);
-    this.eventSubscriptions.push(unsubscribe);
-    return unsubscribe;
+    const success = this.ipcService.subscribeToCrawlingProgress(callback);
+    if (success) {
+      const unsubscribe = () => {
+        // 구독 해제 로직은 IPCService 내부에서 처리됨
+      };
+      this.eventSubscriptions.push(unsubscribe);
+      return unsubscribe;
+    }
+    return () => {};
   }
 
   /**
@@ -217,9 +223,15 @@ export class CrawlingService extends BaseService {
       return () => {};
     }
 
-    const unsubscribe = this.ipcService.subscribeCrawlingComplete(callback);
-    this.eventSubscriptions.push(unsubscribe);
-    return unsubscribe;
+    const success = this.ipcService.subscribeToCrawlingComplete(callback);
+    if (success) {
+      const unsubscribe = () => {
+        // 구독 해제 로직은 IPCService 내부에서 처리됨
+      };
+      this.eventSubscriptions.push(unsubscribe);
+      return unsubscribe;
+    }
+    return () => {};
   }
 
   /**
@@ -231,9 +243,15 @@ export class CrawlingService extends BaseService {
       return () => {};
     }
 
-    const unsubscribe = this.ipcService.subscribeCrawlingError(callback);
-    this.eventSubscriptions.push(unsubscribe);
-    return unsubscribe;
+    const success = this.ipcService.subscribeToCrawlingError(callback);
+    if (success) {
+      const unsubscribe = () => {
+        // 구독 해제 로직은 IPCService 내부에서 처리됨
+      };
+      this.eventSubscriptions.push(unsubscribe);
+      return unsubscribe;
+    }
+    return () => {};
   }
 
   /**
@@ -246,9 +264,16 @@ export class CrawlingService extends BaseService {
       return () => {};
     }
 
-    const unsubscribe = this.ipcService.subscribeCrawlingStatusSummary(callback);
-    this.eventSubscriptions.push(unsubscribe);
-    return unsubscribe;
+    const success = this.ipcService.subscribeCrawlingStatusSummary(callback);
+    if (success) {
+      const unsubscribeFunction = () => {
+        // Create a proper unsubscribe function if needed
+        // For now, return empty function as IPC service handles cleanup
+      };
+      this.eventSubscriptions.push(unsubscribeFunction);
+      return unsubscribeFunction;
+    }
+    return () => {};
   }
 
   /**

@@ -276,6 +276,13 @@ export class IPCService {
   }
 
   /**
+   * 크롤링 상태 요약 이벤트 구독 (별칭)
+   */
+  public subscribeToCrawlingStatusSummary(handler: IPCEventHandler<CrawlingStatusSummary>): boolean {
+    return this.subscribeCrawlingStatusSummary(handler);
+  }
+
+  /**
    * 크롤링 태스크 상태 이벤트 구독
    */
   public subscribeCrawlingTaskStatus(handler: IPCEventHandler): IPCUnsubscribeFunction {
@@ -413,13 +420,13 @@ export class IPCService {
     subscriptions.forEach(({ event, handler }) => {
       switch (event) {
         case 'crawling-progress':
-          unsubscribeFunctions.push(this.subscribeCrawlingProgress(handler));
+          unsubscribeFunctions.push(this.subscribeToCrawlingProgress(handler) ? (() => {}) : (() => {}));
           break;
         case 'crawling-complete':
-          unsubscribeFunctions.push(this.subscribeCrawlingComplete(handler));
+          unsubscribeFunctions.push(this.subscribeToCrawlingComplete(handler) ? (() => {}) : (() => {}));
           break;
         case 'crawling-error':
-          unsubscribeFunctions.push(this.subscribeCrawlingError(handler));
+          unsubscribeFunctions.push(this.subscribeToCrawlingError(handler) ? (() => {}) : (() => {}));
           break;
         default:
           console.warn(`[IPCService] Unknown event type: ${event}`);

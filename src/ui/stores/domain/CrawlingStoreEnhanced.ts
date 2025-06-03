@@ -2,11 +2,16 @@
  * CrawlingStoreEnhanced.ts
  * Phase 1 개선: 진행 상황 업데이트 시스템 개선
  * 
- * CrawlingStore의 개선된 버전으로, 단계별 진행 상황 및 세션 관리 기능을 추가
+ * CrawlingStore의  private unsubscribeCrawlingProgress: (() => void) | null = null;
+  private unsubscribeCrawlingComplete: (() => void) | null = null;
+  private unsubscribeCrawlingError: (() => void) | null = null;
+  private unsubscribeCrawlingStopped: (() => void) | null = null;
+  private unsubscribeCrawlingStatusSummary: (() => void) | null = null;
+  private unsubscribeCrawlingTaskStatus: (() => void) | null = null;전으로, 단계별 진행 상황 및 세션 관리 기능을 추가
  */
 
 import { makeObservable, observable, action, runInAction, computed } from 'mobx';
-import { IPCService, IPCUnsubscribeFunction, ipcService } from '../../services/IPCService';
+import { IPCService, ipcService } from '../../services/IPCService';
 import { v4 as uuidv4 } from 'uuid';
 
 import type {
@@ -39,6 +44,11 @@ const createInitialSessionProgress = (): CrawlingSessionProgress => ({
   sessionId: uuidv4(),
   overallStatus: 'idle',
   stages: {
+    'ready': createInitialStageProgress('ready'),
+    'initialization': createInitialStageProgress('initialization'),
+    'category-extraction': createInitialStageProgress('category-extraction'),
+    'product-search': createInitialStageProgress('product-search'),
+    'completion': createInitialStageProgress('completion'),
     'status-check': createInitialStageProgress('status-check'),
     'product-list': createInitialStageProgress('product-list'),
     'db-comparison': createInitialStageProgress('db-comparison'),
@@ -84,12 +94,12 @@ export class CrawlingStoreEnhanced {
   
   // 타이머 및 구독 관리
   private updateTimer: number | null = null;
-  private unsubscribeCrawlingProgress: IPCUnsubscribeFunction | null = null;
-  private unsubscribeCrawlingComplete: IPCUnsubscribeFunction | null = null;
-  private unsubscribeCrawlingError: IPCUnsubscribeFunction | null = null;
-  private unsubscribeCrawlingStopped: IPCUnsubscribeFunction | null = null;
-  private unsubscribeCrawlingStatusSummary: IPCUnsubscribeFunction | null = null;
-  private unsubscribeCrawlingTaskStatus: IPCUnsubscribeFunction | null = null;
+  private unsubscribeCrawlingProgress: (() => void) | null = null;
+  private unsubscribeCrawlingComplete: (() => void) | null = null;
+  private unsubscribeCrawlingError: (() => void) | null = null;
+  private unsubscribeCrawlingStopped: (() => void) | null = null;
+  private unsubscribeCrawlingStatusSummary: (() => void) | null = null;
+  private unsubscribeCrawlingTaskStatus: (() => void) | null = null;
 
   constructor(private ipcServiceInstance: IPCService) {
     console.log('[CrawlingStoreEnhanced] Constructor called');
@@ -151,14 +161,15 @@ export class CrawlingStoreEnhanced {
     
     try {
       // 기존 이벤트 구독은 유지
-      this.unsubscribeCrawlingProgress = this.ipcServiceInstance.subscribeCrawlingProgress((data) => {
+      const progressSuccess = this.ipcServiceInstance.subscribeToCrawlingProgress((data: CrawlingProgress) => {
         this.updateProgress(data);
         
         // 새로운 타입 체계로 변환하여 StageProgress 업데이트
         this.convertAndUpdateStageProgress(data);
       });
+      this.unsubscribeCrawlingProgress = progressSuccess ? (() => {}) : null;
 
-      this.unsubscribeCrawlingComplete = this.ipcServiceInstance.subscribeCrawlingComplete(() => {
+      const completeSuccess = this.ipcServiceInstance.subscribeToCrawlingComplete(() => {
         runInAction(() => {
           this.status = 'completed';
           this.session.overallStatus = 'completed';
@@ -171,8 +182,9 @@ export class CrawlingStoreEnhanced {
           }
         });
       });
+      this.unsubscribeCrawlingComplete = completeSuccess ? (() => {}) : null;
 
-      this.unsubscribeCrawlingError = this.ipcServiceInstance.subscribeCrawlingError((error) => {
+      const errorSuccess = this.ipcServiceInstance.subscribeToCrawlingError((error: any) => {
         runInAction(() => {
           this.error = error;
           this.status = 'error';
@@ -186,8 +198,9 @@ export class CrawlingStoreEnhanced {
           }
         });
       });
+      this.unsubscribeCrawlingError = errorSuccess ? (() => {}) : null;
 
-      this.unsubscribeCrawlingStopped = this.ipcServiceInstance.subscribeCrawlingStopped(() => {
+      const stoppedSuccess = this.ipcServiceInstance.subscribeCrawlingStopped(() => {
         runInAction(() => {
           this.status = 'stopped';
           this.session.overallStatus = 'idle';
@@ -198,8 +211,9 @@ export class CrawlingStoreEnhanced {
           }
         });
       });
+      this.unsubscribeCrawlingStopped = stoppedSuccess ? (() => {}) : null;
 
-      this.unsubscribeCrawlingStatusSummary = this.ipcServiceInstance.subscribeCrawlingStatusSummary((summary) => {
+      const statusSummarySuccess = this.ipcServiceInstance.subscribeCrawlingStatusSummary((summary: any) => {
         runInAction(() => {
           this.statusSummary = summary;
           this.lastStatusSummary = { ...summary };
@@ -213,8 +227,9 @@ export class CrawlingStoreEnhanced {
           statusCheckStage.endTime = new Date();
         });
       });
+      this.unsubscribeCrawlingStatusSummary = statusSummarySuccess ? (() => {}) : null;
 
-      this.unsubscribeCrawlingTaskStatus = this.ipcServiceInstance.subscribeCrawlingTaskStatus((taskStatus) => {
+      this.ipcServiceInstance.subscribeCrawlingTaskStatus((taskStatus: any) => {
         // 기존 이벤트 처리에 추가로 세션 상태 업데이트
         runInAction(() => {
           this.isCheckingStatus = taskStatus?.isRunning || false;
@@ -226,6 +241,7 @@ export class CrawlingStoreEnhanced {
           }
         });
       });
+      this.unsubscribeCrawlingTaskStatus = () => {}; // Create empty unsubscribe function
 
     } catch (e) {
       console.error('[CrawlingStoreEnhanced] Error subscribing to events:', e);
