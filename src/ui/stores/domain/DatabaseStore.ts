@@ -37,7 +37,7 @@ export class DatabaseStore {
   public searchQuery: string = '';
   public currentPage: number = 1;
   public totalPages: number = 0;
-  public pagination: { page: number; limit: number; total: number } = { page: 1, limit: 50, total: 0 };
+  public pagination: { page: number; limit?: number; total: number } = { page: 1, total: 0 };
 
   // Unsubscribe functions
   private unsubscribeFunctions: (() => void)[] = [];
@@ -118,7 +118,7 @@ export class DatabaseStore {
   /**
    * Load products from database
    */
-  async loadProducts(query?: string, page: number = 1, limit: number = 50): Promise<void> {
+  async loadProducts(query?: string, page: number = 1, limit?: number): Promise<void> {
     runInAction(() => {
       this.loading = true;
     });
@@ -221,7 +221,7 @@ export class DatabaseStore {
   /**
    * Search products with query
    */
-  async searchProducts(query: string = '', page: number = 1, limit: number = 100): Promise<void> {
+  async searchProducts(query: string = '', page: number = 1, limit?: number): Promise<void> {
     try {
       runInAction(() => {
         this.loading = true;
@@ -287,7 +287,7 @@ export class DatabaseStore {
       if (result.success) {
         // Refresh data after successful deletion
         await this.loadSummary();
-        await this.loadProducts(this.searchQuery, 1, 50); // Reset to page 1 after deletion
+        await this.loadProducts(this.searchQuery, 1); // Reset to page 1 after deletion, no limit
         runInAction(() => {
           this.currentPage = 1;
         });
@@ -349,7 +349,7 @@ export class DatabaseStore {
       if (result.success) {
         // Refresh data after successful clearing
         await this.loadSummary();
-        await this.loadProducts('', 1, 50); // Reset to empty search and page 1
+        await this.loadProducts('', 1); // Reset to empty search and page 1, no limit
         runInAction(() => {
           this.currentPage = 1;
           this.searchQuery = '';

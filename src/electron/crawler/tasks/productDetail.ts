@@ -363,7 +363,8 @@ export class ProductDetailCollector {
     try {
       // 16진수 형식 확인 (0x 접두사 있음)
       if (/^0x[0-9A-Fa-f]+$/i.test(trimmedValue)) {
-        return parseInt(trimmedValue.substring(2), 16);
+        // 16진수 문자열을 정수로 변환 (0x 제거하고 16진수로 파싱)
+        return parseInt(trimmedValue, 16);
       } 
       // 16진수 형식 확인 (접두사 없음)
       else if (/^[0-9A-Fa-f]+$/i.test(trimmedValue)) {

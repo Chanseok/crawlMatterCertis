@@ -405,48 +405,8 @@ export async function deleteProductsByPageRange(startPageId: number, endPageId: 
                                     db.run('ROLLBACK', () => reject(err));
                                     return;
                                 }
-                                
-                                const productsDeleted = this.changes;
-                                log.info(`[DB] 단일 페이지 ${endPageId} 삭제 결과: ${productsDeleted}개 레코드 삭제됨`);
-                                
-                                // product_details 테이블에서도 삭제 (단일 페이지)
-                                db.run(
-                                    `DELETE FROM product_details WHERE pageId = ?`, 
-                                    [endPageId], 
-                                    function(err) {
-                                        if (err) {
-                                            log.error(`[DB] 단일 페이지 product_details 삭제 실패:`, err);
-                                            db.run('ROLLBACK', () => reject(err));
-                                            return;
-                                        }
-                                        
-                                        const detailsDeleted = this.changes;
-                                        log.info(`[DB] product_details 테이블에서 ${detailsDeleted}개 레코드 삭제됨`);
-                                        
-                                        // 트랜잭션 커밋
-                                        db.run('COMMIT', (err) => {
-                                            if (err) {
-                                                log.error('[DB] 트랜잭션 커밋 실패:', err);
-                                                db.run('ROLLBACK', () => reject(err));
-                                                return;
-                                            }
-                                            
-                                            log.info(`[DB] 삭제 트랜잭션 성공적으로 커밋됨, 총 ${productsDeleted}개 레코드 삭제`);
-                                            
-                                            // 삭제 후 레코드 개수 확인 (디버깅용)
-                                            db.get(`SELECT COUNT(*) as count FROM products`, [], (err, row: { count: number }) => {
-                                                if (err) {
-                                                    log.error('[DB] 삭제 후 전체 레코드 개수 확인 실패:', err);
-                                                } else {
-                                                    log.info(`[DB] 삭제 후 남은 전체 레코드 개수: ${row.count}`);
-                                                }
-                                            });
-                                            
-                                            // 삭제된 총 레코드 수 반환
-                                            resolve(productsDeleted);
-                                        });
-                                    }
-                                );
+                                log.info(`[DB] 단일 페이지 ${endPageId} 삭제 결과: ${this.changes}개 레코드 삭제됨`);
+                                // 계속 진행
                             }
                         );
                     } else {
@@ -461,56 +421,54 @@ export async function deleteProductsByPageRange(startPageId: number, endPageId: 
                                     return;
                                 }
                         
-                                const productsDeleted = this.changes;
-                                log.info(`[DB] products 테이블에서 ${productsDeleted}개 레코드 삭제됨`);
-                                
-                                // product_details 테이블에서도 삭제
-                                const detailsQuery = endPageId === startPageId 
-                                    ? `DELETE FROM product_details WHERE pageId = ?` 
-                                    : `DELETE FROM product_details WHERE pageId >= ? AND pageId <= ?`;
-                                const params = endPageId === startPageId ? [endPageId] : [endPageId, startPageId];
-                                
-                                db.run(
-                                    detailsQuery,
-                                    params, 
-                                    function(err) {
-                                        if (err) {
-                                            log.error('[DB] product_details 테이블 삭제 실패:', err);
-                                            db.run('ROLLBACK', () => reject(err));
-                                            return;
-                                        }
+                        const productsDeleted = this.changes;
+                        log.info(`[DB] products 테이블에서 ${productsDeleted}개 레코드 삭제됨`);
+                        
+                        // product_details 테이블에서도 삭제
+                        const detailsQuery = endPageId === startPageId 
+                            ? `DELETE FROM product_details WHERE pageId = ?` 
+                            : `DELETE FROM product_details WHERE pageId >= ? AND pageId <= ?`;
+                        const params = endPageId === startPageId ? [endPageId] : [endPageId, startPageId];
+                        
+                        db.run(
+                            detailsQuery,
+                            params, 
+                            function(err) {
+                                if (err) {
+                                    log.error('[DB] product_details 테이블 삭제 실패:', err);
+                                    db.run('ROLLBACK', () => reject(err));
+                                    return;
+                                }
 
-                                        const detailsDeleted = this.changes;
-                                        log.info(`[DB] product_details 테이블에서 ${detailsDeleted}개 레코드 삭제됨`);
-                                        
-                                        // 트랜잭션 커밋
-                                        db.run('COMMIT', (err) => {
-                                            if (err) {
-                                                log.error('[DB] 트랜잭션 커밋 실패:', err);
-                                                db.run('ROLLBACK', () => reject(err));
-                                                return;
-                                            }
-                                            
-                                            log.info(`[DB] 삭제 트랜잭션 성공적으로 커밋됨, 총 ${productsDeleted}개 레코드 삭제`);
-                                            
-                                            // 삭제 후 레코드 개수 확인 (디버깅용)
-                                            db.get(`SELECT COUNT(*) as count FROM products`, [], (err, row: { count: number }) => {
-                                                if (err) {
-                                                    log.error('[DB] 삭제 후 전체 레코드 개수 확인 실패:', err);
-                                                } else {
-                                                    log.info(`[DB] 삭제 후 남은 전체 레코드 개수: ${row.count}`);
-                                                }
-                                            });
-                                            
-                                            // 삭제된 총 레코드 수 반환
-                                            resolve(productsDeleted);
-                                        });
+                                const detailsDeleted = this.changes;
+                                log.info(`[DB] product_details 테이블에서 ${detailsDeleted}개 레코드 삭제됨`);
+                                
+                                // 트랜잭션 커밋
+                                db.run('COMMIT', (err) => {
+                                    if (err) {
+                                        log.error('[DB] 트랜잭션 커밋 실패:', err);
+                                        db.run('ROLLBACK', () => reject(err));
+                                        return;
                                     }
-                                );
+                                    
+                                    log.info(`[DB] 삭제 트랜잭션 성공적으로 커밋됨, 총 ${productsDeleted}개 레코드 삭제`);
+                                    
+                                    // 삭제 후 레코드 개수 확인 (디버깅용)
+                                    db.get(`SELECT COUNT(*) as count FROM products`, [], (err, row: { count: number }) => {
+                                        if (err) {
+                                            log.error('[DB] 삭제 후 전체 레코드 개수 확인 실패:', err);
+                                        } else {
+                                            log.info(`[DB] 삭제 후 남은 전체 레코드 개수: ${row.count}`);
+                                        }
+                                    });
+                                    
+                                    // 삭제된 총 레코드 수 반환
+                                    resolve(productsDeleted);
+                                });
                             }
                         );
                     }
-                });
+                );
             });
         });
     });

@@ -366,6 +366,7 @@ export interface DatabaseSummary {
     readonly productCount: number;
     readonly lastUpdated: Date | null;
     readonly newlyAddedCount: number;
+    readonly lastPageId?: number;  // Highest pageId in the database
 }
 
 /**

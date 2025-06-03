@@ -70,19 +70,19 @@ export class DatabaseService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      const { page = 1, limit = 20 } = params;
+      const { page = 1, limit } = params;
       const result = await this.ipcService.getProducts({ page, limit });
       
       if (!result || typeof result.total !== 'number') {
         throw new Error('Invalid response format from database');
       }
 
-      const totalPages = Math.ceil(result.total / limit);
+      const totalPages = limit ? Math.ceil(result.total / limit) : 1;
 
       return {
         ...result,
         page,
-        limit,
+        limit: limit || result.total,
         totalPages
       };
     }, 'getProducts');
@@ -111,7 +111,7 @@ export class DatabaseService extends BaseService {
    * 제품 검색
    */
   async searchProducts(params: SearchParams): Promise<ServiceResult<ProductsResponse>> {
-    const { query, page = 1, limit = 20 } = params;
+    const { query, page = 1, limit } = params;
 
     if (!query?.trim()) {
       return this.createFailure(
@@ -130,12 +130,12 @@ export class DatabaseService extends BaseService {
         throw new Error('Invalid response format from search');
       }
 
-      const totalPages = Math.ceil(result.total / limit);
+      const totalPages = limit ? Math.ceil(result.total / limit) : 1;
 
       return {
         ...result,
         page,
-        limit,
+        limit: limit || result.total,
         totalPages
       };
     }, 'searchProducts');
@@ -220,19 +220,63 @@ export class DatabaseService extends BaseService {
    * 페이지 범위별 레코드 삭제
    */
   async deleteRecordsByPageRange(startPage: number, endPage: number): Promise<ServiceResult<{ deletedCount: number }>> {
-    if (typeof startPage !== 'number' || typeof endPage !== 'number' || startPage > endPage) {
+    console.log(`[DatabaseService] deleteRecordsByPageRange called with startPage: ${startPage}, endPage: ${endPage}`);
+    
+    // 기본 파라미터 검증
+    if (typeof startPage !== 'number' || typeof endPage !== 'number' || startPage <= 0 || endPage <= 0) {
+      console.log(`[DatabaseService] Validation failed - startPage: ${startPage} (type: ${typeof startPage}), endPage: ${endPage} (type: ${typeof endPage})`);
       return this.createFailure(
         this.createError('INVALID_PARAMS', 'Invalid page range parameters')
       );
     }
-
-    return this.executeOperation(async () => {
-      if (!this.isIPCAvailable()) {
-        throw new Error('IPC not available');
+    
+    // 범위 검증 (endPage가 startPage보다 크지 않게)
+    if (endPage > startPage) {
+      console.log(`[DatabaseService] Validation failed - endPage (${endPage}) is greater than startPage (${startPage})`);
+      return this.createFailure(
+        this.createError('INVALID_PARAMS', 'End page must be less than or equal to start page')
+      );
+    }
+    
+    try {
+      // 실제 데이터베이스 요약 정보를 가져와 pageId 존재 여부 확인
+      const summaryResult = await this.getDatabaseSummary();
+      if (!summaryResult.success) {
+        throw new Error('Failed to get database summary');
       }
-
-      return await this.ipcService.deleteRecordsByPageRange({ startPageId: startPage, endPageId: endPage });
-    }, 'deleteRecordsByPageRange');
+      
+      // lastPageId 정보 확인
+      const summary = summaryResult.data as DatabaseSummary;
+      if (summary.lastPageId === undefined) {
+        console.log('[DatabaseService] Missing lastPageId in database summary, will proceed with deletion');
+        // Backend will validate actual page IDs when attempting deletion
+      } else {
+        const maxPageId = summary.lastPageId;
+        
+        // 요청된 페이지 ID가 DB에 존재하는 최대 페이지 ID를 초과하는지 확인
+        if (startPage > maxPageId) {
+          console.log(`[DatabaseService] Validation failed - requested startPage (${startPage}) exceeds maxPageId (${maxPageId})`);
+          return this.createFailure(
+            this.createError('INVALID_PARAMS', `Start page (${startPage}) exceeds maximum available page ID (${maxPageId})`)
+          );
+        }
+      }
+      
+      // 삭제 작업 진행
+      console.log(`[DatabaseService] Validation passed, proceeding with deletion from page ${startPage} to ${endPage}`);
+      return this.executeOperation(async () => {
+        if (!this.isIPCAvailable()) {
+          throw new Error('IPC not available');
+        }
+  
+        return await this.ipcService.deleteRecordsByPageRange({ startPageId: startPage, endPageId: endPage });
+      }, 'deleteRecordsByPageRange');
+    } catch (error) {
+      console.error('[DatabaseService] Error during validation:', error);
+      return this.createFailure(
+        this.createError('VALIDATION_ERROR', 'Error validating page range')
+      );
+    }
   }
 
   /**
