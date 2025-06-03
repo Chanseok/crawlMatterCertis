@@ -158,7 +158,7 @@ export function AnalysisTab() {
   }
   
   return (
-    <div className="p-4">
+    <>
       <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Matter 제품 데이터 분석</h2>
       
       {/* 요약 통계 */}
@@ -476,6 +476,6 @@ export function AnalysisTab() {
           <li>어플리케이션 카테고리 기반 제품 간 호환성 분석 (applicationCategories 필드 활용)</li>
         </ul>
       </div>
-    </div>
+    </>
   );
 }
