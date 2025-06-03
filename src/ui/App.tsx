@@ -153,7 +153,7 @@ const AppContent: React.FC = observer(() => {
         onTabChange={handleTabChange}
         isDevelopment={true}
       >
-        <div className="p-6">
+        <div className="p-6 max-w-7xl mx-auto">
           {renderTabContent()}
         </div>
       </AppLayout>

@@ -39,7 +39,7 @@ export const createDevDatabaseService = (): DatabaseService => {
   }
 
   return {
-    async getProducts(page = 1, limit = 20) {
+    async getProducts(page = 1, limit?: number) {
       console.log('[Dev DB Service] Getting products via Electron IPC', { page, limit });
       
       try {
@@ -71,7 +71,7 @@ export const createDevDatabaseService = (): DatabaseService => {
       }
     },
     
-    async searchProducts(query: string, page = 1, limit = 20) {
+    async searchProducts(query: string, page = 1, limit?: number) {
       console.log('[Dev DB Service] Searching products via Electron IPC', { query, page, limit });
       
       try {

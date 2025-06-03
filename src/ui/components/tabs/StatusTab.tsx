@@ -69,7 +69,7 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
   }, [statusTabViewModel]);
   
   return (
-    <>
+    <div className="space-y-6">
       <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">크롤링 제어</h2>
       
       {/* 상태 체크 애니메이션 */}
@@ -151,6 +151,6 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 });

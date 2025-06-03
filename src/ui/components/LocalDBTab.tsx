@@ -17,6 +17,7 @@ export const LocalDBTab: React.FC = observer(() => {
     loadSummary, 
     exportToExcel,
     deleteRecordsByPageRange,
+    searchProducts,
     clearError
   } = useDatabaseStore();
   
@@ -30,28 +31,66 @@ export const LocalDBTab: React.FC = observer(() => {
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deleteRange, setDeleteRange] = useState({ startPageId: 0, endPageId: 0 });
   const [totalProductPages, setTotalProductPages] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   
   // Section expansion state
   const [dbSectionExpanded, setDbSectionExpanded] = useState(true);
   const [productsSectionExpanded, setProductsSectionExpanded] = useState(true);
   
-  const itemsPerPage = 50; // UI 페이지네이션용
+  const itemsPerPage = 12; // 사이트 구조와 일치하도록 12개로 변경
 
-  // 컴포넌트 마운트 시 초기 데이터 로드
+  // 컴포넌트 마운트 시 초기 데이터 로드 - 전체 레코드 로딩으로 변경
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        console.log('LocalDBTab: Loading initial data');
-        await loadAllProducts(1, 1000); // 충분한 양의 데이터 로드
+        console.log('LocalDBTab: Loading all records for optimal UX');
+        // 전체 레코드 로딩 - limit 매개변수를 전달하지 않아 모든 레코드를 가져옴
+        await loadAllProducts(1); // page만 전달하고 limit은 제거
         await loadSummary();
-        console.log('LocalDBTab: Initial data loaded successfully');
+        console.log('LocalDBTab: All records loaded successfully');
       } catch (error) {
         console.error('LocalDBTab: Failed to load initial data:', error);
       }
     };
-
+    
     loadInitialData();
-  }, []); // 의존성 배열 최소화
+  }, [loadAllProducts, loadSummary]);
+
+  // 검색 핸들러
+  const handleSearch = useCallback(async () => {
+    if (!searchQuery.trim()) {
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      console.log('LocalDBTab: Starting search with query:', searchQuery);
+      await searchProducts(searchQuery.trim()); // 전체 검색 - limit 없음
+      setCurrentPage(1); // 검색 시 첫 페이지로 리셋
+      console.log('LocalDBTab: Search completed successfully');
+    } catch (error) {
+      console.error('LocalDBTab: Search failed:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [searchQuery, searchProducts]);
+
+  // 검색 초기화 핸들러
+  const handleClearSearch = useCallback(async () => {
+    setSearchQuery('');
+    setIsSearching(true);
+    try {
+      console.log('LocalDBTab: Clearing search and loading all products');
+      await loadAllProducts(1); // 전체 제품 다시 로딩
+      setCurrentPage(1);
+      console.log('LocalDBTab: Search cleared successfully');
+    } catch (error) {
+      console.error('LocalDBTab: Failed to clear search:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [loadAllProducts]);
 
   // 데이터베이스 요약 정보 변경 시 페이지 정보 업데이트
   useEffect(() => {
@@ -257,7 +296,7 @@ export const LocalDBTab: React.FC = observer(() => {
   };
 
   return (
-    <div className="space-y-6">
+    <>
       {/* 에러 표시 */}
       {dbError && (
         <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
@@ -272,9 +311,9 @@ export const LocalDBTab: React.FC = observer(() => {
       )}
       
       {/* 로딩 상태 표시 */}
-      {isLoading && (
+      {(isLoading || isSearching) && (
         <div className="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded">
-          데이터를 로딩 중입니다...
+          {isSearching ? '검색 중입니다...' : '데이터를 로딩 중입니다...'}
         </div>
       )}
       
@@ -376,6 +415,38 @@ export const LocalDBTab: React.FC = observer(() => {
           }}
         >
           <div className="p-4">
+            {/* 검색 섹션 */}
+            <div className="mb-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    placeholder="제조사, 모델명, 인증 ID로 검색..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSearch}
+                    disabled={isSearching}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {isSearching ? '검색 중...' : '검색'}
+                  </button>
+                  <button
+                    onClick={handleClearSearch}
+                    disabled={isSearching}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 text-white rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  >
+                    초기화
+                  </button>
+                </div>
+              </div>
+            </div>
+            
             {/* 제품 테이블 */}
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -395,7 +466,9 @@ export const LocalDBTab: React.FC = observer(() => {
                   {displayProducts.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="text-sm text-gray-500 dark:text-gray-400">제품 정보가 없습니다. 크롤링을 통해 데이터를 수집해주세요.</div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                          {searchQuery ? '검색 결과가 없습니다.' : '제품 정보가 없습니다. 크롤링을 통해 데이터를 수집해주세요.'}
+                        </div>
                       </td>
                     </tr>
                   ) : (
@@ -423,12 +496,12 @@ export const LocalDBTab: React.FC = observer(() => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">
-                            {intToHexDisplay(typeof product.vid === 'number' ? product.vid : parseInt(String(product.vid || '0'), 16))}
+                            {intToHexDisplay(typeof product.vid === 'number' ? product.vid : (typeof product.vid === 'string' ? parseInt(product.vid, 10) : undefined))}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">
-                            {intToHexDisplay(typeof product.pid === 'number' ? product.pid : parseInt(String(product.pid || '0'), 16))}
+                            {intToHexDisplay(typeof product.pid === 'number' ? product.pid : (typeof product.pid === 'string' ? parseInt(product.pid, 10) : undefined))}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -540,6 +613,6 @@ export const LocalDBTab: React.FC = observer(() => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 });

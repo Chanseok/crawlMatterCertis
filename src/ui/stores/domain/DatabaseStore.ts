@@ -124,11 +124,10 @@ export class DatabaseStore {
     });
 
     try {
-      const result = await this.databaseService.searchProducts({
-        query: query || '',
-        page,
-        limit
-      });
+      // Use getProducts for loading all products, searchProducts only when there's a query
+      const result = query && query.trim() 
+        ? await this.databaseService.searchProducts({ query: query.trim(), page, limit })
+        : await this.databaseService.getProducts({ page, limit });
       
       if (result.success && result.data) {
         // Convert the products to match the expected type

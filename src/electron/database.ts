@@ -110,11 +110,9 @@ export async function initializeDatabase(): Promise<void> {
 
 // --- Query Functions --- 
 
-export async function getProductsFromDb(page: number = 1, limit: number = 20): Promise<{ products: MatterProduct[], total: number }> {
+export async function getProductsFromDb(page: number = 1, limit?: number): Promise<{ products: MatterProduct[], total: number }> {
     return new Promise((resolve, reject) => {
-        const offset = (page - 1) * limit;
-        // 수정: pageId와 indexInPage 기준으로 내림차순 정렬 적용
-        const query = `SELECT * FROM products ORDER BY pageId DESC, indexInPage DESC LIMIT ? OFFSET ?`;
+        // 전체 레코드 수 조회
         const countQuery = `SELECT COUNT(*) as total FROM products`;
 
         db.get(countQuery, (err, row: { total: number }) => {
@@ -123,7 +121,21 @@ export async function getProductsFromDb(page: number = 1, limit: number = 20): P
             }
             const total = row.total;
             log.info(`데이터베이스 전체 레코드 수: ${total}`);
-            db.all(query, [limit, offset], (err, rows: any[]) => {
+            
+            // limit이 없으면 모든 레코드를 반환
+            let query = `SELECT * FROM products ORDER BY pageId DESC, indexInPage DESC`;
+            let params: any[] = [];
+            
+            if (limit !== undefined) {
+                const offset = (page - 1) * limit;
+                query += ` LIMIT ? OFFSET ?`;
+                params = [limit, offset];
+                log.info(`페이지네이션: 페이지 ${page}, 제한 ${limit}, 오프셋 ${offset}`);
+            } else {
+                log.info(`전체 레코드 로딩: 모든 ${total}개 레코드를 가져옵니다`);
+            }
+
+            db.all(query, params, (err, rows: any[]) => {
                 if (err) {
                     return reject(err);
                 }
@@ -132,7 +144,7 @@ export async function getProductsFromDb(page: number = 1, limit: number = 20): P
                     ...row,
                     applicationCategories: JSON.parse(row.applicationCategories || '[]')
                 }));
-                log.info(`현재 페이지(${page})에서 가져온 레코드 수: ${products.length}, 제한 수: ${limit}, 오프셋: ${offset}`);
+                log.info(`가져온 레코드 수: ${products.length}`);
                 resolve({ products, total });
             });
         });
@@ -160,16 +172,9 @@ export async function getProductByIdFromDb(id: string): Promise<ProductDetail | 
     });
 }
 
-export async function searchProductsInDb(query: string, page: number = 1, limit: number = 20): Promise<{ products: MatterProduct[], total: number }> {
+export async function searchProductsInDb(query: string, page: number = 1, limit?: number): Promise<{ products: MatterProduct[], total: number }> {
     return new Promise((resolve, reject) => {
-        const offset = (page - 1) * limit;
         const searchQuery = `%${query}%`;
-        const sql = `
-            SELECT * FROM products 
-            WHERE manufacturer LIKE ? OR model LIKE ? OR deviceType LIKE ? OR certificationId LIKE ?
-            ORDER BY pageId DESC, indexInPage DESC
-            LIMIT ? OFFSET ?
-        `;
         const countSql = `
             SELECT COUNT(*) as total FROM products 
             WHERE manufacturer LIKE ? OR model LIKE ? OR deviceType LIKE ? OR certificationId LIKE ?
@@ -180,7 +185,25 @@ export async function searchProductsInDb(query: string, page: number = 1, limit:
                 return reject(err);
             }
             const total = row.total;
-            db.all(sql, [searchQuery, searchQuery, searchQuery, searchQuery, limit, offset], (err, rows: any[]) => {
+            
+            // limit이 없으면 모든 검색 결과를 반환
+            let sql = `
+                SELECT * FROM products 
+                WHERE manufacturer LIKE ? OR model LIKE ? OR deviceType LIKE ? OR certificationId LIKE ?
+                ORDER BY pageId DESC, indexInPage DESC
+            `;
+            let params: any[] = [searchQuery, searchQuery, searchQuery, searchQuery];
+            
+            if (limit !== undefined) {
+                const offset = (page - 1) * limit;
+                sql += ` LIMIT ? OFFSET ?`;
+                params = [...params, limit, offset];
+                log.info(`검색 페이지네이션: 페이지 ${page}, 제한 ${limit}, 오프셋 ${offset}`);
+            } else {
+                log.info(`전체 검색 결과 로딩: 총 ${total}개 검색 결과를 가져옵니다`);
+            }
+
+            db.all(sql, params, (err, rows: any[]) => {
                 if (err) {
                     return reject(err);
                 }
@@ -189,6 +212,7 @@ export async function searchProductsInDb(query: string, page: number = 1, limit:
                     ...row,
                     applicationCategories: JSON.parse(row.applicationCategories || '[]')
                 }));
+                log.info(`검색 결과: ${products.length}개 레코드 (검색어: "${query}")`);
                 resolve({ products, total });
             });
         });
