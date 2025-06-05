@@ -2,16 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { electronResourcePaths } from './resourceManager.js';
 import { CrawlerConfig, MutableCrawlerConfig } from '../../types.js';
-
-// Define constants for validation limits
-const MIN_RETRY_COUNT = 3;
-const MAX_RETRY_COUNT = 20;
-const MIN_PAGE_RANGE_LIMIT = 1;
-const MAX_PAGE_RANGE_LIMIT = 500;
-const MIN_PRODUCTS_PER_PAGE = 1;
-const MAX_PRODUCTS_PER_PAGE = 100; // Example: Max 100 products per page for sanity
-const MIN_BATCH_RETRY_LIMIT = 1;
-const MAX_BATCH_RETRY_LIMIT = 10;
+import { ConfigurationValidator } from '../shared/domain/ConfigurationValue.js';
 
 // 기본 설정 값 (Consolidated DEFAULT_CONFIG)
 const DEFAULT_CONFIG: MutableCrawlerConfig = {
@@ -170,39 +161,73 @@ export class ConfigManager {
 
   /**
    * 설정 일부를 업데이트합니다.
+   * Clean Code 원칙을 따른 견고한 검증 로직 적용
+   * readonly 제약을 안전하게 처리하는 타입 안전 구현
    */
   updateConfig(partialConfig: Partial<CrawlerConfig>): CrawlerConfig {
-    console.log(`[ConfigManager] 설정 업데이트 요청:`, Object.keys(partialConfig));
-    console.log(`[ConfigManager] 현재 설정:`, JSON.stringify(this.config, null, 2));
-    console.log(`[ConfigManager] 들어온 설정:`, JSON.stringify(partialConfig, null, 2));
+    console.log(`\n🔧 [ConfigManager] 설정 업데이트 요청 시작`);
+    console.log(`📋 [ConfigManager] 업데이트할 필드:`, Object.keys(partialConfig));
+    console.log(`📂 [ConfigManager] 현재 설정:`, JSON.stringify(this.config, null, 2));
+    console.log(`📝 [ConfigManager] 들어온 설정:`, JSON.stringify(partialConfig, null, 2));
     
-    // 기존 설정과 들어온 설정을 병합
-    this.config = {
+    // 호출 스택 추적을 위한 에러 객체 생성
+    const callStack = new Error().stack;
+    console.log(`📞 [ConfigManager] 호출 스택:`, callStack);
+    
+    // 특별히 중요한 필드들의 값 변화 추적
+    const criticalFields = ['pageRangeLimit', 'productListRetryCount', 'productDetailRetryCount'];
+    for (const field of criticalFields) {
+      if (field in partialConfig) {
+        console.log(`🎯 [ConfigManager] 중요 필드 ${field}: ${this.config[field as keyof CrawlerConfig]} → ${partialConfig[field as keyof CrawlerConfig]}`);
+      }
+    }
+    
+    // 1. 부분 업데이트 검증 (기존 설정 컨텍스트 포함)
+    const validationResult = ConfigurationValidator.validatePartialUpdate(
+      this.config, 
+      partialConfig
+    );
+    
+    if (!validationResult.isValid) {
+      const errorDetails = Object.entries(validationResult.errors)
+        .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+        .join('; ');
+      
+      console.error(`[ConfigManager] 설정 검증 실패:`, errorDetails);
+      throw new Error(`Configuration validation failed: ${errorDetails}`);
+    }
+    
+    // 2. 경고 로그 출력
+    if (Object.keys(validationResult.warnings).length > 0) {
+      const warningDetails = Object.entries(validationResult.warnings)
+        .map(([field, warnings]) => `${field}: ${warnings.join(', ')}`)
+        .join('; ');
+      console.warn(`[ConfigManager] 설정 경고:`, warningDetails);
+    }
+    
+    // 3. readonly 제약을 우회하여 안전한 설정 병합
+    // 타입 시스템의 readonly 보장을 유지하면서 내부적으로는 가변성 허용
+    const validatedConfig: Record<string, any> = {};
+    
+    // 4. 검증된 필드만 추출
+    for (const [key, value] of Object.entries(partialConfig)) {
+      if (value !== undefined && value !== null) {
+        validatedConfig[key] = value;
+      }
+    }
+    
+    // 5. 타입 안전 설정 병합
+    const newConfig: CrawlerConfig = {
       ...this.config,
-      ...partialConfig
-    };
+      ...validatedConfig
+    } as CrawlerConfig;
+    
+    // 6. 내부 상태 업데이트
+    this.config = newConfig;
     
     console.log(`[ConfigManager] 병합 후 설정:`, JSON.stringify(this.config, null, 2));
     
-    // 값 범위 검증
-    if (this.config.productListRetryCount < MIN_RETRY_COUNT) this.config.productListRetryCount = MIN_RETRY_COUNT;
-    if (this.config.productListRetryCount > MAX_RETRY_COUNT) this.config.productListRetryCount = MAX_RETRY_COUNT;
-    
-    if (this.config.productDetailRetryCount < MIN_RETRY_COUNT) this.config.productDetailRetryCount = MIN_RETRY_COUNT;
-    if (this.config.productDetailRetryCount > MAX_RETRY_COUNT) this.config.productDetailRetryCount = MAX_RETRY_COUNT;
-    
-    if (this.config.pageRangeLimit < MIN_PAGE_RANGE_LIMIT) this.config.pageRangeLimit = MIN_PAGE_RANGE_LIMIT;
-    if (this.config.pageRangeLimit > MAX_PAGE_RANGE_LIMIT) this.config.pageRangeLimit = MAX_PAGE_RANGE_LIMIT;
-
-    if (this.config.productsPerPage < MIN_PRODUCTS_PER_PAGE) this.config.productsPerPage = MIN_PRODUCTS_PER_PAGE;
-    if (this.config.productsPerPage > MAX_PRODUCTS_PER_PAGE) this.config.productsPerPage = MAX_PRODUCTS_PER_PAGE;
-    
-    // 배치 재시도 횟수 검증
-    if (this.config.batchRetryLimit !== undefined) {
-      if (this.config.batchRetryLimit < MIN_BATCH_RETRY_LIMIT) this.config.batchRetryLimit = MIN_BATCH_RETRY_LIMIT;
-      if (this.config.batchRetryLimit > MAX_BATCH_RETRY_LIMIT) this.config.batchRetryLimit = MAX_BATCH_RETRY_LIMIT;
-    }
-    
+    // 7. 설정 저장
     try {
       this.saveConfig();
       console.log(`[ConfigManager] 설정 업데이트 및 저장 완료`);
@@ -211,7 +236,8 @@ export class ConfigManager {
       console.error(`[ConfigManager] 저장 실패한 설정:`, JSON.stringify(this.config, null, 2));
       // 저장 실패 시에도 메모리의 설정은 유지하지만 에러를 로그에 남김
     }
-    // structured clone 안전성을 위해 plain object로 반환
+    
+    // 6. 불변 복사본 반환 (structured clone 안전성)
     return JSON.parse(JSON.stringify(this.config));
   }
 

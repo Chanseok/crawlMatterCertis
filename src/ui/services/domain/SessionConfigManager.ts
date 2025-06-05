@@ -1,5 +1,6 @@
 import { makeAutoObservable, runInAction, toJS } from 'mobx';
 import { ConfigurationService } from './ConfigurationService';
+import { ConfigurationValidator } from '../../../shared/domain/ConfigurationValue';
 import type { CrawlerConfig } from '../../../../types';
 
 /**
@@ -119,6 +120,30 @@ export class SessionConfigManager {
         plainUpdates: plainUpdates,
         isProxy: updates.constructor?.name === 'Object' ? 'Plain' : 'Proxy'
       });
+
+      // 클라이언트 측 사전 검증 (Value Object 패턴 적용)
+      if (this.config) {
+        const validationResult = ConfigurationValidator.validatePartialUpdate(
+          this.config, 
+          plainUpdates
+        );
+        
+        if (!validationResult.isValid) {
+          const errorDetails = Object.entries(validationResult.errors)
+            .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+            .join('; ');
+          throw new Error(`Configuration validation failed: ${errorDetails}`);
+        }
+        
+        // 경고 로그 출력
+        if (Object.keys(validationResult.warnings).length > 0) {
+          const warningDetails = Object.entries(validationResult.warnings)
+            .map(([field, warnings]) => `${field}: ${warnings.join(', ')}`)
+            .join('; ');
+          console.warn(`[SessionConfigManager] 설정 경고:`, warningDetails);
+        }
+      }
+
       const updatedConfig = await this.configService.updateConfig(plainUpdates);
       
       runInAction(() => {

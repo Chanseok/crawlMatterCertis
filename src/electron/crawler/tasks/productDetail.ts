@@ -17,14 +17,14 @@
  */
 
 import { type Page } from 'playwright-chromium';
-import { getRandomDelay, delay } from '../utils/delay.js';
+import { getRandomDelay } from '../utils/delay.js';
 import { CrawlerState } from '../core/CrawlerState.js';
 import {
   promisePool, updateProductTaskStatus, initializeProductTaskStates
 } from '../utils/concurrency.js';
 import { MatterProductParser } from '../parsers/MatterProductParser.js';
 import { BrowserManager } from '../browser/BrowserManager.js';
-import { retryWithBackoff } from '../utils/retry.js';
+import { CrawlingUtils } from '../../../shared/utils/CrawlingUtils.js';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
@@ -107,7 +107,7 @@ export class ProductDetailCollector {
     const minDelay = config.minRequestDelayMs ?? 100;
     const maxDelay = config.maxRequestDelayMs ?? 2200;
     const delayTime = getRandomDelay(minDelay, maxDelay);
-    await delay(delayTime);
+    await CrawlingUtils.delay(delayTime, () => signal.aborted);
     
     // config에서 정의된 크롤러 타입 가져오기 (기본값은 axios)
     const crawlerType = config.crawlerType || 'axios';
@@ -1433,7 +1433,7 @@ export class ProductDetailCollector {
           failedItems: finalFailedCount,
           newItems: this.state.getDetailStageNewCount(),
           updatedItems: this.state.getDetailStageUpdatedCount(),
-          successRate: parseFloat(((totalProducts > 0 ? successProducts / totalProducts : 1) * 100).toFixed(1)),
+          successRate: parseFloat((CrawlingUtils.calculateSuccessRate(successProducts, totalProducts) * 100).toFixed(1)),
           isFullyComplete: isFullyComplete,
           endTime: new Date().toISOString()
         })
@@ -1529,9 +1529,9 @@ export class ProductDetailCollector {
       const maxRetryDelay = config.maxRetryDelayMs ?? 15000;
       const retryMax = config.retryMax ?? 2;
       
-      detailProduct = await retryWithBackoff(
+      detailProduct = await CrawlingUtils.withRetry(
         async () => {
-          // retryWithBackoff 내부에서도 중지 신호 체크
+          // CrawlingUtils.withRetry 내부에서도 중지 신호 체크
           if (signal.aborted) {
             throw new Error('Aborted before Axios operation');
           }
@@ -1619,7 +1619,7 @@ export class ProductDetailCollector {
           currentStage: 3,                    // Stage 3: Detail collection (기존 stage 2를 stage 3으로 변경)
           newItems: currentNew,               // 새로운 항목 수
           updatedItems: currentUpdated,       // 업데이트된 항목 수
-          message: `3단계: 제품 상세정보 ${currentProcessed}/${totalItems} 처리 중 (${Math.min((currentProcessed / Math.max(totalItems, 1)) * 100, 100).toFixed(1)}%)`
+          message: `3단계: 제품 상세정보 ${currentProcessed}/${totalItems} 처리 중 (${CrawlingUtils.formatPercentage(Math.min((currentProcessed / Math.max(totalItems, 1)) * 100, 100))})`
         });
         
         crawlerEvents.emit('crawlingTaskStatus', {
@@ -1762,16 +1762,13 @@ export class ProductDetailCollector {
           lastProgressUpdate = now;
           
           const currentProcessedItems = this.state.getDetailStageProcessedCount();
-          const percentage = (currentProcessedItems / totalItems) * 100;
-          const elapsedTime = now - startTime;
-          let remainingTime: number | undefined = undefined;
+          const progressMetrics = CrawlingUtils.calculateProgress(currentProcessedItems, totalItems, startTime);
+          const percentage = progressMetrics.percentage;
+          const elapsedTime = progressMetrics.elapsedTime;
+          let remainingTime: number | undefined = progressMetrics.remainingTime;
           
-          if (currentProcessedItems > totalItems * 0.1) {
-            const avgTimePerItem = elapsedTime / currentProcessedItems;
-            remainingTime = Math.round((totalItems - currentProcessedItems) * avgTimePerItem);
-          }
           
-          const message = `2단계: 제품 상세정보 ${currentProcessedItems}/${totalItems} 처리 중 (${percentage.toFixed(1)}%)`;
+          const message = `2단계: 제품 상세정보 ${currentProcessedItems}/${totalItems} 처리 중 (${CrawlingUtils.formatPercentage(percentage)})`;
 
           // CrawlerState 상태와 동기화 - newItems와 updatedItems 보존
           this.state.updateProgress({
@@ -2135,10 +2132,10 @@ export class ProductDetailCollector {
       message = `제품 상세정보 수집 완료: ${actualProcessedCount}/${totalProducts} (신규: ${actualNewCount}, 업데이트: ${actualUpdatedCount})`;
     } else if (successRate >= 0.8) {
       status = 'partial';
-      message = `제품 상세정보 부분 완료: ${actualProcessedCount}/${totalProducts} (성공률: ${(successRate * 100).toFixed(1)}%)`;
+      message = `제품 상세정보 부분 완료: ${actualProcessedCount}/${totalProducts} (성공률: ${CrawlingUtils.formatPercentage(successRate * 100)})`;
     } else {
       status = 'failed';
-      message = `제품 상세정보 수집 실패: ${actualProcessedCount}/${totalProducts} (성공률: ${(successRate * 100).toFixed(1)}%)`;
+      message = `제품 상세정보 수집 실패: ${actualProcessedCount}/${totalProducts} (성공률: ${CrawlingUtils.formatPercentage(successRate * 100)})`;
     }
 
     return { isComplete, status, message };

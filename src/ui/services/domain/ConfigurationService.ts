@@ -1,4 +1,5 @@
 import { BaseService } from '../core/BaseService';
+import { ConfigurationValidator } from '../../../shared/domain/ConfigurationValue';
 import type { CrawlerConfig } from '../../../../types';
 
 /**
@@ -61,19 +62,51 @@ export class ConfigurationService extends BaseService {
     try {
       this.logDebug('updateConfig', 'Updating configuration', { configKeys: Object.keys(config) });
       
-      // Validate the configuration update
-      this.validateConfigUpdate(config);
+      // Pre-validate the configuration update using Value Object pattern
+      const validationResult = ConfigurationValidator.validatePartialUpdate(
+        this.currentConfig || {} as CrawlerConfig, 
+        config
+      );
+      
+      if (!validationResult.isValid) {
+        const errorMessages = Object.entries(validationResult.errors)
+          .map(([field, errors]) => `${field}: ${errors.join(', ')}`);
+        
+        this.logError('updateConfig', 'Configuration validation failed', { 
+          errors: validationResult.errors 
+        });
+        throw new Error(`Configuration validation failed: ${errorMessages.join('; ')}`);
+      }
+
+      // Log warnings if any
+      const warningMessages = Object.entries(validationResult.warnings);
+      if (warningMessages.length > 0) {
+        const warningText = warningMessages
+          .map(([field, warnings]) => `${field}: ${warnings.join(', ')}`)
+          .join('; ');
+        console.warn('Configuration update warnings:', warningText);
+      }
 
       // Call IPC to update configuration in ConfigManager
       // BaseService.callIPC automatically handles MobX observable conversion
       const result = await this.callIPC<any>('updateConfig', config);
       
       if (result.success && result.config) {
-        // Validate the complete configuration returned from backend
-        this.validateConfigComplete(result.config);
+        // Post-validate the complete configuration returned from backend
+        const completeValidationResult = ConfigurationValidator.validateComplete(result.config);
+        
+        if (!completeValidationResult.isValid) {
+          const errorMessages = Object.entries(completeValidationResult.errors)
+            .map(([field, errors]) => `${field}: ${errors.join(', ')}`);
+          
+          this.logError('updateConfig', 'Backend returned invalid configuration', {
+            errors: completeValidationResult.errors
+          });
+          throw new Error(`Backend validation failed: ${errorMessages.join('; ')}`);
+        }
 
         this.currentConfig = result.config;
-        this.logDebug('updateConfig', 'Configuration updated successfully');
+        this.logDebug('updateConfig', 'Configuration updated and validated successfully');
         return result.config;
       } else {
         throw new Error(result.error || 'Failed to update configuration');
@@ -136,122 +169,25 @@ export class ConfigurationService extends BaseService {
   }
 
   /**
-   * Validate complete configuration (throws on error)
+   * Validate complete configuration using Value Object pattern
    */
   public validateConfigComplete(config: CrawlerConfig): void {
-    // Validate required fields
-    if (typeof config.pageRangeLimit !== 'number' || config.pageRangeLimit <= 0) {
-      throw new Error('Page range limit must be a positive number');
+    const validationResult = ConfigurationValidator.validateComplete(config);
+    
+    if (!validationResult.isValid) {
+      const errorMessages = Object.entries(validationResult.errors)
+        .map(([field, errors]) => `${field}: ${errors.join(', ')}`);
+      
+      throw new Error(`Configuration validation failed: ${errorMessages.join('; ')}`);
     }
 
-    if (typeof config.productListRetryCount !== 'number' || config.productListRetryCount < 0) {
-      throw new Error('Product list retry count must be a non-negative number');
-    }
-
-    if (typeof config.productDetailRetryCount !== 'number' || config.productDetailRetryCount < 0) {
-      throw new Error('Product detail retry count must be a non-negative number');
-    }
-
-    if (typeof config.productsPerPage !== 'number' || config.productsPerPage <= 0) {
-      throw new Error('Products per page must be a positive number');
-    }
-
-    if (typeof config.autoAddToLocalDB !== 'boolean') {
-      throw new Error('Auto add to local DB must be a boolean');
-    }
-
-    if (typeof config.autoStatusCheck !== 'boolean') {
-      throw new Error('Auto status check must be a boolean');
-    }
-
-    // Validate optional fields
-    if (config.headlessBrowser !== undefined && typeof config.headlessBrowser !== 'boolean') {
-      throw new Error('Headless browser must be a boolean');
-    }
-
-    if (config.crawlerType !== undefined && !['playwright', 'axios'].includes(config.crawlerType)) {
-      throw new Error('Crawler type must be either "playwright" or "axios"');
-    }
-
-    if (config.maxConcurrentTasks !== undefined && (typeof config.maxConcurrentTasks !== 'number' || config.maxConcurrentTasks <= 0)) {
-      throw new Error('Max concurrent tasks must be a positive number');
-    }
-
-    if (config.requestDelay !== undefined && (typeof config.requestDelay !== 'number' || config.requestDelay < 0)) {
-      throw new Error('Request delay must be a non-negative number');
-    }
-
-    if (config.batchSize !== undefined && (typeof config.batchSize !== 'number' || config.batchSize <= 0)) {
-      throw new Error('Batch size must be a positive number');
-    }
-
-    if (config.batchDelayMs !== undefined && (typeof config.batchDelayMs !== 'number' || config.batchDelayMs < 0)) {
-      throw new Error('Batch delay must be a non-negative number');
-    }
-
-    if (config.enableBatchProcessing !== undefined && typeof config.enableBatchProcessing !== 'boolean') {
-      throw new Error('Enable batch processing must be a boolean');
-    }
-
-    if (config.batchRetryLimit !== undefined && (typeof config.batchRetryLimit !== 'number' || config.batchRetryLimit < 0)) {
-      throw new Error('Batch retry limit must be a non-negative number');
-    }
-  }
-
-  /**
-   * Validate partial configuration update (throws on error)
-   */
-  private validateConfigUpdate(config: Partial<CrawlerConfig>): void {
-    if (config.pageRangeLimit !== undefined && (typeof config.pageRangeLimit !== 'number' || config.pageRangeLimit <= 0)) {
-      throw new Error('Page range limit must be a positive number');
-    }
-
-    if (config.productListRetryCount !== undefined && (typeof config.productListRetryCount !== 'number' || config.productListRetryCount < 0)) {
-      throw new Error('Product list retry count must be a non-negative number');
-    }
-
-    if (config.productDetailRetryCount !== undefined && (typeof config.productDetailRetryCount !== 'number' || config.productDetailRetryCount < 0)) {
-      throw new Error('Product detail retry count must be a non-negative number');
-    }
-
-    if (config.productsPerPage !== undefined && (typeof config.productsPerPage !== 'number' || config.productsPerPage <= 0)) {
-      throw new Error('Products per page must be a positive number');
-    }
-
-    if (config.autoAddToLocalDB !== undefined && typeof config.autoAddToLocalDB !== 'boolean') {
-      throw new Error('Auto add to local DB must be a boolean');
-    }
-
-    if (config.headlessBrowser !== undefined && typeof config.headlessBrowser !== 'boolean') {
-      throw new Error('Headless browser must be a boolean');
-    }
-
-    if (config.crawlerType !== undefined && !['playwright', 'axios'].includes(config.crawlerType)) {
-      throw new Error('Crawler type must be either "playwright" or "axios"');
-    }
-
-    if (config.maxConcurrentTasks !== undefined && (typeof config.maxConcurrentTasks !== 'number' || config.maxConcurrentTasks <= 0)) {
-      throw new Error('Max concurrent tasks must be a positive number');
-    }
-
-    if (config.requestDelay !== undefined && (typeof config.requestDelay !== 'number' || config.requestDelay < 0)) {
-      throw new Error('Request delay must be a non-negative number');
-    }
-
-    if (config.batchSize !== undefined && (typeof config.batchSize !== 'number' || config.batchSize <= 0)) {
-      throw new Error('Batch size must be a positive number');
-    }
-
-    if (config.batchDelayMs !== undefined && (typeof config.batchDelayMs !== 'number' || config.batchDelayMs < 0)) {
-      throw new Error('Batch delay must be a non-negative number');
-    }
-
-    if (config.enableBatchProcessing !== undefined && typeof config.enableBatchProcessing !== 'boolean') {
-      throw new Error('Enable batch processing must be a boolean');
-    }
-
-    if (config.batchRetryLimit !== undefined && (typeof config.batchRetryLimit !== 'number' || config.batchRetryLimit < 0)) {
-      throw new Error('Batch retry limit must be a non-negative number');
+    // Log warnings if any
+    const warningMessages = Object.entries(validationResult.warnings);
+    if (warningMessages.length > 0) {
+      const warningText = warningMessages
+        .map(([field, warnings]) => `${field}: ${warnings.join(', ')}`)
+        .join('; ');
+      console.warn('Configuration validation warnings:', warningText);
     }
   }
 

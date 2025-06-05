@@ -37,6 +37,9 @@
     "**/dist-react/**",
     "**/test-legacy/**",
     "**/test-results/**",
-    "**/node_modules/**"
+    "**/node_modules/**",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.spec.ts"
   ],
 }

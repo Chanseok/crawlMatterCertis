@@ -17,6 +17,7 @@ import { crawlerEvents, updateRetryStatus } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';
 import { BrowserManager } from '../browser/BrowserManager.js';
 import { PageValidator } from '../utils/page-validator.js';
+import { CrawlingUtils } from '../../../shared/utils/CrawlingUtils.js';
 // import { delay } from '../utils/delay.js';
 
 // 모듈화된 클래스 가져오기
@@ -755,14 +756,14 @@ export class ProductListCollector {
       }
       const overallAttemptNumberForPagesInThisCycle = 1 + this.currentStageRetryCount;
       
-      // 지수 백오프 적용 (새로 추가)
+      // 지수 백오프 적용 (CrawlingUtils 사용)
       const baseDelay = 1000; // 기본 1초
       const retryDelay = Math.min(
         Math.pow(1.5, retryCycleIndex) * baseDelay + (Math.random() * 500),
         30000 // 최대 30초
       );
       console.log(`[ProductListCollector] 재시도 사이클 ${this.currentStageRetryCount}/${productListRetryCount} 시작 전 ${Math.round(retryDelay)}ms 대기`);
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      await CrawlingUtils.delay(retryDelay, () => this.abortController.signal.aborted);
 
       if (this.abortController.signal.aborted) {
         console.log(`[ProductListCollector] 재시도 중단: 중단 신호 감지됨`);
@@ -1044,7 +1045,7 @@ export class ProductListCollector {
             if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
               const pauseTime = 5000; // 5초 대기
               console.log(`[ProductListCollector] Detected ${consecutiveFailures} consecutive failures. Pausing for ${pauseTime}ms`);
-              await new Promise(resolve => setTimeout(resolve, pauseTime));
+              await CrawlingUtils.delay(pauseTime, () => this.abortController.signal.aborted);
               consecutiveFailures = 0; // 대기 후 카운터 리셋
             }
           }
@@ -1056,7 +1057,7 @@ export class ProductListCollector {
           if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
             const pauseTime = 5000; // 5초 대기
             console.log(`[ProductListCollector] Detected ${consecutiveFailures} consecutive failures. Pausing for ${pauseTime}ms`);
-            await new Promise(resolve => setTimeout(resolve, pauseTime));
+            await CrawlingUtils.delay(pauseTime, () => this.abortController.signal.aborted);
             consecutiveFailures = 0; // 대기 후 카운터 리셋
           }
           throw error;

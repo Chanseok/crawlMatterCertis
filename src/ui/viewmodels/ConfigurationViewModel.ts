@@ -14,6 +14,7 @@ import { makeObservable, observable, action, computed, runInAction, observable a
 import { crawlingStore } from '../stores/domain/CrawlingStore';
 import { logStore } from '../stores/domain/LogStore';
 import { SessionConfigManager } from '../services/domain/SessionConfigManager';
+import { ConfigurationValidator } from '../../shared/domain/ConfigurationValue';
 import { Logger, LogLevel } from '../../shared/utils/Logger';
 import type { UICrawlerConfig } from '../types/ui-types';
 import type { CrawlerConfig } from '../../../types';
@@ -421,63 +422,25 @@ export class ConfigurationViewModel extends BaseViewModel {
   
   /**
    * 전체 설정 유효성 검사 (상태 수정 없이 결과만 반환)
+   * Value Object pattern을 사용한 검증
    */
   validateConfiguration(): ValidationResult {
+    const validationResult = ConfigurationValidator.validateComplete(this.config);
+    
+    // ConfigurationValidator 결과를 UI 형식으로 변환
     const errors: Record<string, string> = {};
     const warnings: Record<string, string> = {};
-
-    // 페이지 범위 제한 검증
-    if (this.config.pageRangeLimit <= 0) {
-      errors.pageRangeLimit = 'Page range limit must be greater than 0';
-    }
-    if (this.config.pageRangeLimit > 1000) {
-      warnings.pageRangeLimit = 'Large page range may take a long time';
-    }
-
-    // 재시도 횟수 검증
-    if (this.config.productListRetryCount < 1) {
-      errors.productListRetryCount = 'Retry count must be at least 1';
-    }
-    if (this.config.productDetailRetryCount < 1) {
-      errors.productDetailRetryCount = 'Retry count must be at least 1';
-    }
-
-    // 동시성 설정 검증
-    if (this.config?.initialConcurrency !== undefined && this.config.initialConcurrency <= 0) {
-      errors.initialConcurrency = 'Initial concurrency must be greater than 0';
-    }
-    if (this.config?.detailConcurrency !== undefined && this.config.detailConcurrency <= 0) {
-      errors.detailConcurrency = 'Detail concurrency must be greater than 0';
-    }
-
-    // 타임아웃 설정 검증
-    if (this.config?.pageTimeoutMs !== undefined && this.config.pageTimeoutMs < 1000) {
-      errors.pageTimeoutMs = 'Page timeout must be at least 1000ms';
-    }
-    if (this.config?.productDetailTimeoutMs !== undefined && this.config.productDetailTimeoutMs < 1000) {
-      errors.productDetailTimeoutMs = 'Product detail timeout must be at least 1000ms';
-    }
-
-    // URL 검증
-    if (this.config?.baseUrl && !this.isValidUrl(this.config.baseUrl)) {
-      errors.baseUrl = 'Base URL is not valid';
-    }
-    if (this.config?.matterFilterUrl && !this.isValidUrl(this.config.matterFilterUrl)) {
-      errors.matterFilterUrl = 'Matter filter URL is not valid';
-    }
-
-    // 배치 설정 검증
-    if (this.config?.enableBatchProcessing) {
-      if (this.config?.batchSize !== undefined && this.config.batchSize <= 0) {
-        errors.batchSize = 'Batch size must be greater than 0';
-      }
-      if (this.config?.batchDelayMs !== undefined && this.config.batchDelayMs < 0) {
-        errors.batchDelayMs = 'Batch delay cannot be negative';
-      }
-    }
+    
+    Object.entries(validationResult.errors).forEach(([field, fieldErrors]) => {
+      errors[field] = fieldErrors.join('; ');
+    });
+    
+    Object.entries(validationResult.warnings).forEach(([field, fieldWarnings]) => {
+      warnings[field] = fieldWarnings.join('; ');
+    });
 
     return {
-      isValid: Object.keys(errors).length === 0,
+      isValid: validationResult.isValid,
       errors,
       warnings
     };
@@ -493,7 +456,7 @@ export class ConfigurationViewModel extends BaseViewModel {
   }
 
   /**
-   * 특정 필드 유효성 검사
+   * 특정 필드 유효성 검사 - Value Object pattern 사용
    */
   @action
   validateField<K extends keyof CrawlerConfig>(
@@ -505,20 +468,21 @@ export class ConfigurationViewModel extends BaseViewModel {
     // 기존 오류 제거
     delete errors[key as string];
     
-    // 필드별 유효성 검사
-    switch (key) {
-      case 'pageRangeLimit':
-        if ((value as number) <= 0) {
-          errors[key] = 'Page range limit must be greater than 0';
-        }
-        break;
-      case 'baseUrl':
-      case 'matterFilterUrl':
-        if (!this.isValidUrl(value as string)) {
-          errors[key] = 'URL is not valid';
-        }
-        break;
-      // 필요에 따라 다른 필드 검증 추가
+    // 부분 설정 객체 생성하여 검증
+    const partialConfig = { [key]: value } as Partial<CrawlerConfig>;
+    const validationResult = ConfigurationValidator.validatePartialUpdate(
+      this.config,
+      partialConfig
+    );
+    
+    // 해당 필드의 검증 결과 반영
+    if (!validationResult.isValid && validationResult.errors[key as string]) {
+      errors[key as string] = validationResult.errors[key as string].join('; ');
+    }
+    
+    // 경고 메시지도 콘솔에 출력
+    if (validationResult.warnings[key as string]) {
+      console.warn(`Configuration field ${key} warning:`, validationResult.warnings[key as string]);
     }
     
     this.validationErrors = errors;
@@ -527,18 +491,6 @@ export class ConfigurationViewModel extends BaseViewModel {
 
   // === Utility Methods ===
   
-  /**
-   * URL 유효성 검사
-   */
-  private isValidUrl(url: string): boolean {
-    try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   /**
    * 기본 설정 반환
    */
