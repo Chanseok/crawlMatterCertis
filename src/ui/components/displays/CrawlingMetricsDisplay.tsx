@@ -27,14 +27,12 @@ interface AnimatedDigits {
 
 interface CrawlingMetricsDisplayProps {
   progress: any;
-  calculatedPercentage: number;
   animatedValues: AnimatedValues;
   animatedDigits: AnimatedDigits;
 }
 
 export const CrawlingMetricsDisplay: React.FC<CrawlingMetricsDisplayProps> = ({
   progress,
-  calculatedPercentage,
   animatedValues,
   animatedDigits
 }) => {
@@ -54,19 +52,18 @@ export const CrawlingMetricsDisplay: React.FC<CrawlingMetricsDisplayProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Current Status Metrics */}
-      <div className="grid grid-cols-2 gap-3">
-        {renderMetricItem('진행률', calculatedPercentage, '%')}
-        {renderMetricItem('현재 페이지', animatedValues.currentPage, '페이지', animatedDigits.currentPage)}
-        {renderMetricItem('처리된 항목', animatedValues.processedItems, '개', animatedDigits.processedItems)}
-        {renderMetricItem('재시도', animatedValues.retryCount, '회', animatedDigits.retryCount)}
-      </div>
-
-      {/* Stage 2 Specific Metrics */}
+      {/* Stage 2 Specific Metrics - Only show new/updated items for stage 2 */}
       {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
         <div className="grid grid-cols-2 gap-3">
-          {renderMetricItem('신규 항목', animatedValues.newItems, '개', animatedDigits.newItems)}
-          {renderMetricItem('업데이트 항목', animatedValues.updatedItems, '개', animatedDigits.updatedItems)}
+          {renderMetricItem('신규', animatedValues.newItems, '개', animatedDigits.newItems)}
+          {renderMetricItem('업데이트', animatedValues.updatedItems, '개', animatedDigits.updatedItems)}
+        </div>
+      )}
+      
+      {/* Only show retry count if it's greater than 0 */}
+      {animatedValues.retryCount > 0 && (
+        <div className="grid grid-cols-1 gap-3">
+          {renderMetricItem('재시도', animatedValues.retryCount, '회', animatedDigits.retryCount)}
         </div>
       )}
     </div>

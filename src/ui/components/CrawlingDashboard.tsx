@@ -17,6 +17,7 @@ import { RetryStatusIndicator } from './RetryStatusIndicator';
 import { StageTransitionIndicator } from './StageTransitionIndicator';
 import { ValidationResultsPanel } from './ValidationResultsPanel';
 import { StoppingOverlay } from './StoppingOverlay';
+import { ConcurrentTasksVisualizer } from '../Charts';
 
 // Domain Store Hooks (Primary State Management)
 import { useCrawlingStore } from '../hooks/useCrawlingStore';
@@ -247,16 +248,44 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     if (status === 'running') {
       timer = setInterval(() => {
         setLocalTime(prev => {
-          // Simple remaining time calculation
-          const elapsedSeconds = (prev.elapsedTime + 1000) / 1000;
-          const currentPage = progress.currentPage || 0;
-          const estimatedTotalTime = elapsedSeconds > 0 && currentPage > 0 ? 
-            (elapsedSeconds / currentPage) * targetPageCount : 0;
-          const newRemainingTime = Math.max(0, (estimatedTotalTime - elapsedSeconds) * 1000);
+          const newElapsedTime = prev.elapsedTime + 1000;
+          const elapsedSeconds = newElapsedTime / 1000;
+          
+          let newRemainingTime = 0;
+          
+          if (viewModel.currentStage === 1) {
+            // 1단계: 페이지 기반 계산
+            let currentPage = progress.currentPage || 0;
+            let totalPages = progress.totalPages || 0;
+            
+            // concurrentTasks를 사용하여 올바른 값 확보
+            if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
+              const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
+              currentPage = Math.max(currentPage, successfulPages);
+              totalPages = Math.max(totalPages, concurrentTasks.length);
+            }
+            
+            // 진행률 기반 예상 남은 시간 계산
+            if (currentPage > 0 && totalPages > currentPage && elapsedSeconds > 0) {
+              const avgTimePerPage = elapsedSeconds / currentPage;
+              const remainingPages = totalPages - currentPage;
+              newRemainingTime = remainingPages * avgTimePerPage * 1000;
+            }
+          } else if (viewModel.currentStage === 2) {
+            // 2단계: 제품 기반 계산
+            const processedItems = progress.processedItems || 0;
+            const totalItems = progress.totalItems || 0;
+            
+            if (processedItems > 0 && totalItems > processedItems && elapsedSeconds > 0) {
+              const avgTimePerItem = elapsedSeconds / processedItems;
+              const remainingItems = totalItems - processedItems;
+              newRemainingTime = remainingItems * avgTimePerItem * 1000;
+            }
+          }
 
           return {
-            elapsedTime: prev.elapsedTime + 1000,
-            remainingTime: newRemainingTime
+            elapsedTime: newElapsedTime,
+            remainingTime: Math.max(0, newRemainingTime)
           };
         });
 
@@ -265,7 +294,8 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     } else {
       setLocalTime(prev => ({
         ...prev,
-        elapsedTime: progress.elapsedTime || prev.elapsedTime
+        elapsedTime: progress.elapsedTime || prev.elapsedTime,
+        remainingTime: progress.remainingTime || 0
       }));
     }
 
@@ -432,7 +462,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
         {/* Metrics Display */}
         <CrawlingMetricsDisplay 
           progress={progress}
-          calculatedPercentage={calculatedPercentage}
           animatedValues={viewModel.animatedValues}
           animatedDigits={animatedDigits}
         />
@@ -443,6 +472,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           formatDuration={formatDuration}
           isBeforeStatusCheck={isBeforeStatusCheck}
           isAfterStatusCheck={isAfterStatusCheck}
+          currentStage={viewModel.currentStage}
         />
 
         {/* Redesigned Batch Progress Section */}
@@ -610,47 +640,49 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           currentStep={viewModel.currentStep}
         />
 
-        {/* Enhanced Progress Display - Shows page progress for stage 1, validation for stage 1.5, product progress for stage 2 */}
-        {status !== 'idle' &&        (
-          (viewModel.currentStage === 1 && ((progress.totalPages && progress.totalPages > 0) || (Array.isArray(concurrentTasks) && concurrentTasks.length > 0))) ||
-          (viewModel.currentStage === 2)
-        ) && (
+        {/* Page-by-Page Status Visualization for Stage 1 - Using original ConcurrentTasksVisualizer */}
+        {status !== 'idle' && viewModel.currentStage === 1 && Array.isArray(concurrentTasks) && concurrentTasks.length > 0 && (
+          <div className="mt-4 space-y-4">
+            <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              1단계: 제품 목록 페이지 읽기
+            </h3>
+            
+            {/* Page Progress Display */}
+            <div className="flex justify-between items-center mb-2 px-3 py-1 bg-gray-50 dark:bg-gray-800 rounded">
+              <span className="text-sm text-gray-600 dark:text-gray-400">페이지 진행 상황:</span>
+              <div className="flex items-center">
+                <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                  {(() => {
+                    const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
+                    return successfulPages;
+                  })()}
+                </span>
+                <span className="text-sm text-gray-500 dark:text-gray-500 mx-1">/</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {concurrentTasks.length} 페이지
+                </span>
+              </div>
+            </div>
+            
+            {/* Original ConcurrentTasksVisualizer */}
+            <div className="relative">
+              <ConcurrentTasksVisualizer />
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced Progress Display - Shows product progress for stage 2 only */}
+        {status !== 'idle' && viewModel.currentStage === 2 && (
           <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div className="flex justify-between items-center mb-2">
               <span className="font-medium text-gray-900 dark:text-gray-100">
-                {(() => {
-                  const currentStage = viewModel.currentStage;
-                  if (currentStage === 2) {
-                    return '제품 데이터 검증 중...';
-                  } else {
-                    return `진행률 (${viewModel.currentStage}단계)`;
-                  }
-                })()}
+                제품 데이터 검증 중...
               </span>
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 {(() => {
-                  const currentStage = viewModel.currentStage;
-                  if (currentStage === 2) {
-                    // Stage 2: Show validation progress
-                    return '검증 중...';
-                  } else {
-                    // Stage 1: Enhanced page detection using concurrentTasks data for more accurate progress
-                    let currentPage = progress.currentPage || 0;
-                    let totalPages = progress.totalPages || 0;
-                    
-                    // If we have concurrentTasks data, use it for better accuracy
-                    if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
-                      const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
-                      currentPage = Math.max(currentPage, successfulPages);
-                      
-                      // If totalPages is not set but we have concurrent tasks, estimate from config
-                      if (totalPages === 0) {
-                        totalPages = config.batchSize || config.pageRangeLimit || 12;
-                      }
-                    }
-                    
-                    return `${currentPage} / ${totalPages}`;
-                  }
+                  const processedItems = progress.processedItems || 0;
+                  const totalItems = progress.totalItems || 0;
+                  return `${processedItems} / ${totalItems} 제품`;
                 })()}
               </span>
             </div>
@@ -663,29 +695,10 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
                 }`}
                 style={{ 
                   width: `${(() => {
-                    if (viewModel.currentStage === 2) {
-                      // Stage 2: Product-based percentage calculation
-                      const processedItems = progress.processedItems || 0;
-                      const totalItems = progress.totalItems || 0;
-                      const percentage = totalItems > 0 ? (processedItems / totalItems) * 100 : 0;
-                      return Math.min(100, Math.max(0, percentage));
-                    } else {
-                      // Stage 1: Enhanced page percentage calculation using concurrentTasks
-                      let currentPage = progress.currentPage || 0;
-                      let totalPages = progress.totalPages || 0;
-                      
-                      if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
-                        const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
-                        currentPage = Math.max(currentPage, successfulPages);
-                        
-                        if (totalPages === 0) {
-                          totalPages = config.batchSize || config.pageRangeLimit || 12;
-                        }
-                      }
-                      
-                      const percentage = totalPages > 0 ? (currentPage / totalPages) * 100 : 0;
-                      return Math.min(100, Math.max(0, percentage));
-                    }
+                    const processedItems = progress.processedItems || 0;
+                    const totalItems = progress.totalItems || 0;
+                    const percentage = totalItems > 0 ? (processedItems / totalItems) * 100 : 0;
+                    return Math.min(100, Math.max(0, percentage));
                   })()}%` 
                 }}
               />
@@ -694,68 +707,25 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
             <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
               <span>
                 {(() => {
-                  // Stage 1: Page progress percentage
-                  let currentPage = progress.currentPage || 0;
-                  let totalPages = progress.totalPages || 0;
-                  
-                  if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
-                    const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
-                    currentPage = Math.max(currentPage, successfulPages);
-                    
-                    if (totalPages === 0) {
-                      totalPages = config.batchSize || config.pageRangeLimit || 12;
-                    }
-                  }
-                  
-                  const percentage = totalPages > 0 ? (currentPage / totalPages) * 100 : 0;
-                  return Math.round(percentage);
-                })()}% 완료
+                  const processedItems = progress.processedItems || 0;
+                  const totalItems = progress.totalItems || 0;
+                  const percentage = totalItems > 0 ? (processedItems / totalItems) * 100 : 0;
+                  return `${Math.round(percentage)}% 완료`;
+                })()}
               </span>
               <span>
                 {(() => {
-                  // Stage 1: Remaining pages
-                  let currentPage = progress.currentPage || 0;
-                  let totalPages = progress.totalPages || 0;
-                  
-                  if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
-                    const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
-                    currentPage = Math.max(currentPage, successfulPages);
-                    
-                    if (totalPages === 0) {
-                      totalPages = config.batchSize || config.pageRangeLimit || 12;
-                    }
-                  }
-                  
-                  const remaining = totalPages - currentPage;
-                  return remaining > 0 ? `${remaining}페이지 남음` : '완료';
+                  const processedItems = progress.processedItems || 0;
+                  const totalItems = progress.totalItems || 0;
+                  const remaining = totalItems - processedItems;
+                  return remaining > 0 ? `${remaining}개 남음` : '완료';
                 })()}
               </span>
             </div>
           </div>
         )}
 
-        {/* Collection Results for Stage 2 */}
-        {viewModel.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
-          <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-md">
-            <div className="text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">수집 결과</div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">신규 항목</div>
-                <div className={`font-digital text-2xl font-bold text-green-600 dark:text-green-400 transition-all duration-300 ${animatedDigits.newItems ? 'animate-flip' : ''}`}>
-                  {Math.round(viewModel.animatedValues.newItems)}
-                  <span className="text-sm text-gray-500">개</span>
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">업데이트 항목</div>
-                <div className={`font-digital text-2xl font-bold text-blue-600 dark:text-blue-400 transition-all duration-300 ${animatedDigits.updatedItems ? 'animate-flip' : ''}`}>
-                  {Math.round(viewModel.animatedValues.updatedItems)}
-                  <span className="text-sm text-gray-500">개</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* 수집 결과 블록 제거 - CrawlingMetricsDisplay에서 통합 표시 */}
         
         {/* Validation Results Panel */}
         <ValidationResultsPanel 

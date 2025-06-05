@@ -15,11 +15,8 @@ interface CompactStatusDisplayProps {
   totalPages: number;
   processedItems: number;
   totalItems: number;
-  newItems?: number;
-  updatedItems?: number;
   percentage: number;
   elapsedTime?: number;
-  estimatedTimeRemaining?: number;
   message?: string;
 }
 
@@ -30,11 +27,8 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
   totalPages,
   processedItems,
   totalItems,
-  newItems = 0,
-  updatedItems = 0,
   percentage,
   elapsedTime,
-  estimatedTimeRemaining,
   message
 }) => {
   const formatTime = (ms?: number): string => {
@@ -104,36 +98,12 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
           )}
         </div>
 
-        {/* Right section: Time and statistics */}
+        {/* Right section: Essential info only */}
         <div className="flex items-center space-x-4">
           {crawlingStatus === 'running' && (
-            <>
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-500 dark:text-gray-400">경과:</span>
-                <span className="font-mono text-sm">{formatTime(elapsedTime)}</span>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-500 dark:text-gray-400">남은 시간:</span>
-                <span className="font-mono text-sm">{formatTime(estimatedTimeRemaining)}</span>
-              </div>
-            </>
-          )}
-          
-          {(newItems > 0 || updatedItems > 0) && (
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-1">
-                <span className="text-xs text-gray-500 dark:text-gray-400">신규:</span>
-                <span className="text-xs font-semibold text-green-600 dark:text-green-400">
-                  {newItems}
-                </span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <span className="text-xs text-gray-500 dark:text-gray-400">업데이트:</span>
-                <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-                  {updatedItems}
-                </span>
-              </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-500 dark:text-gray-400">경과:</span>
+              <span className="font-mono text-sm">{formatTime(elapsedTime)}</span>
             </div>
           )}
         </div>

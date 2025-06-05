@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, SetStateAction } from 'react';
 import { observer } from 'mobx-react-lite';
 import { ExpandableSection } from '../ExpandableSection';
 import CrawlingDashboard from '../CrawlingDashboard';
-import PageProgressDisplay from '../PageProgressDisplay';
 import { ConcurrentTasksVisualizer } from '../../Charts';
 import StatusCheckAnimation from '../StatusCheckAnimation';
 import { CompactStatusDisplay } from '../CompactStatusDisplay';
@@ -87,11 +86,8 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
           totalPages={progress.totalPages || 0}
           processedItems={progress.processedItems || 0}
           totalItems={progress.totalItems || productsLength}
-          newItems={progress.newItems || 0}
-          updatedItems={progress.updatedItems || 0}
           percentage={progress.percentage || 0}
           elapsedTime={progress.elapsedTime || 0}
-          estimatedTimeRemaining={progress.remainingTime || 0}
           message={progress.message}
         />
       </div>
@@ -113,19 +109,6 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
       
       {/* 작업 시각화 */}
       <div className="mt-6 transition-all duration-500 ease-in-out">
-        {/* 1단계: 제품 목록 페이지 수집 시각화 */}
-        {(progress.currentStage === 1 || (progress.currentStage === 0 && crawlingStatus === 'running')) && (
-          <div className="space-y-4">
-            <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">
-              1단계: 제품 목록 페이지 읽기
-            </h3>
-            <PageProgressDisplay />
-            <div className="relative">
-              <ConcurrentTasksVisualizer />
-            </div>
-          </div>
-        )}
-        
         {/* 2단계: 제품 상세정보 수집 시각화 */}
         {progress.currentStage === 2 && (
           <div className="space-y-4">
