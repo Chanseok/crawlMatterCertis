@@ -36,19 +36,38 @@ export const CrawlingMetricsDisplay: React.FC<CrawlingMetricsDisplayProps> = ({
   animatedValues,
   animatedDigits
 }) => {
-  const renderMetricItem = (label: string, value: any, unit: string = '', isAnimated: boolean = false) => (
-    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500 dark:text-gray-400">{label}: </span>
-        <span className={`text-lg font-bold text-gray-800 dark:text-gray-200 transition-all duration-300 ${
-          isAnimated ? 'animate-flip' : ''
-        }`}>
-          {typeof value === 'number' ? Math.round(value).toLocaleString() : value}
-          {unit && <span className="text-sm text-gray-500 ml-1">{unit}</span>}
-        </span>
+  const renderMetricItem = (label: string, value: any, unit: string = '', isAnimated: boolean = false) => {
+    // 1단계와 3단계(완료)에서는 보라색 테마 사용, 2단계는 기본 회색 테마 유지
+    const isPurpleTheme = progress.currentStage === 1 || progress.currentStage === 3 || progress.status === 'completed';
+    
+    return (
+      <div className={`${
+        isPurpleTheme 
+          ? 'bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800' 
+          : 'bg-gray-50 dark:bg-gray-700'
+      } rounded-lg p-3`}>
+        <div className="flex items-center justify-between">
+          <span className={`text-xs ${
+            isPurpleTheme 
+              ? 'text-purple-600 dark:text-purple-400' 
+              : 'text-gray-500 dark:text-gray-400'
+          }`}>{label}: </span>
+          <span className={`text-lg font-bold ${
+            isPurpleTheme 
+              ? 'text-purple-800 dark:text-purple-200' 
+              : 'text-gray-800 dark:text-gray-200'
+          } transition-all duration-300 ${isAnimated ? 'animate-flip' : ''}`}>
+            {typeof value === 'number' ? Math.round(value).toLocaleString() : value}
+            {unit && <span className={`text-sm ml-1 ${
+              isPurpleTheme 
+                ? 'text-purple-500 dark:text-purple-400' 
+                : 'text-gray-500 dark:text-gray-400'
+            }`}>{unit}</span>}
+          </span>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-4">

@@ -15,6 +15,10 @@ export const ProgressBarDisplay: React.FC = observer(() => {
   const currentPage = progress?.currentPage || 0;
   const totalPages = progress?.totalPages || 0;
   const currentStep = progress?.currentStep || '';
+  const currentStage = progress?.currentStage || 0;
+  
+  // 1단계와 3단계(완료)에서는 보라색 테마 사용
+  const isPurpleTheme = currentStage === 1 || currentStage === 3 || status === 'completed';
   
   // Debug logging
   console.log('[ProgressBarDisplay] Rendering with:', {
@@ -23,16 +27,26 @@ export const ProgressBarDisplay: React.FC = observer(() => {
     currentPage,
     totalPages,
     currentStep,
+    currentStage,
+    isPurpleTheme,
     progressObject: progress
   });
   
   return (
     <div className="mb-4">
       <div className="flex justify-between items-center mb-2">
-        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <span className={`text-sm font-medium ${
+          isPurpleTheme 
+            ? 'text-purple-700 dark:text-purple-300' 
+            : 'text-gray-700 dark:text-gray-300'
+        }`}>
           진행률
         </span>
-        <span className="text-sm text-gray-500 dark:text-gray-400">
+        <span className={`text-sm ${
+          isPurpleTheme 
+            ? 'text-purple-500 dark:text-purple-400' 
+            : 'text-gray-500 dark:text-gray-400'
+        }`}>
           {Math.round(percentage)}%
         </span>
       </div>
@@ -40,8 +54,9 @@ export const ProgressBarDisplay: React.FC = observer(() => {
       <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
         <div
           className={`h-2.5 rounded-full transition-all duration-300 ${
-            status === 'completed' ? 'bg-green-500' : 
-            status === 'error' ? 'bg-red-500' : 'bg-blue-500'
+            status === 'completed' ? 'bg-purple-500' : 
+            status === 'error' ? 'bg-red-500' : 
+            isPurpleTheme ? 'bg-purple-500' : 'bg-blue-500'
           }`}
           style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}
         />

@@ -60,10 +60,10 @@ export const StageTransitionIndicator: React.FC<StageTransitionIndicatorProps> =
   // 단계 색상 계산
   const getStageColor = (stageValue: number): string => {
     switch(stageValue) {
-      case 33: return 'bg-indigo-500 dark:bg-indigo-600';
+      case 33: return 'bg-purple-500 dark:bg-purple-600'; // 1단계를 보라색으로 변경
       case 50: return 'bg-purple-500 dark:bg-purple-600';
       case 66: return 'bg-teal-500 dark:bg-teal-600';
-      case 100: return 'bg-green-500 dark:bg-green-600';
+      case 100: return 'bg-purple-500 dark:bg-purple-600'; // 3단계(완료)도 보라색으로 변경
       default: return 'bg-gray-300 dark:bg-gray-700';
     }
   };
