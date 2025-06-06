@@ -3,7 +3,6 @@ import { observer } from 'mobx-react-lite';
 import { useDatabaseStore } from '../hooks';
 import type { MatterProduct } from '../../../types';
 import { format } from 'date-fns';
-import { intToHexDisplay, jsonArrayToHexDisplay } from '../utils/hexDisplayUtils';
 
 // 최적화된 LocalDBTab 컴포넌트 - 전체 조회 방식
 export const LocalDBTab: React.FC = observer(() => {
@@ -87,11 +86,27 @@ export const LocalDBTab: React.FC = observer(() => {
     }
 
     const query = searchQuery.toLowerCase();
-    const filtered = allProducts.filter(product =>
-      (product.manufacturer?.toLowerCase().includes(query)) ||
-      (product.model?.toLowerCase().includes(query)) ||
-      (product.certificateId?.toLowerCase().includes(query))
-    );
+    const filtered = allProducts.filter(product => {
+      // 기본 필드 검색
+      const manufacturerMatch = product.manufacturer?.toLowerCase().includes(query);
+      const modelMatch = product.model?.toLowerCase().includes(query);
+      
+      // applicationCategories 검색 (ReadonlyArray<string>)
+      let applicationCategoriesMatch = false;
+      if (product.applicationCategories && Array.isArray(product.applicationCategories)) {
+        applicationCategoriesMatch = product.applicationCategories.some(cat => 
+          typeof cat === 'string' && cat.toLowerCase().includes(query)
+        );
+      }
+      
+      // transportInterface 검색 (string)
+      let transportInterfaceMatch = false;
+      if (product.transportInterface && typeof product.transportInterface === 'string') {
+        transportInterfaceMatch = product.transportInterface.toLowerCase().includes(query);
+      }
+      
+      return manufacturerMatch || modelMatch || applicationCategoriesMatch || transportInterfaceMatch;
+    });
 
     console.log(`LocalDBTab: Real-time search filtered ${filtered.length} products from ${allProducts.length}`);
     return filtered;
@@ -398,7 +413,7 @@ export const LocalDBTab: React.FC = observer(() => {
                 <div className="flex-1">
                   <input
                     type="text"
-                    placeholder="실시간 검색: 제조사, 모델명, 인증 ID..."
+                    placeholder="실시간 검색: 제조사, 모델명, Application Categories, Transport Interface..."
                     value={searchQuery}
                     onChange={handleSearchChange}
                     className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -421,17 +436,15 @@ export const LocalDBTab: React.FC = observer(() => {
                     <th className="px-2 py-3 w-16 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">No.</th>
                     <th className="px-1 py-3 w-20 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">제조사</th>
                     <th className="px-2 py-3 w-48 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">모델명</th>
-                    <th className="px-2 py-3 w-20 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">VID</th>
-                    <th className="px-2 py-3 w-20 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">PID</th>
-                    <th className="px-2 py-3 w-24 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Device Type</th>
-                    <th className="px-2 py-3 w-32 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">인증 ID</th>
+                    <th className="px-2 py-3 w-32 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Application Categories</th>
+                    <th className="px-2 py-3 w-32 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Transport Interface</th>
                     <th className="px-2 py-3 w-20 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">페이지 ID</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {displayProducts.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-4 whitespace-nowrap text-center">
+                      <td colSpan={6} className="px-6 py-4 whitespace-nowrap text-center">
                         <div className="text-sm text-gray-500 dark:text-gray-400">
                           {searchQuery ? '검색 결과가 없습니다.' : '제품 정보가 없습니다. 크롤링을 통해 데이터를 수집해주세요.'}
                         </div>
@@ -460,24 +473,18 @@ export const LocalDBTab: React.FC = observer(() => {
                             {product.model || '-'}
                           </a>
                         </td>
-                        <td className="px-2 py-4 w-20 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">
-                            {intToHexDisplay(typeof product.vid === 'number' ? product.vid : (typeof product.vid === 'string' ? parseInt(product.vid, 10) : undefined))}
-                          </div>
-                        </td>
-                        <td className="px-2 py-4 w-20 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">
-                            {intToHexDisplay(typeof product.pid === 'number' ? product.pid : (typeof product.pid === 'string' ? parseInt(product.pid, 10) : undefined))}
-                          </div>
-                        </td>
-                        <td className="px-2 py-4 w-24 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-gray-200 font-mono truncate">
-                            {jsonArrayToHexDisplay(product.primaryDeviceTypeId as string)}
+                        <td className="px-2 py-4 w-32 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 dark:text-gray-200 truncate">
+                            {Array.isArray(product.applicationCategories) 
+                              ? product.applicationCategories.join(', ') 
+                              : (product.applicationCategories || '-')}
                           </div>
                         </td>
                         <td className="px-2 py-4 w-32 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-gray-200 truncate">
-                            {product.certificateId || '-'}
+                            {Array.isArray(product.transportInterface) 
+                              ? product.transportInterface.join(', ') 
+                              : (product.transportInterface || '-')}
                           </div>
                         </td>
                         <td className="px-2 py-4 w-20 whitespace-nowrap">
