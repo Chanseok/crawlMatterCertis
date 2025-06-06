@@ -84,6 +84,8 @@ const options: {
     bottom?: number;
     debug?: boolean;
     deleteNullPageIds?: boolean;
+    gapAnalysis?: boolean;
+    gapRange?: boolean;
 } = {};
 
 // 간단한 인수 파싱 로직
@@ -108,6 +110,10 @@ for (const arg of args) {
         options.debug = true;
     } else if (arg === '--delete-null-pageids') {
         options.deleteNullPageIds = true;
+    } else if (arg === '--gap-analysis') {
+        options.gapAnalysis = true;
+    } else if (arg === '--gap-range') {
+        options.gapRange = true;
     } else if (arg === '--help') {
         showHelp();
         process.exit(0);
@@ -128,6 +134,8 @@ function showHelp(): void {
   npm run query-db -- --top=<숫자> --bottom=<숫자>  : 상위 및 하위 레코드를 모두 조회합니다.
   npm run query-db -- --debug  : 데이터베이스 구조 및 샘플 데이터를 상세히 분석합니다.
   npm run query-db -- --delete-null-pageids  : pageId가 null인 레코드를 모두 삭제합니다.
+  npm run query-db -- --gap-analysis  : 전체 데이터베이스의 제품 갭을 분석합니다.
+  npm run query-db -- --gap-range --startPage=<숫자> --endPage=<숫자>  : 지정된 페이지 범위의 제품 갭을 분석합니다.
   npm run query-db -- --help  : 이 도움말을 표시합니다.
 
 참고: 페이지 번호는 1부터 시작하는 UI 표시와 같습니다. (내부 pageId는 0부터 시작)
@@ -682,6 +690,225 @@ async function deleteNullPageIds(): Promise<void> {
     }
 }
 
+// 갭 탐지 관련 인터페이스 추가
+interface PageGapInfo {
+    pageId: number;
+    actualCount: number;
+    expectedCount: number;
+    missingIndices: number[];
+}
+
+interface GapAnalysisResult {
+    totalPages: number;
+    completePages: number;
+    partialPages: number;
+    emptyPages: number;
+    totalMissingProducts: number;
+    gapDetails: PageGapInfo[];
+}
+
+// 갭 분석 함수
+async function analyzeProductGaps(db: sqlite3.Database): Promise<GapAnalysisResult> {
+    console.log('\n데이터베이스 갭 분석 중...\n');
+    
+    return new Promise((resolve, reject) => {
+        // 먼저 최대 pageId 가져오기
+        db.get(`SELECT MAX(pageId) as maxPageId FROM products`, (err, row: { maxPageId: number | null }) => {
+            if (err) {
+                return reject(err);
+            }
+            
+            const maxPageId = row.maxPageId || 0;
+            const expectedProductsPerPage = 12;
+            
+            // 각 페이지별 제품 수와 인덱스 정보 가져오기
+            db.all(`
+                SELECT 
+                    pageId, 
+                    COUNT(*) as actualCount,
+                    GROUP_CONCAT(indexInPage ORDER BY indexInPage) as indices
+                FROM products 
+                WHERE pageId IS NOT NULL AND indexInPage IS NOT NULL
+                GROUP BY pageId 
+                ORDER BY pageId
+            `, (err, rows: Array<{ pageId: number; actualCount: number; indices: string }>) => {
+                if (err) {
+                    return reject(err);
+                }
+                
+                const pageData = new Map<number, { actualCount: number; indices: Set<number> }>();
+                
+                // 수집된 데이터 정리
+                rows.forEach(row => {
+                    const indices = new Set(
+                        row.indices.split(',').map(i => parseInt(i.trim())).filter(i => !isNaN(i))
+                    );
+                    pageData.set(row.pageId, {
+                        actualCount: row.actualCount,
+                        indices
+                    });
+                });
+                
+                const gapDetails: PageGapInfo[] = [];
+                let totalMissingProducts = 0;
+                let completePages = 0;
+                let partialPages = 0;
+                let emptyPages = 0;
+                
+                // 0부터 maxPageId까지 모든 페이지 분석
+                for (let pageId = 0; pageId <= maxPageId; pageId++) {
+                    const pageInfo = pageData.get(pageId);
+                    const actualCount = pageInfo?.actualCount || 0;
+                    const expectedCount = expectedProductsPerPage;
+                    
+                    if (actualCount === 0) {
+                        emptyPages++;
+                        totalMissingProducts += expectedCount;
+                        
+                        gapDetails.push({
+                            pageId,
+                            actualCount: 0,
+                            expectedCount,
+                            missingIndices: Array.from({ length: expectedCount }, (_, i) => i)
+                        });
+                    } else if (actualCount < expectedCount) {
+                        partialPages++;
+                        const existingIndices = pageInfo?.indices || new Set();
+                        const missingIndices = Array.from({ length: expectedCount }, (_, i) => i)
+                            .filter(i => !existingIndices.has(i));
+                        
+                        totalMissingProducts += missingIndices.length;
+                        
+                        gapDetails.push({
+                            pageId,
+                            actualCount,
+                            expectedCount,
+                            missingIndices
+                        });
+                    } else {
+                        completePages++;
+                    }
+                }
+                
+                const result: GapAnalysisResult = {
+                    totalPages: maxPageId + 1,
+                    completePages,
+                    partialPages,
+                    emptyPages,
+                    totalMissingProducts,
+                    gapDetails: gapDetails.filter(gap => gap.missingIndices.length > 0)
+                };
+                
+                resolve(result);
+            });
+        });
+    });
+}
+
+// 갭 분석 결과 출력
+function printGapAnalysis(analysis: GapAnalysisResult): void {
+    console.log('==================== 제품 수집 갭 분석 ====================');
+    console.log(`총 페이지 수: ${analysis.totalPages}`);
+    console.log(`완전한 페이지: ${analysis.completePages}개`);
+    console.log(`부분적 누락 페이지: ${analysis.partialPages}개`);
+    console.log(`완전히 비어있는 페이지: ${analysis.emptyPages}개`);
+    console.log(`총 누락 제품 수: ${analysis.totalMissingProducts}개`);
+    
+    if (analysis.gapDetails.length > 0) {
+        console.log('\n상세 갭 정보:');
+        console.log('PageID | 실제수 | 예상수 | 누락 인덱스');
+        console.log('-------|--------|--------|--------------------------------------------------');
+        
+        analysis.gapDetails.forEach(gap => {
+            const pageId = gap.pageId.toString().padStart(6);
+            const actual = gap.actualCount.toString().padStart(6);
+            const expected = gap.expectedCount.toString().padStart(6);
+            const missing = gap.missingIndices.length > 10 
+                ? `[${gap.missingIndices.slice(0, 10).join(', ')}...]` 
+                : `[${gap.missingIndices.join(', ')}]`;
+            
+            console.log(`${pageId} | ${actual} | ${expected} | ${missing}`);
+        });
+    }
+    
+    console.log('========================================================\n');
+}
+
+// 특정 pageId 범위의 갭 분석
+async function analyzePageRangeGaps(
+    db: sqlite3.Database, 
+    startPageId: number, 
+    endPageId: number
+): Promise<void> {
+    console.log(`\nPageID ${startPageId}-${endPageId} 범위 갭 분석 중...\n`);
+    
+    return new Promise((resolve, reject) => {
+        db.all(`
+            SELECT 
+                pageId, 
+                COUNT(*) as actualCount,
+                GROUP_CONCAT(indexInPage ORDER BY indexInPage) as indices
+            FROM products 
+            WHERE pageId >= ? AND pageId <= ? AND pageId IS NOT NULL AND indexInPage IS NOT NULL
+            GROUP BY pageId 
+            ORDER BY pageId
+        `, [startPageId, endPageId], (err, rows: Array<{ pageId: number; actualCount: number; indices: string }>) => {
+            if (err) {
+                return reject(err);
+            }
+            
+            const expectedProductsPerPage = 12;
+            const pageData = new Map<number, { actualCount: number; indices: Set<number> }>();
+            
+            rows.forEach(row => {
+                const indices = new Set(
+                    row.indices.split(',').map(i => parseInt(i.trim())).filter(i => !isNaN(i))
+                );
+                pageData.set(row.pageId, {
+                    actualCount: row.actualCount,
+                    indices
+                });
+            });
+            
+            console.log('PageID | 실제수 | 예상수 | 상태 | 누락 인덱스');
+            console.log('-------|--------|--------|------|--------------------------------------------------');
+            
+            for (let pageId = startPageId; pageId <= endPageId; pageId++) {
+                const pageInfo = pageData.get(pageId);
+                const actualCount = pageInfo?.actualCount || 0;
+                const expectedCount = expectedProductsPerPage;
+                
+                let status = '';
+                let missingInfo = '';
+                
+                if (actualCount === 0) {
+                    status = '완전누락';
+                    missingInfo = '[0,1,2,3,4,5,6,7,8,9,10,11]';
+                } else if (actualCount < expectedCount) {
+                    status = '부분누락';
+                    const existingIndices = pageInfo?.indices || new Set();
+                    const missing = Array.from({ length: expectedCount }, (_, i) => i)
+                        .filter(i => !existingIndices.has(i));
+                    missingInfo = `[${missing.join(', ')}]`;
+                } else {
+                    status = '완전';
+                    missingInfo = '-';
+                }
+                
+                const pageIdStr = pageId.toString().padStart(6);
+                const actualStr = actualCount.toString().padStart(6);
+                const expectedStr = expectedCount.toString().padStart(6);
+                const statusStr = status.padEnd(6);
+                
+                console.log(`${pageIdStr} | ${actualStr} | ${expectedStr} | ${statusStr} | ${missingInfo}`);
+            }
+            
+            console.log('');
+            resolve();
+        });
+    });
+}
+
 // 메인 함수
 async function main() {
     try {
@@ -694,6 +921,13 @@ async function main() {
             await getMaxPageId();
         } else if (options.deleteNullPageIds) {
             await deleteNullPageIds();
+        } else if (options.gapAnalysis) {
+            // 전체 갭 분석
+            const analysis = await analyzeProductGaps(db);
+            printGapAnalysis(analysis);
+        } else if (options.gapRange && options.startPage !== undefined && options.endPage !== undefined) {
+            // 특정 범위 갭 분석
+            await analyzePageRangeGaps(db, options.endPage, options.startPage);
         } else if (options.startPage !== undefined && options.endPage !== undefined) {
             if (options.count) {
                 await countProductsByPageRange(options.startPage, options.endPage);

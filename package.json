@@ -18,6 +18,7 @@
     "test:ui": "node --experimental-modules scripts/test-ui.js",
     "populate-dev-db": "ts-node-esm ./scripts/populateDevDb.ts",
     "query-db": "ts-node-esm ./scripts/queryDb.ts",
+    "gap-collect": "ts-node-esm ./scripts/gapCollectionIntegration.ts",
     "convert-device-data": "ts-node-esm ./scripts/convertDeviceData.ts",
     "merge-device-data": "ts-node-esm ./scripts/mergeDeviceFiles.ts",
     "merge-matter-devices": "ts-node-esm ./scripts/mergeMatterDevFiles.ts",

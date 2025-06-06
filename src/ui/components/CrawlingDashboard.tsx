@@ -1,6 +1,6 @@
 console.log('[DASHBOARD] 🚀 CrawlingDashboard.tsx module loaded');
 
-import React, { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
 import { observer } from 'mobx-react-lite';
 import type { CrawlingStatusSummary } from '../../../types'; // Only import what's used
 
