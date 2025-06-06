@@ -460,6 +460,59 @@ export interface CrawlerConfig {
 
 /**
  * =====================================================
+ * GAP DETECTION TYPES
+ * =====================================================
+ */
+
+/**
+ * 페이지 갭 정보
+ */
+export interface PageGap {
+    readonly pageId: number;
+    readonly missingIndices: ReadonlyArray<number>;
+    readonly expectedCount: number;
+    readonly actualCount: number;
+}
+
+/**
+ * 갭 탐지 결과
+ */
+export interface GapDetectionResult {
+    readonly totalMissingProducts: number;
+    readonly missingPages: ReadonlyArray<PageGap>;
+    readonly completelyMissingPageIds: ReadonlyArray<number>;
+    readonly partiallyMissingPageIds: ReadonlyArray<number>;
+    readonly summary: {
+        readonly totalExpectedProducts: number;
+        readonly totalActualProducts: number;
+        readonly completionPercentage: number;
+    };
+}
+
+/**
+ * 갭 수집 옵션
+ */
+export interface GapCollectionOptions {
+    readonly maxConcurrentPages?: number;
+    readonly delayBetweenPages?: number;
+    readonly skipCompletePages?: boolean;
+    readonly prioritizePartialPages?: boolean;
+}
+
+/**
+ * 갭 수집 결과
+ */
+export interface GapCollectionResult {
+    readonly collected: number;
+    readonly failed: number;
+    readonly skipped: number;
+    readonly collectedPages: ReadonlyArray<number>;
+    readonly failedPages: ReadonlyArray<number>;
+    readonly errors: ReadonlyArray<string>;
+}
+
+/**
+ * =====================================================
  * CONCURRENT PROCESSING TYPES
  * =====================================================
  */
@@ -545,6 +598,8 @@ export interface MethodParamsMapping {
     readonly 'getVendors': void;
     readonly 'testBatchUI': { readonly batchCount?: number; readonly delayMs?: number };
     readonly 'getConfigPath': void;
+    readonly 'detectGaps': { readonly config?: CrawlerConfig };
+    readonly 'collectGaps': { readonly gapResult: GapDetectionResult; readonly options?: GapCollectionOptions };
 }
 
 /**
@@ -593,6 +648,16 @@ export interface MethodReturnMapping {
     readonly 'getConfigPath': {
         readonly success: boolean;
         readonly configPath?: string;
+        readonly error?: string;
+    };
+    readonly 'detectGaps': {
+        readonly success: boolean;
+        readonly result?: GapDetectionResult;
+        readonly error?: string;
+    };
+    readonly 'collectGaps': {
+        readonly success: boolean;
+        readonly result?: GapCollectionResult;
         readonly error?: string;
     };
 }
@@ -665,6 +730,8 @@ export interface IElectronAPI extends IPlatformAPI {
     readonly fetchAndUpdateVendors: () => Promise<MethodReturnMapping['fetchAndUpdateVendors']>;
     readonly getVendors: () => Promise<MethodReturnMapping['getVendors']>;
     readonly testBatchUI: (params: MethodParamsMapping['testBatchUI']) => Promise<MethodReturnMapping['testBatchUI']>;
+    readonly detectGaps: (params: MethodParamsMapping['detectGaps']) => Promise<MethodReturnMapping['detectGaps']>;
+    readonly collectGaps: (params: MethodParamsMapping['collectGaps']) => Promise<MethodReturnMapping['collectGaps']>;
 }
 
 /**

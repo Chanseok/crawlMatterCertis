@@ -73,7 +73,11 @@ const IPC_CHANNELS = {
     GET_VENDORS: 'getVendors',
     
     // 배치 처리 UI 테스트 채널 추가
-    TEST_BATCH_UI: 'testBatchUI'
+    TEST_BATCH_UI: 'testBatchUI',
+    
+    // Gap Detection 관련 채널 추가
+    DETECT_GAPS: 'detectGaps',
+    COLLECT_GAPS: 'collectGaps'
 };
 
 app.on('ready', async () => {
@@ -637,6 +641,85 @@ app.on('ready', async () => {
             return {
                 success: false,
                 error: String(error)
+            };
+        }
+    });
+    
+    // Gap Detection 핸들러
+    ipcMain.handle(IPC_CHANNELS.DETECT_GAPS, async (_event, args) => {
+        log.info('[IPC] detectGaps called with args:', args);
+        try {
+            const { GapDetector } = await import('./crawler/gap-detector.js');
+            const { config } = args || {};
+            
+            const result = await GapDetector.detectMissingProducts(config);
+            
+            log.info(`[IPC] Gap detection complete - ${result.totalMissingProducts} missing products found`);
+            
+            return {
+                success: true,
+                result
+            };
+        } catch (error) {
+            log.error('[IPC] Error detecting gaps:', error);
+            return {
+                success: false,
+                error: String(error)
+            };
+        }
+    });
+    
+    ipcMain.handle(IPC_CHANNELS.COLLECT_GAPS, async (_event, args) => {
+        log.info('[IPC] collectGaps called with args:', args);
+        try {
+            const { GapCollector } = await import('./crawler/gap-collector.js');
+            const { BrowserManager } = await import('./crawler/browser/BrowserManager.js');
+            const { PageCrawler } = await import('./crawler/tasks/page-crawler.js');
+            const { gapResult, options } = args || {};
+            
+            if (!gapResult) {
+                throw new Error('Gap detection result is required for collection');
+            }
+            
+            // 실제 크롤러 시스템 초기화
+            const config = configManager.getConfig();
+            const browserManager = new BrowserManager(config);
+            
+            try {
+                await browserManager.initialize();
+                
+                if (!await browserManager.isValid()) {
+                    throw new Error('Failed to initialize browser manager for gap collection');
+                }
+                
+                // PageCrawler 인스턴스 생성 (실제 크롤링 수행을 위해)
+                const pageCrawler = new PageCrawler(browserManager, config);
+                
+                log.info(`[IPC] Starting gap collection with ${gapResult.totalMissingProducts} missing products`);
+                
+                // 실제 Gap Collection 수행
+                const result = await GapCollector.collectMissingProducts(gapResult, pageCrawler, options);
+                
+                log.info(`[IPC] Gap collection complete - ${result.collected} products collected, ${result.failed} failed`);
+                
+                return {
+                    success: true,
+                    result
+                };
+                
+            } finally {
+                // 브라우저 리소스 정리
+                await browserManager.close();
+            }
+            
+        } catch (error) {
+            log.error('[IPC] Error collecting gaps:', error);
+            return {
+                success: false,
+                error: {
+                    message: error instanceof Error ? error.message : String(error),
+                    code: 'GAP_COLLECTION_FAILED'
+                }
             };
         }
     });

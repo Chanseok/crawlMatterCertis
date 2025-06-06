@@ -4,6 +4,7 @@ import { CrawlingService } from './domain/CrawlingService';
 import { VendorService } from './domain/VendorService';
 import { ExportService } from './domain/ExportService';
 import { ConfigurationService } from './domain/ConfigurationService';
+import { GapDetectionService } from './domain/GapDetectionService';
 import { CrawlingWorkflowService } from './composite/CrawlingWorkflowService';
 import { DevToolsService } from './development/DevToolsService';
 import { IPCService } from './IPCService';
@@ -24,6 +25,7 @@ export class ServiceFactory {
   private vendorService?: VendorService;
   private exportService?: ExportService;
   private configurationService?: ConfigurationService;
+  private gapDetectionService?: GapDetectionService;
   private crawlingWorkflowService?: CrawlingWorkflowService;
   private devToolsService?: DevToolsService;
   private ipcService?: IPCService;
@@ -100,6 +102,16 @@ export class ServiceFactory {
       this.configurationService = ConfigurationService.getInstance();
     }
     return this.configurationService;
+  }
+
+  /**
+   * Get the Gap Detection Service instance
+   */
+  public getGapDetectionService(): GapDetectionService {
+    if (!this.gapDetectionService) {
+      this.gapDetectionService = GapDetectionService.getInstance();
+    }
+    return this.gapDetectionService;
   }
 
   /**

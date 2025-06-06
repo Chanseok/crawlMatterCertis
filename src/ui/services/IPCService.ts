@@ -778,6 +778,40 @@ export class IPCService {
       throw error;
     }
   }
+
+  // === Gap Detection 관련 ===
+
+  /**
+   * 갭 탐지 실행
+   */
+  public async detectGaps(params: any): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.detectGaps(params);
+    } catch (error) {
+      console.error('[IPCService] Failed to detect gaps:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 갭 수집 실행
+   */
+  public async collectGaps(params: any): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      return await window.electron.collectGaps(params);
+    } catch (error) {
+      console.error('[IPCService] Failed to collect gaps:', error);
+      throw error;
+    }
+  }
 }
 
 // 싱글톤 인스턴스 생성

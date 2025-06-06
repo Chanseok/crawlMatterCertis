@@ -5,6 +5,7 @@ import { DatabaseViewModel } from '../viewmodels/DatabaseViewModel';
 import { LogViewModel } from '../viewmodels/LogViewModel';
 import { UIStateViewModel } from '../viewmodels/UIStateViewModel';
 import { StatusTabViewModel } from '../viewmodels/StatusTabViewModel';
+import { GapDetectionViewModel } from '../viewmodels/GapDetectionViewModel';
 
 import { logStore } from '../stores/domain/LogStore';
 import { databaseStore } from '../stores/domain/DatabaseStore';
@@ -20,6 +21,7 @@ export interface ViewModels {
   logViewModel: LogViewModel;
   uiStateViewModel: UIStateViewModel;
   statusTabViewModel: StatusTabViewModel;
+  gapDetectionViewModel: GapDetectionViewModel;
 }
 
 /**
@@ -52,6 +54,7 @@ export const ViewModelProvider: React.FC<ViewModelProviderProps> = ({ children }
     );
     const uiStateViewModel = new UIStateViewModel(uiStore);
     const statusTabViewModel = new StatusTabViewModel();
+    const gapDetectionViewModel = new GapDetectionViewModel();
 
     return {
         crawlingWorkflowViewModel,
@@ -59,7 +62,8 @@ export const ViewModelProvider: React.FC<ViewModelProviderProps> = ({ children }
         databaseViewModel,
         logViewModel,
         uiStateViewModel,
-        statusTabViewModel
+        statusTabViewModel,
+        gapDetectionViewModel
       };
     }, []); // Empty dependency array since stores are singletons
 
@@ -74,7 +78,8 @@ export const ViewModelProvider: React.FC<ViewModelProviderProps> = ({ children }
           viewModels.configurationViewModel.initialize(),
           viewModels.databaseViewModel.initialize(),
           viewModels.logViewModel.initialize(),
-          viewModels.uiStateViewModel.initialize()
+          viewModels.uiStateViewModel.initialize(),
+          viewModels.gapDetectionViewModel.initialize()
           // StatusTabViewModel doesn't need initialization
         ]);
         
@@ -148,4 +153,9 @@ export const useUIStateViewModel = () => {
 export const useStatusTabViewModel = () => {
   const { statusTabViewModel } = useViewModels();
   return statusTabViewModel;
+};
+
+export const useGapDetectionViewModel = () => {
+  const { gapDetectionViewModel } = useViewModels();
+  return gapDetectionViewModel;
 };

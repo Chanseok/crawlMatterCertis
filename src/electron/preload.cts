@@ -229,7 +229,11 @@ const electronAPI: IElectronAPI = {
     
     // 배치 UI 테스트 API 추가
     testBatchUI: (args: { batchCount?: number; delayMs?: number }) => 
-        ipcRenderer.invoke('testBatchUI', args)
+        ipcRenderer.invoke('testBatchUI', args),
+    
+    // Gap Detection API 추가
+    detectGaps: createMethodHandler('detectGaps'),
+    collectGaps: createMethodHandler('collectGaps')
 };
 
 // contextBridge를 통해 안전하게 API 노출
