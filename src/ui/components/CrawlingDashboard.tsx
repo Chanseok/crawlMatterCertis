@@ -26,6 +26,9 @@ import { useTaskStore } from '../hooks/useTaskStore';
 // ViewModel for Complex UI Logic (Secondary Helper)
 import { CrawlingDashboardViewModel } from '../viewmodels/CrawlingDashboardViewModel';
 
+// Configuration and Page Range Utilities
+import { useConfigurationViewModel } from '../providers/ViewModelProvider';
+
 import { format } from 'date-fns';
 
 interface CrawlingDashboardProps {
@@ -58,6 +61,68 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     isStopping
   } = useCrawlingStore();
 
+  // === Configuration for Page Range Info ===
+  const configurationViewModel = useConfigurationViewModel();
+
+  // === Auto-recalculate page range when component mounts or config changes ===
+  useEffect(() => {
+    console.log('[CrawlingDashboard] 🔄 Component mounted or config changed, checking page range calculation...');
+    console.log('[CrawlingDashboard] 🔍 Current state:', {
+      hasPageRangeCalculation: !!configurationViewModel.lastPageRangeCalculation,
+      hasStatusSummary: !!statusSummary,
+      statusSummaryKeys: statusSummary ? Object.keys(statusSummary) : null,
+      configPageRangeLimit: configurationViewModel.config?.pageRangeLimit,
+      configProductsPerPage: configurationViewModel.config?.productsPerPage,
+      siteTotalPages: statusSummary?.siteTotalPages,
+      siteProductCount: statusSummary?.siteProductCount,
+      lastPageRangeCalculation: configurationViewModel.lastPageRangeCalculation
+    });
+    
+    // statusSummary가 있고 페이지 정보가 있으면 항상 재계산 (설정 변경 시 반영)
+    const shouldRecalculate = statusSummary && (statusSummary.siteTotalPages || statusSummary.totalPages);
+    
+    console.log('[CrawlingDashboard] 🔍 Should recalculate:', shouldRecalculate);
+    
+    if (shouldRecalculate) {
+      console.log('[CrawlingDashboard] 🔄 Triggering page range recalculation...');
+      // 비동기로 재계산하고 강제 리렌더링
+      setTimeout(() => {
+        configurationViewModel.recalculatePageRangeManually();
+        setForceUpdateCounter(prev => prev + 1);
+      }, 0);
+    } else {
+      console.log('[CrawlingDashboard] 🔄 Skipping recalculation:', {
+        shouldRecalculate,
+        hasStatusSummary: !!statusSummary,
+        hasTotalPages: !!(statusSummary?.siteTotalPages || statusSummary?.totalPages)
+      });
+    }
+  }, [configurationViewModel, statusSummary?.siteTotalPages, statusSummary?.siteProductCount, configurationViewModel.config]);
+
+  // === Watch for config changes specifically to trigger page range recalculation ===
+  useEffect(() => {
+    const pageRangeLimit = configurationViewModel.config?.pageRangeLimit;
+    console.log('[CrawlingDashboard] 🔧 pageRangeLimit changed:', pageRangeLimit);
+    
+    if (pageRangeLimit && statusSummary && (statusSummary.siteTotalPages || statusSummary.totalPages)) {
+      console.log('[CrawlingDashboard] 🔄 Config change triggered page range recalculation');
+      // 설정 변경 시 즉시 재계산 및 강제 리렌더링
+      setTimeout(() => {
+        configurationViewModel.recalculatePageRangeManually();
+        setForceUpdateCounter(prev => prev + 1);
+      }, 100); // 약간의 지연으로 설정 적용 완료 대기
+    }
+  }, [configurationViewModel.config?.pageRangeLimit, configurationViewModel, statusSummary]);
+
+  // === Force re-render when lastPageRangeCalculation changes ===
+  const [, forceRender] = useState({});
+  useEffect(() => {
+    console.log('[CrawlingDashboard] 🔄 Page range calculation updated:', configurationViewModel.lastPageRangeCalculation);
+    // 강제 리렌더링 트리거
+    forceRender({});
+    setForceUpdateCounter(prev => prev + 1);
+  }, [configurationViewModel.lastPageRangeCalculation]);
+
   // === DEBUG: Log statusSummary changes ===
   useEffect(() => {
     console.log('[CrawlingDashboard] 🔍 statusSummary changed:', statusSummary);
@@ -84,6 +149,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   const [isSuccess, setIsSuccess] = useState(false);
   const [localTime, setLocalTime] = useState({ elapsedTime: 0, remainingTime: 0 });
   const [flipTimer, setFlipTimer] = useState(0);
+  const [forceUpdateCounter, setForceUpdateCounter] = useState(0); // 강제 리렌더링용
   const [animatedDigits, setAnimatedDigits] = useState({
     currentPage: false,
     processedItems: false,
@@ -113,6 +179,25 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   // Direct access to avoid MobX cycles - computed properties are already memoized by MobX
   const targetPageCount = viewModel.targetPageCount;
   const calculatedPercentage = viewModel.calculatedPercentage;
+
+  // 배치 진행률 표시 여부 계산
+  const shouldShowBatchProgress = useMemo(() => {
+    const hasCurrentBatch = progress.currentBatch !== undefined && progress.currentBatch !== null;
+    const hasTotalBatches = progress.totalBatches !== undefined && progress.totalBatches !== null;
+    const totalBatchesGreaterThan1 = (progress.totalBatches || 0) > 1;
+    // 더 넓은 범위의 상태에서 배치 UI 표시 (initializing은 배치 처리 시작 시 나타남)
+    const statusMatches = status === 'running' || status === 'initializing' || status === 'idle' || status === 'paused';
+    
+    // 🔧 배치 UI 조건을 더 유연하게 수정
+    // Stage 3에서 제품 상세정보 수집 중인 경우 또는 배치 정보가 있는 경우 배치 UI 표시
+    const isStage3Running = viewModel.currentStage === 3 && statusMatches;
+    
+    // 원본 배치 UI 조건: 명확한 배치 정보가 있는 경우
+    const hasValidBatchData = hasCurrentBatch && hasTotalBatches && totalBatchesGreaterThan1;
+    
+    // 최종 조건: 유효한 배치 데이터가 있거나 Stage 3 실행 중인 경우
+    return (hasValidBatchData && statusMatches) || isStage3Running;
+  }, [progress.currentBatch, progress.totalBatches, status, viewModel.currentStage]);
 
   // DEBUG: Add real-time progress monitoring (with optimization)
   useEffect(() => {
@@ -184,6 +269,63 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   const isValueChanged = useCallback((key: keyof CrawlingStatusSummary): boolean => {
     return viewModel.isValueChanged(key);
   }, [viewModel]);
+
+  // 크롤링 범위 표시 계산 - MobX 반응성을 위한 개선
+  const crawlingRangeDisplay = useMemo(() => {
+    console.log('[CrawlingDashboard] 🔄 crawlingRangeDisplay useMemo 재계산 중...');
+    console.log('[CrawlingDashboard] 🔍 Current lastPageRangeCalculation:', configurationViewModel.lastPageRangeCalculation);
+    console.log('[CrawlingDashboard] 🔍 Current statusSummary.crawlingRange:', statusSummary?.crawlingRange);
+    
+    const hasRange = statusSummary?.crawlingRange || configurationViewModel.lastPageRangeCalculation;
+    if (!hasRange) {
+      console.log('[CrawlingDashboard] ❌ No range data available');
+      return null;
+    }
+    
+    return (
+      <div className="flex justify-between items-center">
+        <span className="text-gray-600 dark:text-gray-400">
+          {configurationViewModel.lastPageRangeCalculation 
+            ? '크롤링 범위:' 
+            : statusSummary?.crawlingRange 
+              ? '서버 크롤링 범위:' 
+              : '크롤링 범위:'}
+        </span>
+        <span className={`font-medium ${
+          configurationViewModel.lastPageRangeCalculation 
+            ? 'text-blue-600 dark:text-blue-400 animate-pulse'
+            : statusSummary?.crawlingRange 
+              ? (isValueChanged('crawlingRange') ? 'text-yellow-600 dark:text-yellow-400 animate-pulse' : 'text-gray-800 dark:text-gray-200')
+              : 'text-gray-500'
+        }`}>
+          {(() => {
+            // 🔧 페이지 범위 계산 정보가 있으면 항상 우선 사용
+            if (configurationViewModel.lastPageRangeCalculation) {
+              const info = configurationViewModel.lastPageRangeCalculation;
+              console.log('[CrawlingDashboard] ✅ Displaying calculated range:', info);
+              return `${info.pageRangeStart} ~ ${info.pageRangeEnd} 페이지 (예상: ${info.estimatedProducts}개)`;
+            }
+            // 서버의 실제 크롤링 범위가 있는 경우 (fallback)
+            else if (statusSummary?.crawlingRange) {
+              const startPage = statusSummary.crawlingRange.startPage;
+              const endPage = statusSummary.crawlingRange.endPage;
+              const totalPages = Math.abs(startPage - endPage) + 1;
+              return `${startPage} ~ ${endPage} 페이지 (${totalPages}페이지)`;
+            }
+            return '범위 계산 중...';
+          })()}
+        </span>
+      </div>
+    );
+  }, [
+    statusSummary?.crawlingRange, 
+    configurationViewModel.lastPageRangeCalculation?.pageRangeStart,
+    configurationViewModel.lastPageRangeCalculation?.pageRangeEnd,
+    configurationViewModel.lastPageRangeCalculation?.estimatedProducts,
+    configurationViewModel.lastPageRangeCalculation?.actualCrawlPages,
+    isValueChanged, 
+    forceUpdateCounter
+  ]);
 
   const handleCheckStatus = useCallback(async () => {
     try {
@@ -476,23 +618,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
         />
 
         {/* Redesigned Batch Progress Section */}
-        {React.useMemo(() => {
-          const hasCurrentBatch = progress.currentBatch !== undefined && progress.currentBatch !== null;
-          const hasTotalBatches = progress.totalBatches !== undefined && progress.totalBatches !== null;
-          const totalBatchesGreaterThan1 = (progress.totalBatches || 0) > 1;
-          // 더 넓은 범위의 상태에서 배치 UI 표시 (initializing은 배치 처리 시작 시 나타남)
-          const statusMatches = status === 'running' || status === 'initializing' || status === 'idle' || status === 'paused';
-          
-          // 🔧 배치 UI 조건을 더 유연하게 수정
-          // Stage 3에서 제품 상세정보 수집 중인 경우 또는 배치 정보가 있는 경우 배치 UI 표시
-          const isStage3Running = viewModel.currentStage === 3 && statusMatches;
-          
-          // 원본 배치 UI 조건: 명확한 배치 정보가 있는 경우
-          const hasValidBatchData = hasCurrentBatch && hasTotalBatches && totalBatchesGreaterThan1;
-          
-          // 최종 조건: 유효한 배치 데이터가 있거나 Stage 3 실행 중인 경우
-          return (hasValidBatchData && statusMatches) || isStage3Running;
-        }, [progress.currentBatch, progress.totalBatches, status, viewModel.currentStage]) && (
+        {shouldShowBatchProgress && (
           <div className="mt-6 mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-700">
             {/* 1. 전체 배치 진행률 */}
             <div className="flex items-center mb-2">
@@ -1056,14 +1182,8 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
               </span>
             </div>
 
-            {statusSummary.crawlingRange && (
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600 dark:text-gray-400">크롤링 범위:</span>
-                <span className={`font-medium ${isValueChanged('crawlingRange') ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                  {statusSummary.crawlingRange.startPage} ~ {statusSummary.crawlingRange.endPage} 페이지
-                </span>
-              </div>
-            )}
+            {/* 크롤링 범위 표시 - 실제 범위가 있으면 우선, 없으면 예상 범위 표시 */}
+            {crawlingRangeDisplay}
 
             {statusSummary.dbProductCount !== undefined && statusSummary.siteProductCount !== undefined && statusSummary.diff !== undefined && (
               <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">

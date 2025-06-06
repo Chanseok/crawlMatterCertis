@@ -4,6 +4,7 @@ import { useConfigurationViewModel, useCrawlingWorkflowViewModel } from '../prov
 import { BatchProcessingSettings } from './BatchProcessingSettings';
 import { ExpandableSection } from './ExpandableSection';
 import { LoggingSettings } from './LoggingSettings';
+
 import type { CrawlerConfig } from '../../../types';
 import { WorkflowStage } from '../viewmodels/CrawlingWorkflowViewModel';
 
@@ -171,6 +172,21 @@ function CrawlingSettingsComponent() {
       </div>
 
       <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          페이지당 제품 수
+        </label>
+        <input
+          type="number"
+          min="1"
+          max="100"
+          value={configurationViewModel.getEffectiveValue('productsPerPage') || 0}
+          onChange={(e) => handleFieldChange('productsPerPage', Number(e.target.value))}
+          disabled={isDisabled}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+        />
+      </div>
+
+      <div>
         <label className="flex items-center">
           <input
             type="checkbox"
@@ -186,6 +202,8 @@ function CrawlingSettingsComponent() {
       </div>
     </div>
   );
+
+  // 페이지 범위 정보 섹션은 '상태 & 제어' 탭으로 이전됨
 
   // 고급 설정 섹션 렌더 함수
   const renderAdvancedSettings = () => (

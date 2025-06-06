@@ -16,6 +16,11 @@ import { logStore } from '../stores/domain/LogStore';
 import { SessionConfigManager } from '../services/domain/SessionConfigManager';
 import { ConfigurationValidator } from '../../shared/domain/ConfigurationValue';
 import { Logger, LogLevel } from '../../shared/utils/Logger';
+import { 
+  handleConfigChangeForPageRange, 
+  recalculatePageRange,
+  type PageRangeInfo 
+} from '../utils/pageRangeCalculator';
 import type { UICrawlerConfig } from '../types/ui-types';
 import type { CrawlerConfig } from '../../../types';
 
@@ -78,6 +83,7 @@ export class ConfigurationViewModel extends BaseViewModel {
   @observable accessor lastSaved: Date | null = null;
   @observable accessor error: string | null = null;
   @observable accessor isConfigurationLocked: boolean = false;
+  @observable.ref accessor lastPageRangeCalculation: PageRangeInfo | null = null;
 
   // === Service Dependencies ===
   private sessionConfigManager = SessionConfigManager.getInstance();
@@ -107,7 +113,8 @@ export class ConfigurationViewModel extends BaseViewModel {
       resetToDefaults: action,
       updateValidationErrors: action,
       clearError: action,
-      importConfiguration: action
+      importConfiguration: action,
+      recalculatePageRangeManually: action
     });
     // 비동기 초기화를 constructor 밖에서 실행하도록 변경
     setTimeout(() => this.initialize(), 0);
@@ -380,6 +387,10 @@ export class ConfigurationViewModel extends BaseViewModel {
     });
     // 해당 필드 유효성 검사
     this.validateField(key, value);
+    
+    // 페이지 범위에 영향을 주는 설정 변경 시 자동 재계산
+    this.handlePageRangeRecalculation(key);
+    
     this.logDebug('updateConfig', `Updated ${key}`, { key, value });
   }
 
@@ -795,5 +806,54 @@ export class ConfigurationViewModel extends BaseViewModel {
         components: { ...(config.logging?.components || {}) }
       }
     } as UICrawlerConfig;
+  }
+
+  // === Page Range Calculation Methods ===
+
+  /**
+   * 페이지 범위를 수동으로 재계산
+   */
+  @action
+  recalculatePageRangeManually(): void {
+    console.log('[ConfigurationViewModel] 🔄 recalculatePageRangeManually 시작');
+    try {
+      const result = recalculatePageRange(this.config);
+      console.log('[ConfigurationViewModel] 🔄 recalculatePageRange 결과:', result);
+      
+      // MobX observable 업데이트를 runInAction으로 래핑하고 새 객체로 할당
+      runInAction(() => {
+        this.lastPageRangeCalculation = result ? { ...result } : null;
+      });
+      
+      console.log('[ConfigurationViewModel] 🔄 lastPageRangeCalculation 설정 완료:', this.lastPageRangeCalculation);
+      
+      if (result) {
+        console.log('[ConfigurationViewModel] ✅ 페이지 범위 재계산 완료:', `${result.actualCrawlPages}페이지, 예상 제품 ${result.estimatedProducts}개`);
+        this.logDebug('recalculatePageRangeManually', `페이지 범위 재계산 완료: ${result.actualCrawlPages}페이지, 예상 제품 ${result.estimatedProducts}개`);
+      } else {
+        console.log('[ConfigurationViewModel] ❌ 페이지 범위 계산 실패 - 상태 정보 없음');
+        this.logDebug('recalculatePageRangeManually', '페이지 범위 계산 실패 - 상태 정보 없음');
+      }
+    } catch (error) {
+      console.error('[ConfigurationViewModel] ❌ recalculatePageRangeManually 오류:', error);
+      this.logError('recalculatePageRangeManually', error);
+    }
+  }
+
+  /**
+   * 설정 변경 시 자동으로 페이지 범위 재계산 (내부 사용)
+   */
+  private handlePageRangeRecalculation<K extends keyof CrawlerConfig>(field: K): void {
+    try {
+      const result = handleConfigChangeForPageRange(field, this.config);
+      if (result) {
+        runInAction(() => {
+          this.lastPageRangeCalculation = { ...result };
+        });
+        this.logDebug('handlePageRangeRecalculation', `설정 '${field}' 변경으로 페이지 범위 재계산: ${result.actualCrawlPages}페이지`);
+      }
+    } catch (error) {
+      this.logError('handlePageRangeRecalculation', error);
+    }
   }
 }
