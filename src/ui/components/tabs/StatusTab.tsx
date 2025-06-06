@@ -125,14 +125,7 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
             </div>
           </div>
         )}
-        
-        {/* 크롤링이 시작되지 않았거나 완료된 경우 */}
-        {(crawlingStatus === 'idle' || crawlingStatus === 'completed') && progress.currentStage !== 1 && progress.currentStage !== 2 && (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            <div className="text-lg mb-2">🚀</div>
-            <div className="text-sm">크롤링을 시작하면 진행 상황이 여기에 표시됩니다</div>
-          </div>
-        )}
+
       </div>
     </>
   );

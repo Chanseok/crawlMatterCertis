@@ -76,7 +76,11 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
             <>
               <div className="flex items-center space-x-2">
                 <span className="text-gray-500 dark:text-gray-400">단계:</span>
-                <span className="font-medium text-blue-600 dark:text-blue-400">
+                <span className={`font-medium ${
+                  currentStage === 1 || currentStage === 3 
+                    ? 'text-purple-600 dark:text-purple-400' 
+                    : 'text-blue-600 dark:text-blue-400'
+                }`}>
                   {currentStage}/2
                 </span>
               </div>

@@ -15,7 +15,11 @@ function CrawlingSettingsComponent() {
   const configurationViewModel = useConfigurationViewModel();
   const crawlingWorkflowViewModel = useCrawlingWorkflowViewModel();
   const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
+  const [isBatchProcessingExpanded, setIsBatchProcessingExpanded] = useState(true);
   const [isLoggingExpanded, setIsLoggingExpanded] = useState(false);
+  const [isStatusInfoExpanded, setIsStatusInfoExpanded] = useState(false);
+  const [isDebugInfoExpanded, setIsDebugInfoExpanded] = useState(false);
+
 
   // 컴포넌트 마운트 시 초기화
   useEffect(() => {
@@ -70,7 +74,7 @@ function CrawlingSettingsComponent() {
   return (
     <div className="p-6 bg-white rounded-lg shadow-md">
       <h2 className="text-xl font-semibold mb-4">크롤링 설정</h2>
-      
+
       {/* 세션 상태 표시 */}
       <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
         <div className="flex items-center justify-between">
@@ -91,7 +95,7 @@ function CrawlingSettingsComponent() {
       {configurationViewModel.error && (
         <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
           {configurationViewModel.error}
-          <button 
+          <button
             onClick={() => configurationViewModel.clearErrorState()}
             className="ml-2 text-red-500 hover:text-red-700"
           >
@@ -213,16 +217,25 @@ function CrawlingSettingsComponent() {
 
       {/* 배치 처리 설정 (페이지 범위가 임계값을 초과할 때만 표시) */}
       {configurationViewModel.getEffectiveValue('pageRangeLimit')! > BATCH_THRESHOLD && (
-        <BatchProcessingSettings
-          enableBatchProcessing={!!configurationViewModel.getEffectiveValue('enableBatchProcessing')}
-          setEnableBatchProcessing={(enable) => configurationViewModel.updateConfigurationField('enableBatchProcessing', enable)}
-          batchSize={configurationViewModel.getEffectiveValue('batchSize') || 10}
-          setBatchSize={(size) => configurationViewModel.updateConfigurationField('batchSize', size)}
-          batchDelayMs={configurationViewModel.getEffectiveValue('batchDelayMs') || 1000}
-          setBatchDelayMs={(delay) => configurationViewModel.updateConfigurationField('batchDelayMs', delay)}
-          batchRetryLimit={configurationViewModel.getEffectiveValue('batchRetryLimit') || 3}
-          setBatchRetryLimit={(limit) => configurationViewModel.updateConfigurationField('batchRetryLimit', limit)}
-        />
+        <div className="mt-6">
+          <ExpandableSection
+            title="배치 처리 설정"
+            isExpanded={isBatchProcessingExpanded}
+            onToggle={() => setIsBatchProcessingExpanded(!isBatchProcessingExpanded)}
+            additionalClasses="border border-gray-200 rounded-lg"
+          >
+            <BatchProcessingSettings
+              enableBatchProcessing={!!configurationViewModel.getEffectiveValue('enableBatchProcessing')}
+              setEnableBatchProcessing={(enable) => configurationViewModel.updateConfigurationField('enableBatchProcessing', enable)}
+              batchSize={configurationViewModel.getEffectiveValue('batchSize') || 10}
+              setBatchSize={(size) => configurationViewModel.updateConfigurationField('batchSize', size)}
+              batchDelayMs={configurationViewModel.getEffectiveValue('batchDelayMs') || 1000}
+              setBatchDelayMs={(delay) => configurationViewModel.updateConfigurationField('batchDelayMs', delay)}
+              batchRetryLimit={configurationViewModel.getEffectiveValue('batchRetryLimit') || 3}
+              setBatchRetryLimit={(limit) => configurationViewModel.updateConfigurationField('batchRetryLimit', limit)}
+            />
+          </ExpandableSection>
+        </div>
       )}
 
       {/* 로깅 설정 */}
@@ -251,11 +264,10 @@ function CrawlingSettingsComponent() {
         <button
           onClick={handleSave}
           disabled={isDisabled || configurationViewModel.isLoading || !configurationViewModel.isDirty}
-          className={`px-4 py-2 rounded-md flex items-center ${
-            isDisabled || configurationViewModel.isLoading || !configurationViewModel.isDirty
+          className={`px-4 py-2 rounded-md flex items-center ${isDisabled || configurationViewModel.isLoading || !configurationViewModel.isDirty
               ? 'bg-gray-400 cursor-not-allowed'
               : 'bg-blue-600 hover:bg-blue-700'
-          } text-white`}
+            } text-white`}
         >
           {configurationViewModel.isLoading && (
             <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -268,43 +280,59 @@ function CrawlingSettingsComponent() {
       </div>
 
       {/* 설정 상태 정보 섹션 - 디버깅 정보로 하단 이동 */}
-      <div className="mt-6 p-4 bg-gray-50 rounded-lg border">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">설정 상태 정보</h3>
-        <div className="text-sm text-gray-600">
-          <div className="grid grid-cols-2 gap-2">
-            <span>설정 로드됨:</span>
-            <span>{Object.keys(configurationViewModel.config).length > 0 ? '예' : '아니오'}</span>
-            <span>설정 키 개수:</span>
-            <span>{Object.keys(configurationViewModel.config).length}</span>
-            <span>마지막 저장:</span>
-            <span>{configurationViewModel.lastSaved ? configurationViewModel.lastSaved.toLocaleString() : '없음'}</span>
-            <span>변경사항:</span>
-            <span>{configurationViewModel.hasChanges ? '있음' : '없음'}</span>
-            <span>로딩 중:</span>
-            <span>{configurationViewModel.isLoading ? '예' : '아니오'}</span>
-            <span>에러:</span>
-            <span>{configurationViewModel.error || '없음'}</span>
-          </div>
-        </div>
-        <div className="mt-3 text-xs text-gray-500">
-          <details>
-            <summary className="cursor-pointer">설정 키 목록 보기</summary>
-            <div className="mt-2 p-2 bg-white rounded border text-xs font-mono">
-              {Object.keys(configurationViewModel.config).length > 0 
-                ? Object.keys(configurationViewModel.config).join(', ') 
-                : '설정 데이터 없음'}
+      <div className="mt-6">
+        <ExpandableSection
+          title="설정 상태 정보"
+          isExpanded={isStatusInfoExpanded}
+          onToggle={() => setIsStatusInfoExpanded(!isStatusInfoExpanded)}
+          additionalClasses="border border-gray-200 rounded-lg"
+        >
+          <div className="p-4 bg-gray-50">
+            <div className="text-sm text-gray-600">
+              <div className="grid grid-cols-2 gap-2">
+                <span>설정 로드됨:</span>
+                <span>{Object.keys(configurationViewModel.config).length > 0 ? '예' : '아니오'}</span>
+                <span>설정 키 개수:</span>
+                <span>{Object.keys(configurationViewModel.config).length}</span>
+                <span>마지막 저장:</span>
+                <span>{configurationViewModel.lastSaved ? configurationViewModel.lastSaved.toLocaleString() : '없음'}</span>
+                <span>변경사항:</span>
+                <span>{configurationViewModel.hasChanges ? '있음' : '없음'}</span>
+                <span>로딩 중:</span>
+                <span>{configurationViewModel.isLoading ? '예' : '아니오'}</span>
+                <span>에러:</span>
+                <span>{configurationViewModel.error || '없음'}</span>
+              </div>
             </div>
-          </details>
-        </div>
+            <div className="mt-3 text-xs text-gray-500">
+              <details>
+                <summary className="cursor-pointer">설정 키 목록 보기</summary>
+                <div className="mt-2 p-2 bg-white rounded border text-xs font-mono">
+                  {Object.keys(configurationViewModel.config).length > 0
+                    ? Object.keys(configurationViewModel.config).join(', ')
+                    : '설정 데이터 없음'}
+                </div>
+              </details>
+            </div>
+          </div>
+        </ExpandableSection>
       </div>
 
       {/* 세션 디버그 정보 (개발 모드에서만) */}
       {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
-        <div className="mt-6 p-4 bg-gray-100 rounded-lg border">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">설정 디버그 정보</h4>
-          <pre className="text-xs text-gray-600 whitespace-pre-wrap">
-            {JSON.stringify(configurationViewModel.getSessionStatus(), null, 2)}
-          </pre>
+        <div className="mt-6">
+          <ExpandableSection
+            title="세션 디버그 정보"
+            isExpanded={isDebugInfoExpanded}
+            onToggle={() => setIsDebugInfoExpanded(!isDebugInfoExpanded)}
+            additionalClasses="border border-gray-200 rounded-lg"
+          >
+            <div className="p-4 bg-gray-50">
+              <pre className="text-xs text-gray-600 whitespace-pre-wrap">
+                {JSON.stringify(configurationViewModel.getSessionStatus(), null, 2)}
+              </pre>
+            </div>
+          </ExpandableSection>
         </div>
       )}
     </div>
