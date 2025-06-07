@@ -17,20 +17,20 @@ export const StageTransitionIndicator: React.FC<StageTransitionIndicatorProps> =
 }) => {
   // 현재 단계에 따른 진행률 계산
   const progress = useMemo(() => {
-    // 검증 단계 (1.5단계) 확인
+    // 검증 단계 (2단계) 확인
     if (currentStep && (
       currentStep.toLowerCase().includes('검증') || 
       currentStep.toLowerCase().includes('로컬db') || 
-      currentStep.toLowerCase().includes('1.5/3') || 
+      currentStep.toLowerCase().includes('2/3') || 
       currentStep.toLowerCase().includes('db 중복')
     )) {
-      return 50; // 1.5단계 = 50% 진행
+      return 50; // 2단계 = 50% 진행
     }
 
     // 숫자로 된 단계 기반 진행률
     if (typeof currentStage === 'number') {
       if (currentStage === 1) return 33; // 1단계 = 33% 진행
-      if (currentStage === 2) return 66; // 2단계 = 66% 진행
+      if (currentStage === 2) return 66; // 2단계 = 66% 진행 (상세 정보 수집)
       if (currentStage === 3) return 100; // 3단계 = 100% 완료
       return 0; // 기본값
     }
@@ -49,11 +49,11 @@ export const StageTransitionIndicator: React.FC<StageTransitionIndicatorProps> =
   // 단계 레이블 계산
   const getStageLabel = (stageValue: number): string => {
     switch(stageValue) {
-      case 33: return '1단계: 목록 수집';
-      case 50: return '1.5단계: 검증';
-      case 66: return '2단계: 상세 수집';
+      case 33: return '1단계: 목록';
+      case 50: return '2단계: 검증';
+      case 66: return '3단계: 상세';
       case 100: return '완료';
-      default: return '준비 중';
+      default: return '시작';
     }
   };
 
@@ -104,17 +104,17 @@ export const StageTransitionIndicator: React.FC<StageTransitionIndicatorProps> =
           
           <div className="absolute top-1/3 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
             <div className={`w-3 h-3 rounded-full ${getMarkerStyle(33)}`}></div>
-            <div className="text-xs mt-1 ml-3 text-gray-600 dark:text-gray-400">목록</div>
+            <div className="text-xs mt-1 ml-3 text-gray-600 dark:text-gray-400">1단계</div>
           </div>
           
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
             <div className={`w-3 h-3 rounded-full ${getMarkerStyle(50)}`}></div>
-            <div className="text-xs mt-1 ml-3 text-gray-600 dark:text-gray-400">검증</div>
+            <div className="text-xs mt-1 ml-3 text-gray-600 dark:text-gray-400">2단계</div>
           </div>
           
           <div className="absolute top-2/3 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
             <div className={`w-3 h-3 rounded-full ${getMarkerStyle(66)}`}></div>
-            <div className="text-xs mt-1 ml-3 text-gray-600 dark:text-gray-400">상세</div>
+            <div className="text-xs mt-1 ml-3 text-gray-600 dark:text-gray-400">3단계</div>
           </div>
           
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2">
@@ -132,8 +132,8 @@ export const StageTransitionIndicator: React.FC<StageTransitionIndicatorProps> =
       <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
         <span>시작</span>
         <span>1단계: 목록</span>
-        <span>1.5단계: 검증</span>
-        <span>2단계: 상세</span>
+        <span>2단계: 검증</span>
+        <span>3단계: 상세</span>
         <span>완료</span>
       </div>
       <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full relative">

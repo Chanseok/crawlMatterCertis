@@ -490,9 +490,9 @@ export class CrawlerEngine {
       // 제품 목록 결과 저장
       this.handleListCrawlingResults(products);
 
-      // 1.5단계: 로컬DB 상태 체크 및 중복 필터링
-      console.log('[CrawlerEngine] Starting 1.5/3단계: 로컬DB 중복 체크');
-      this.state.setStage('validation:init', '1.5/3단계: 로컬DB 상태 체크 중');
+      // 2단계: 로컬DB 상태 체크 및 중복 필터링
+      console.log('[CrawlerEngine] Starting 2단계: 로컬DB 중복 체크');
+      this.state.setStage('validation:init', '2단계: 로컬DB 중복 검증 중');
       
       // ProductValidationCollector 인스턴스 생성
       const productValidationCollector = new ProductValidationCollector(this.state, sessionConfig);
@@ -533,7 +533,7 @@ export class CrawlerEngine {
       `);
       
       // 검증 단계 완료
-      this.state.setStage('validation:complete', '1.5/3단계: 로컬DB 상태 체크 완료');
+      this.state.setStage('validation:complete', '2단계: 로컬DB 중복 검증 완료');
 
       // 치명적 오류 확인 - 하지만 성공적인 수집이 있었다면 오류를 무시
       const hasCriticalFailures = this.state.hasCriticalFailures();

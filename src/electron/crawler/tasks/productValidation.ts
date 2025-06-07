@@ -32,8 +32,8 @@ export class ProductValidationCollector {
       current: 0,
       total: products.length,
       percentage: 0,
-      currentStep: "2/4단계: DB 중복 검증 중",
-      message: `2/4단계: ${products.length}개 제품 유효성 검증 중`
+      currentStep: "2단계: DB 중복 검증 중",
+      message: `2단계: ${products.length}개 제품 유효성 검증 중`
     });
     
     // 로컬DB에서 기존 제품 URL들을 Set으로 조회 (성능 최적화)

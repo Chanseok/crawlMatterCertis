@@ -1240,7 +1240,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
                   return successPageCount;
                 })()
               }페이지</li>
-              <li>• 설정된 재시도 횟수: {config.productListRetryCount || 3}회</li>
+              <li>• 설정된 재시도 횟수: {config.productListRetryCount}회</li>
               {progress.retryCount !== undefined && progress.retryCount > 0 && (
                 <li>• 현재 재시도 횟수: {progress.retryCount}회</li>
               )}
@@ -1346,7 +1346,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
               </div>
               <div className="mt-4 inline-block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
                 <div className="text-lg font-bold">
-                  {Math.round(progress.processedItems || 0)} / {
+                  {Math.round(crawlerState.detailStageProcessedCount || 0)} / {
                     progress.totalItems ||
                     statusSummary?.siteProductCount ||
                     (targetPageCount * (config.productsPerPage || 12))
