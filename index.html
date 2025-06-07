@@ -126,6 +126,64 @@
         position: relative;
         z-index: 1;
       }
+      
+      /* 날짜 범위 슬라이더 스타일 */
+      .slider-thumb::-webkit-slider-thumb {
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #3b82f6;
+        cursor: pointer;
+        border: 2px solid #ffffff;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+      
+      .slider-thumb::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #3b82f6;
+        cursor: pointer;
+        border: 2px solid #ffffff;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+      
+      .slider-thumb:focus {
+        outline: none;
+      }
+      
+      .slider-thumb:focus::-webkit-slider-thumb {
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+      }
+      
+      .slider-thumb:focus::-moz-range-thumb {
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+      }
+      
+      /* 탭 연결 효과를 위한 스타일 */
+      .tab-connected {
+        position: relative;
+      }
+      
+      .tab-connected::before {
+        content: '';
+        position: absolute;
+        top: -1px;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: currentColor;
+        z-index: 10;
+      }
+      
+      .tab-overlay {
+        position: absolute;
+        top: -1px;
+        height: 1px;
+        background: inherit;
+        z-index: 20;
+      }
     </style>
   </head>
   <body>

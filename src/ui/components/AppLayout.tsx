@@ -157,9 +157,23 @@ export function AppLayout({ activeTab, onTabChange, isDevelopment, children }: A
 
             {/* 메인 콘텐츠 - 탭과 자연스럽게 연결되는 프랭클린 다이어리 스타일 */}
             <main className={`
-                flex-1 overflow-auto shadow-sm border border-t-0 mx-6 rounded-b-lg
+                flex-1 overflow-auto shadow-sm border rounded-b-lg relative
                 ${activeTabTheme ? `${activeTabTheme.bg} ${activeTabTheme.border}` : 'bg-white border-gray-200'}
-            `}>
+            `} style={{
+                marginLeft: '1.5rem',
+                marginRight: '1.5rem'
+            }}>
+                {/* 활성 탭 위치의 상단 테두리 제거를 위한 가상 요소 */}
+                <div 
+                    className={`absolute top-0 h-px z-20 ${
+                        activeTabTheme ? activeTabTheme.bg : 'bg-white'
+                    }`}
+                    style={{
+                        left: `${tabs.findIndex(tab => tab.id === activeTab) * 140 + 24}px`,
+                        width: '140px',
+                        transform: 'translateY(-1px)'
+                    }}
+                />
                 <div className="p-6">
                     {children}
                 </div>
