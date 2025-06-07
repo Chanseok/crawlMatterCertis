@@ -310,7 +310,7 @@ export function AnalysisTab() {
     // 월별 데이터 정렬 및 전체 데이터
     const sortedMonths = Object.keys(certificationByMonthAndType)
       .sort((a, b) => a.localeCompare(b))
-      .slice(-24); // 최근 24개월
+      .slice(-36); // 최근 36개월 (3년)
       
     const certMonthData = sortedMonths.map(month => ({
       name: month,

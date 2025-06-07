@@ -150,12 +150,27 @@ export class CrawlingDashboardViewModel {
     const configLimit = config.pageRangeLimit;
     const siteTotalPages = statusSummary?.siteTotalPages;
 
-    return statusActualTarget || 
-           progressTotalPages || 
-           rangeBased || 
-           configLimit || 
-           siteTotalPages || 
-           1;
+    const result = statusActualTarget || 
+                  progressTotalPages || 
+                  rangeBased || 
+                  configLimit || 
+                  siteTotalPages || 
+                  1;
+
+    // 디버깅을 위한 로그 (개발 모드에서만)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[CrawlingDashboardViewModel] 🔍 targetPageCount calculation:', {
+        statusActualTarget,
+        progressTotalPages,
+        rangeBased,
+        crawlingRange,
+        configLimit,
+        siteTotalPages,
+        finalResult: result
+      });
+    }
+
+    return result;
   }
 
   get calculatedPercentage(): number {
