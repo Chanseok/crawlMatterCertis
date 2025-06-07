@@ -429,23 +429,23 @@ export const LocalDBTab: React.FC = observer(() => {
             </div>
 
             {/* 제품 테이블 */}
-            <div className="overflow-x-auto max-w-2xl mx-auto">
+            <div className="overflow-x-auto max-w-lg mx-auto">
               <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-fixed">
                 <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
-                    <th className="px-2 py-3 w-16 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">No.</th>
-                    <th className="px-1 py-3 w-20 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">제조사</th>
-                    <th className="px-2 py-3 w-48 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">모델명</th>
-                    <th className="px-2 py-3 w-32 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Application Categories</th>
-                    <th className="px-2 py-3 w-32 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Transport Interface</th>
-                    <th className="px-2 py-3 w-20 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">페이지 ID</th>
+                    <th className="px-1 py-2 w-10 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">No.</th>
+                    <th className="px-1 py-2 w-16 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">제조사</th>
+                    <th className="px-1 py-2 w-32 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">모델명</th>
+                    <th className="px-1 py-2 w-24 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Application Categories</th>
+                    <th className="px-1 py-2 w-24 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Transport Interface</th>
+                    <th className="px-1 py-2 w-14 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">페이지 ID</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {displayProducts.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                      <td colSpan={6} className="px-4 py-3 whitespace-nowrap text-center">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
                           {searchQuery ? '검색 결과가 없습니다.' : '제품 정보가 없습니다. 크롤링을 통해 데이터를 수집해주세요.'}
                         </div>
                       </td>
@@ -453,42 +453,42 @@ export const LocalDBTab: React.FC = observer(() => {
                   ) : (
                     displayProducts.map((product, idx) => (
                       <tr key={`${product.pageId}-${product.indexInPage}`} className="hover:bg-gray-50 dark:hover:bg-gray-750">
-                        <td className="px-2 py-4 w-16 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-gray-200">
+                        <td className="px-1 py-2 w-10 whitespace-nowrap">
+                          <div className="text-xs text-gray-900 dark:text-gray-200">
                             {(currentPage - 1) * itemsPerPage + idx + 1}
                           </div>
                         </td>
-                        <td className="px-1 py-3 w-20 whitespace-nowrap text-sm text-gray-900">
-                          <div className="text-sm text-gray-900 dark:text-gray-200 truncate" title={product.manufacturer || '-'}>
+                        <td className="px-1 py-2 w-16 whitespace-nowrap">
+                          <div className="text-xs text-gray-900 dark:text-gray-200 truncate" title={product.manufacturer || '-'}>
                             {product.manufacturer || '-'}
                           </div>
                         </td>
-                        <td className="px-2 py-4 w-48 whitespace-nowrap">
+                        <td className="px-1 py-2 w-32 whitespace-nowrap">
                           <a
                             href={product.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate block"
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline truncate block"
                           >
                             {product.model || '-'}
                           </a>
                         </td>
-                        <td className="px-2 py-4 w-32 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-gray-200 truncate">
+                        <td className="px-1 py-2 w-24 whitespace-nowrap">
+                          <div className="text-xs text-gray-900 dark:text-gray-200 truncate">
                             {Array.isArray(product.applicationCategories) 
                               ? product.applicationCategories.join(', ') 
                               : (product.applicationCategories || '-')}
                           </div>
                         </td>
-                        <td className="px-2 py-4 w-32 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-gray-200 truncate">
+                        <td className="px-1 py-2 w-24 whitespace-nowrap">
+                          <div className="text-xs text-gray-900 dark:text-gray-200 truncate">
                             {Array.isArray(product.transportInterface) 
                               ? product.transportInterface.join(', ') 
                               : (product.transportInterface || '-')}
                           </div>
                         </td>
-                        <td className="px-2 py-4 w-20 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-gray-200">
+                        <td className="px-1 py-2 w-14 whitespace-nowrap">
+                          <div className="text-xs text-gray-900 dark:text-gray-200">
                             {product.pageId !== undefined ? product.pageId + 1 : '-'}
                           </div>
                         </td>

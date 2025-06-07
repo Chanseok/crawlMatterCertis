@@ -683,20 +683,20 @@ export function AnalysisTab() {
                       </ResponsiveContainer>
                     </div>
                     <div>
-                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                           <tr>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">제조사</th>
-                            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">제품 수</th>
-                            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">비율</th>
+                            <th scope="col" className="px-2 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">제조사</th>
+                            <th scope="col" className="px-2 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">제품 수</th>
+                            <th scope="col" className="px-2 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">비율</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                           {statistics.topManufacturers.map((item, index) => (
                             <tr key={index} className={index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
-                              <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{item.name}</td>
-                              <td className="px-6 py-2 whitespace-nowrap text-sm text-right text-gray-800 dark:text-gray-200">{item.value}</td>
-                              <td className="px-6 py-2 whitespace-nowrap text-sm text-right text-gray-800 dark:text-gray-200">{((item.value / statistics.totalProducts) * 100).toFixed(1)}%</td>
+                              <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200">{item.name}</td>
+                              <td className="px-2 py-1 whitespace-nowrap text-xs text-right text-gray-800 dark:text-gray-200">{item.value}</td>
+                              <td className="px-2 py-1 whitespace-nowrap text-xs text-right text-gray-800 dark:text-gray-200">{((item.value / statistics.totalProducts) * 100).toFixed(1)}%</td>
                             </tr>
                           ))}
                         </tbody>
@@ -737,12 +737,12 @@ export function AnalysisTab() {
                       </ResponsiveContainer>
                     </div>
                     <div>
-                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                           <tr>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">디바이스 유형</th>
-                            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">제품 수</th>
-                            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">비율</th>
+                            <th scope="col" className="px-2 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">디바이스 유형</th>
+                            <th scope="col" className="px-2 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">제품 수</th>
+                            <th scope="col" className="px-2 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">비율</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -750,9 +750,9 @@ export function AnalysisTab() {
                             .sort((a, b) => b[1] - a[1])
                             .map(([type, count], index) => (
                               <tr key={type} className={index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
-                                <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{type}</td>
-                                <td className="px-6 py-2 whitespace-nowrap text-sm text-right text-gray-800 dark:text-gray-200">{count}</td>
-                                <td className="px-6 py-2 whitespace-nowrap text-sm text-right text-gray-800 dark:text-gray-200">{((count / statistics.totalProducts) * 100).toFixed(1)}%</td>
+                                <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200">{type}</td>
+                                <td className="px-2 py-1 whitespace-nowrap text-xs text-right text-gray-800 dark:text-gray-200">{count}</td>
+                                <td className="px-2 py-1 whitespace-nowrap text-xs text-right text-gray-800 dark:text-gray-200">{((count / statistics.totalProducts) * 100).toFixed(1)}%</td>
                               </tr>
                             ))
                           }
@@ -835,36 +835,36 @@ export function AnalysisTab() {
                 )}
               </div>
               
-              <div className="overflow-x-auto">
-                <table className="w-full max-w-5xl divide-y divide-gray-200 dark:divide-gray-700 text-sm table-fixed">
+              <div className="overflow-x-auto max-w-lg mx-auto">
+                <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs table-fixed">
                   <thead className="bg-gray-50 dark:bg-gray-700">
                     <tr>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-24">인증날짜</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-24">디바이스유형</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">제조사</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-36">모델명</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-28">Transport Interface</th>
+                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-16">인증날짜</th>
+                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-16">디바이스유형</th>
+                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-12">제조사</th>
+                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-24">모델명</th>
+                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-18">Transport Interface</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {paginatedProducts.map((product, idx) => (
                       <tr key={product.id || idx} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
-                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200">
+                        <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200">
                           {product.certificationDate 
                             ? new Date(product.certificationDate as string).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' })
                             : '-'
                           }
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200">
+                        <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200">
                           {product.deviceType ? (
-                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+                            <span className="px-1 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
                               {product.deviceType}
                             </span>
                           ) : '-'}
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200 w-20 max-w-[5rem] truncate" title={product.manufacturer || '-'}>{product.manufacturer || '-'}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200 truncate" title={product.model || '-'}>{product.model || '-'}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200">{product.transportInterface || '-'}</td>
+                        <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200 w-12 max-w-[3rem] truncate" title={product.manufacturer || '-'}>{product.manufacturer || '-'}</td>
+                        <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200 truncate" title={product.model || '-'}>{product.model || '-'}</td>
+                        <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200 truncate" title={product.transportInterface || '-'}>{product.transportInterface || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
