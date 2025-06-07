@@ -548,7 +548,7 @@ export function AnalysisTab() {
                   {isDeviceTypeFilterExpanded && (
                     <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                        {deviceTypes.map((deviceType, index) => (
+                        {deviceTypes.map((deviceType) => (
                           <label key={deviceType} className="flex items-center space-x-2 cursor-pointer">
                             <input
                               type="checkbox"

@@ -18,7 +18,7 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
   compareExpandedInApp,
   setCompareExpandedInApp,
   crawlingStatus,
-  productsLength
+  productsLength: _productsLength
 }) => {
   const { progress } = useCrawlingStore();
   const statusTabViewModel = useStatusTabViewModel();

@@ -1346,7 +1346,7 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
               </div>
               <div className="mt-4 inline-block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
                 <div className="text-lg font-bold">
-                  {Math.round(crawlerState.detailStageProcessedCount || 0)} / {
+                  {Math.round(progress.processedItems || 0)} / {
                     progress.totalItems ||
                     statusSummary?.siteProductCount ||
                     (targetPageCount * (config.productsPerPage || 12))

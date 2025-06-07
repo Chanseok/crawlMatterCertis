@@ -41,11 +41,6 @@ const AppContent: React.FC = observer(() => {
     logViewModel.addLog(`Switched to tab: ${tab}`, 'info', 'APP');
   };
 
-  // Section toggle handlers
-  const handleToggleStatus = () => {
-    uiStateViewModel.toggleSection('progress');
-  };
-
   // Crawling control handlers
   // const handleCheckStatus = async () => {
   //   uiStateViewModel.showLoading('Checking status...');
@@ -99,8 +94,6 @@ const AppContent: React.FC = observer(() => {
       case 'status':
         return (
           <StatusTab
-            statusExpanded={uiStateViewModel.isSectionExpanded('progress')}
-            onToggleStatus={handleToggleStatus}
             compareExpandedInApp={uiStateViewModel.isSectionExpanded('database-view')}
             setCompareExpandedInApp={(expanded: boolean) => 
               uiStateViewModel.setSectionVisibility('database-view', expanded)

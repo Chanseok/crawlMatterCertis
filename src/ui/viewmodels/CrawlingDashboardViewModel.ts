@@ -158,7 +158,7 @@ export class CrawlingDashboardViewModel {
                   1;
 
     // 디버깅을 위한 로그 (개발 모드에서만)
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log('[CrawlingDashboardViewModel] 🔍 targetPageCount calculation:', {
         statusActualTarget,
         progressTotalPages,
