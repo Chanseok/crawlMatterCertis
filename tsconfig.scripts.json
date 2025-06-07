@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "NodeNext", // Changed from CommonJS to NodeNext for import.meta support
+    "moduleResolution": "NodeNext", // Changed to match the module setting
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "outDir": "dist-scripts",
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false
+  },
+  "include": ["scripts/**/*.ts", "scripts/test-database-fix.ts.backup"],
+  "exclude": [
+    "node_modules", 
+    "dist",
+    "**/*.backup",
+    "**/*.bak",
+    "**/test-legacy/**",
+    "**/test-results/**"
+  ]
+}

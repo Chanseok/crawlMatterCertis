@@ -6,6 +6,7 @@
 import { chromium } from 'playwright-chromium';
 import { getDatabaseSummaryFromDb } from '../../database.js';
 import { configManager } from '../../ConfigManager.js'; // Added import for configManager
+import type { CrawlerConfig } from '../../../../types.js';
 
 // 캐시
 let cachedTotalPages: number | null = null;
@@ -15,16 +16,18 @@ let cachedTotalPagesFetchedAt: number | null = null;
  * 캐시된 전체 페이지 수를 가져오거나 최신화
  * 
  * @param force 캐시 무시 여부
+ * @param providedConfig 설정 객체 (선택적)
  * @returns 총 페이지 수
  */
-export async function getTotalPagesCached(force = false): Promise<number> {
-  const config = configManager.getConfig(); // Use configManager
+export async function getTotalPagesCached(force = false, providedConfig?: CrawlerConfig): Promise<number> {
+  // 제공된 config가 있으면 사용하고, 없으면 configManager에서 가져옴
+  const config = providedConfig || configManager.getConfig();
   const now = Date.now();
   if (!force && cachedTotalPages && cachedTotalPagesFetchedAt && (now - cachedTotalPagesFetchedAt < (config.cacheTtlMs ?? 0))) {
     return cachedTotalPages;
   }
   
-  const totalPages = await getTotalPages();
+  const totalPages = await getTotalPages(config);
   cachedTotalPages = totalPages;
   cachedTotalPagesFetchedAt = now;
   return totalPages;
@@ -33,10 +36,12 @@ export async function getTotalPagesCached(force = false): Promise<number> {
 /**
  * 총 페이지 수를 가져오는 함수
  * 
+ * @param providedConfig 설정 객체 (선택적)
  * @returns 총 페이지 수
  */
-async function getTotalPages(): Promise<number> {
-  const config = configManager.getConfig(); // Use configManager
+async function getTotalPages(providedConfig?: CrawlerConfig): Promise<number> {
+  // 제공된 config가 있으면 사용하고, 없으면 configManager에서 가져옴
+  const config = providedConfig || configManager.getConfig();
   const browser = await chromium.launch({ headless: config.headlessBrowser ?? true }); // Use headlessBrowser from config
   let totalPages = 0;
   
@@ -80,10 +85,12 @@ async function getTotalPages(): Promise<number> {
  * 크롤링해야 할 페이지 범위를 결정하는 함수
  * 
  * @param totalPages 총 페이지 수
+ * @param providedConfig 설정 객체 (선택적)
  * @returns 시작 페이지와 종료 페이지
  */
-export async function determineCrawlingRange(totalPages: number): Promise<{ startPage: number; endPage: number }> {
-  const config = configManager.getConfig(); // Use configManager
+export async function determineCrawlingRange(totalPages: number, providedConfig?: CrawlerConfig): Promise<{ startPage: number; endPage: number }> {
+  // 제공된 config가 있으면 사용하고, 없으면 configManager에서 가져옴
+  const config = providedConfig || configManager.getConfig();
   const dbSummary = await getDatabaseSummaryFromDb();
   
   if (dbSummary.productCount === 0) {

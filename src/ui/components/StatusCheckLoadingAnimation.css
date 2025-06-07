@@ -8,83 +8,312 @@
   40% { transform: translateY(-8px); }
 }
 
+@keyframes airplane-fly {
+  0% { 
+    transform: translate(-60px, 100px) rotate(-5deg) scale(1);
+    opacity: 0.7;
+  }
+  20% { 
+    transform: translate(120px, 40px) rotate(0deg) scale(0.95);
+    opacity: 1;
+  }
+  40% { 
+    transform: translate(240px, -20px) rotate(5deg) scale(0.9);
+    opacity: 1;
+  }
+  60% { 
+    transform: translate(360px, -60px) rotate(10deg) scale(0.8);
+    opacity: 0.9;
+  }
+  80% { 
+    transform: translate(480px, -100px) rotate(15deg) scale(0.7);
+    opacity: 0.6;
+  }
+  100% { 
+    transform: translate(600px, -140px) rotate(20deg) scale(0.5);
+    opacity: 0;
+  }
+}
+
+@keyframes cloud-float {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(20px) translateY(-5px); }
+}
+
+@keyframes cabinet-open {
+  0% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(-5px) scaleY(0.9); }
+  100% { transform: translateY(-10px) scaleY(0.8); }
+}
+
+@keyframes document-reveal {
+  0% { 
+    opacity: 0; 
+    transform: translateY(20px) scale(0.8);
+  }
+  100% { 
+    opacity: 1; 
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes search-scan {
+  0%, 100% { transform: translateX(-10px) rotate(-5deg); }
+  50% { transform: translateX(10px) rotate(5deg); }
+}
+
+/* 컨테이너 스타일 */
 .status-check-loading-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 30px;
   text-align: center;
   font-family: sans-serif;
   color: #333;
+  min-height: 200px;
 }
 
-.status-check-loading-animation {
+.status-check-animation-sequence {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  height: 150px;
+  margin-bottom: 20px;
+  overflow: visible; /* 중요: 넘치는 콘텐츠가 보이도록 변경 */
+}
+
+/* 1단계: 비행기 애니메이션 */
+.airplane-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  display: none; /* 처음에는 보이지 않음, JS에서 표시 */
+  z-index: 200;
+  overflow: visible;
+  pointer-events: none;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.clouds-background {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.fly-animation .airplane {
+  animation: airplane-fly 3s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+
+.airplane {
+  position: absolute;
+  font-size: 2rem;
+  bottom: 10px;
+  left: 10px;
+  z-index: 100; /* 모든 요소 위에 표시 */
+  filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
+  transform-origin: center center;
+}
+
+.flight-path {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  transform: rotate(-30deg);
+  transform-origin: left center;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(59, 130, 246, 0.2) 20%, 
+    rgba(59, 130, 246, 0.4) 50%, 
+    rgba(59, 130, 246, 0.2) 80%, 
+    transparent 100%
+  );
+  border-radius: 1px;
+}
+
+.clouds {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.cloud {
+  position: absolute;
+  font-size: 1.2rem;
+  opacity: 0.5;
+  z-index: 40;
+}
+
+.cloud1 {
+  top: 60px;
+  left: 50px;
+  animation: cloud-float 4s ease-in-out infinite;
+}
+
+.cloud2 {
+  top: 30px;
+  left: 200px;
+  animation: cloud-float 3.5s ease-in-out infinite reverse;
+}
+
+.cloud3 {
+  top: 10px;
+  left: 350px;
+  animation: cloud-float 5s ease-in-out infinite;
+  animation-delay: -1s;
+}
+
+/* 2단계: 캐비넷 애니메이션 */
+.cabinet-stage {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.5s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cabinet-stage.active {
+  opacity: 1;
+}
+
+.filing-cabinet {
+  position: relative;
+  font-size: 3rem;
+}
+
+.cabinet-body {
+  position: relative;
+  z-index: 1;
+}
+
+.cabinet-drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 2rem;
+  transform: translateY(0);
+  transition: transform 0.8s ease-out;
+}
+
+.cabinet-drawer.opening {
+  animation: cabinet-open 2s ease-in-out infinite;
+}
+
+/* 3단계: 파일 검색 애니메이션 */
+.file-check-stage {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.5s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-check-stage.active {
+  opacity: 1;
+}
+
+.file-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.magnifying-glass {
+  font-size: 2.5rem;
+  animation: search-scan 1.5s ease-in-out infinite;
+}
+
+.documents {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.document {
+  font-size: 1.8rem;
+  opacity: 0;
+  animation: document-reveal 0.6s ease-out forwards;
+}
+
+.doc1 {
+  animation-delay: 0.2s;
+}
+
+.doc2 {
+  animation-delay: 0.4s;
+}
+
+.doc3 {
+  animation-delay: 0.6s;
+}
+
+/* 상태 메시지 */
+.status-message {
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 15px;
-  position: relative; /* For positioning dots relative to the animation area */
 }
 
-.magnifying-glass {
-  width: 50px;
-  height: 50px;
-  position: relative;
-  animation: magnify 2s infinite ease-in-out;
-  margin-right: 20px; /* Space between magnifying glass and dots */
-}
-
-.magnifying-glass-handle {
-  width: 10px;
-  height: 25px;
-  background-color: #555;
-  border-radius: 3px;
-  position: absolute;
-  bottom: -5px;
-  left: 20px;
-  transform: rotate(45deg);
-  transform-origin: top left;
-}
-
-.magnifying-glass-lens {
-  width: 40px;
-  height: 40px;
-  border: 5px solid #555;
-  border-radius: 50%;
-  background-color: rgba(200, 200, 255, 0.3); /* Light blue tint */
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-.dots {
-  display: flex;
-}
-
-.dot {
-  width: 10px;
-  height: 10px;
-  background-color: #007bff;
-  border-radius: 50%;
-  margin: 0 3px;
-}
-
-.dot1 {
-  animation: dot-bounce 1.4s infinite ease-in-out both;
-  animation-delay: -0.32s;
-}
-
-.dot2 {
-  animation: dot-bounce 1.4s infinite ease-in-out both;
-  animation-delay: -0.16s;
-}
-
-.dot3 {
-  animation: dot-bounce 1.4s infinite ease-in-out both;
-}
-
-.status-check-loading-container p {
-  font-size: 0.9em;
+.status-message p {
+  font-size: 0.95rem;
   color: #555;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+/* 진행률 점들 */
+.progress-dots {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.progress-dots .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #e5e7eb;
+  transition: all 0.3s ease;
+}
+
+.progress-dots .dot.active {
+  background-color: #3b82f6;
+  transform: scale(1.2);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+}
+
+/* 다크 모드 지원 */
+@media (prefers-color-scheme: dark) {
+  .status-check-loading-container {
+    color: #e5e7eb;
+  }
+  
+  .status-message p {
+    color: #d1d5db;
+  }
+  
+  .progress-dots .dot {
+    background-color: #4b5563;
+  }
+  
+  .progress-dots .dot.active {
+    background-color: #60a5fa;
+  }
 }

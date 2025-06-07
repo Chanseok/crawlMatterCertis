@@ -3,8 +3,11 @@
  * 크롤러에서 사용되는 타입 정의
  */
 
-// Importing from the root types.d.ts file
-import type { Product, MatterProduct } from '../../../../types.d.ts';
+// types.d.ts에서 공용 타입 import
+import type {
+  Product,
+  MatterProduct
+} from '../../../../types.d.ts';
 
 /**
  * 크롤링 단계 결과 타입
@@ -17,9 +20,11 @@ export interface CrawlResult {
 }
 
 export interface DetailCrawlResult {
-    url: string;
-    product: MatterProduct | null;
-    error?: string;
+  url: string;
+  product: MatterProduct | null;
+  isNewItem: boolean;
+  success: boolean;
+  error?: string;
 }
 
 /**
@@ -50,6 +55,7 @@ export interface CrawlingSummary {
     
     // 페이지 범위 선택 기능(CRAWL-RANGE-001)에 필요한 추가 속성
     selectedPageCount?: number;        // 선택된 페이지 수
+    actualTargetPageCountForStage1?: number; // 1단계 실제 크롤링 대상 페이지 수 (추가)
     estimatedProductCount?: number;    // 예상 제품 수집 개수
     estimatedTotalTime?: number;       // 예상 소요 시간 (밀리초)
     userPageLimit?: number;            // 사용자 지정 페이지 제한
@@ -100,3 +106,5 @@ export interface CrawlError {
   attempt?: number;
   originalError?: any; // Can store the original error object if needed
 }
+
+// (이 파일 내에서 CrawlingProgress, CrawlingStatus, CrawlerConfig 등은 직접 정의하지 않고 반드시 import만 사용)

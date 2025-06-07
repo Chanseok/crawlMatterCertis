@@ -49,6 +49,7 @@ export function getPreloadPath() {
 
 export function getUIPath() {
     if (isDev()) {
+        // Test: back to Vite server with working JavaScript settings
         return 'http://localhost:5123'; // 개발 모드에서는 URL 반환
     } else {
         return path.join(app.getAppPath(), 'dist-react', 'index.html');

@@ -8,27 +8,33 @@ interface ExpandableSectionProps {
   additionalClasses?: string;
   isLoading?: boolean;
   loadingContent?: React.ReactNode;
+  headerBgColor?: string;
+  contentBgColor?: string;
+  headerTextColor?: string;
 }
 
-export const ExpandableSection = React.memo(function ExpandableSection({
+export const ExpandableSection: React.FC<ExpandableSectionProps> = ({
   title,
   isExpanded,
   onToggle,
   children,
   additionalClasses = '',
   isLoading,
-  loadingContent
-}: ExpandableSectionProps) {
+  loadingContent,
+  headerBgColor = 'bg-gray-50 dark:bg-gray-750',
+  contentBgColor = '',
+  headerTextColor = 'text-gray-700 dark:text-gray-300'
+}) => {
   const contentRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className={`mb-4 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden ${additionalClasses}`}>
       {/* 헤더 (클릭 시 접기/펼치기) */}
       <div
-        className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-750 cursor-pointer"
+        className={`flex justify-between items-center p-3 ${headerBgColor} cursor-pointer`}
         onClick={onToggle}
       >
-        <h3 className="font-medium text-gray-700 dark:text-gray-300">{title}</h3>
+        <h3 className={`font-medium ${headerTextColor}`}>{title}</h3>
         <svg
           className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isExpanded ? 'transform rotate-180' : ''}`}
           fill="none"
@@ -54,10 +60,10 @@ export const ExpandableSection = React.memo(function ExpandableSection({
           transform: isExpanded ? 'translateY(0)' : 'translateY(-10px)',
         }}
       >
-        <div className="p-4">
+        <div className={`p-4 ${contentBgColor}`}>
           {isLoading && loadingContent ? loadingContent : children}
         </div>
       </div>
     </div>
   );
-});
+};

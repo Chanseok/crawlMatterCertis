@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Minimal Test</title>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval'; object-src 'none';">
+    <script>
+        console.log("MINIMAL TEST: Head script executing!");
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("MINIMAL TEST: DOMContentLoaded event fired!");
+        });
+    </script>
+</head>
+<body>
+    <h1>Minimal Test</h1>
+    <div id="test">Loading...</div>
+    
+    <script>
+        console.log("MINIMAL TEST: Body script executing!");
+        
+        function runTests() {
+            console.log("MINIMAL TEST: runTests function called");
+            
+            // Test DOM manipulation
+            const testElement = document.getElementById('test');
+            if (testElement) {
+                testElement.textContent = "JavaScript Works!";
+                console.log("MINIMAL TEST: DOM manipulation complete");
+            } else {
+                console.log("MINIMAL TEST: Could not find test element");
+            }
+            
+            // Try to access window.electron
+            console.log("MINIMAL TEST: window object exists:", !!window);
+            console.log("MINIMAL TEST: window.electron exists:", !!window.electron);
+            
+            // Test setTimeout
+            setTimeout(() => {
+                console.log("MINIMAL TEST: setTimeout works!");
+            }, 1000);
+        }
+        
+        // Try multiple execution approaches
+        console.log("MINIMAL TEST: About to call runTests");
+        runTests();
+        
+        // Also try on window load
+        window.addEventListener('load', function() {
+            console.log("MINIMAL TEST: Window load event fired!");
+            runTests();
+        });
+        
+        // And try immediate execution
+        setTimeout(runTests, 100);
+    </script>
+</body>
+</html>

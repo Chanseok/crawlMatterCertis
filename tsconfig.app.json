@@ -3,10 +3,14 @@
     "types": ["./types"],
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "ES2020",
-    "useDefineForClassFields": true,
+    "useDefineForClassFields": false,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+
+    /* Decorators */
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false,
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -24,5 +28,18 @@
     "noUncheckedSideEffectImports": true
   },
   "include": ["src"],
-  "exclude": ["src/electron"],
+  "exclude": [
+    "src/electron",
+    "**/*.backup",
+    "**/*.bak",
+    "**/dist/**",
+    "**/dist-electron/**",
+    "**/dist-react/**",
+    "**/test-legacy/**",
+    "**/test-results/**",
+    "**/node_modules/**",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
 }

@@ -12,8 +12,19 @@ dist
 dist-react
 dist-electron
 dist-output
+dist-scripts
 data-for-dev
+data
+test-results
+.obsidian
 *.local
+
+# Backup files
+*.backup
+*.bak
+*~
+*.tmp
+*.temp
 
 # Editor directories and files
 .vscode/*

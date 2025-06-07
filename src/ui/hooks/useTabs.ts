@@ -1,24 +1,35 @@
-import { useState } from 'react';
-import { addLog, loadConfig } from '../stores';
+import { useState, useCallback } from 'react';
+import { useLogStore } from './useLogStore';
+import { useCrawlingStore } from './useCrawlingStore';
 
-type TabType = 'settings' | 'status' | 'localDB';
+type TabId = 'status' | 'settings' | 'localDB' | 'analysis';
 
-export function useTabs(initialTab: TabType = 'status') {
-  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+export function useTabs(defaultTab: TabId = 'status') {
+  const [activeTab, setActiveTab] = useState<TabId>(defaultTab);
+  const { addLog } = useLogStore();
+  const { loadConfig } = useCrawlingStore();
 
-  const handleTabChange = (tab: TabType) => {
-    // 이전 탭이 설정 탭이었고, 새 탭이 상태 & 제어 탭인 경우
-    if (activeTab === 'settings' && tab === 'status') {
-      // 설정 정보 리로드 (최신 설정을 확실히 반영)
-      loadConfig().then(() => {
-        addLog('탭 전환: 최신 설정 정보를 로드했습니다.', 'info');
-      });
+  const handleTabChange = useCallback((tabId: string) => {
+    if (isValidTab(tabId)) {
+      // 이전 탭이 설정 탭이었고, 새 탭이 상태 & 제어 탭인 경우
+      if (activeTab === 'settings' && tabId === 'status') {
+        // 설정 정보 리로드 (최신 설정을 확실히 반영)
+        loadConfig().then(() => {
+          addLog('탭 전환: 최신 설정 정보를 로드했습니다.', 'info');
+        });
+      }
+      setActiveTab(tabId);
+      console.log(`Tab changed to: ${tabId}`);
     }
-    setActiveTab(tab);
+  }, [activeTab, addLog, loadConfig]);
+
+  const isValidTab = (tabId: string): tabId is TabId => {
+    return ['status', 'settings', 'localDB', 'analysis'].includes(tabId);
   };
 
   return {
     activeTab,
     handleTabChange,
+    isValidTab,
   };
 }

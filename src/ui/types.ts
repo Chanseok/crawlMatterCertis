@@ -1,21 +1,44 @@
 // types.d.ts에서 공유 타입 import
-import { 
+import {
   AppMode,
   DatabaseSummary,
   MatterProduct,
+  CrawlingProgress,
   ConcurrentCrawlingTask,
   ConcurrentTaskStatus,
-  EventPayloadMapping,
-  CrawlingStatus,    // 공유 타입 import
-  CrawlingProgress   // 공유 타입 import
+  EventPayloadMapping
 } from '../../types.js';
 
+// Re-export these types for use throughout the UI
+export type {
+  AppMode,
+  DatabaseSummary,
+  MatterProduct,
+  CrawlingProgress,
+  ConcurrentCrawlingTask,
+  ConcurrentTaskStatus,
+  EventPayloadMapping
+};
+
 // UI 전용 타입 정의
-// 로그 항목 타입 (UI 전용)
-export interface LogEntry {
-  timestamp: Date;
-  message: string;
-  type: 'info' | 'warning' | 'error' | 'success';
+// 로그 항목 타입 (UI 전용) - import from shared types
+export type { LogEntry } from '../shared/types/ui.js';
+
+// 사이트 상태 정보 타입
+export interface StatusStore {
+  isChecking: boolean;
+  siteConnected: boolean;
+  lastCheckedAt: number | null;
+  isCrawling: boolean;
+  crawlingStartedAt: number | null;
+  crawlingFinishedAt: number | null;
+  currentPage: number;
+  totalPages: number;
+  lastPageProductCount: number;
+  targetPageCount: number; // 사용자가 설정한 페이지 범위 (새로 추가)
+  foundProducts: number;
+  detailProgress: number;
+  detailTotal: number;
 }
 
 // ProductDetail은 UI 전용이므로 유지
@@ -43,15 +66,3 @@ export interface ProductDetail {
   primaryDeviceTypeId?: string;
   applicationCategories?: string[];
 }
-
-// 공유 타입 re-export
-export type { 
-  AppMode,
-  DatabaseSummary,
-  MatterProduct,
-  ConcurrentCrawlingTask,
-  ConcurrentTaskStatus,
-  EventPayloadMapping,
-  CrawlingStatus,
-  CrawlingProgress
-};

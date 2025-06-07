@@ -3,8 +3,6 @@
  * 제품 목록 수집을 담당하는 클래스
  */
 
-import { type Page, type BrowserContext } from 'playwright-chromium';
-// import { getDatabaseSummaryFromDb } from '../../database.js';
 
 import { CrawlerState } from '../core/CrawlerState.js';
 import {
@@ -12,88 +10,78 @@ import {
 } from '../utils/concurrency.js';
 
 import type { CrawlResult, CrawlError } from '../utils/types.js';
-import type { Product, PageProcessingStatusItem, PageProcessingStatusValue } from '../../../../types.js';
-import { debugLog } from '../../util.js';
+import type { Product, PageProcessingStatusValue, MutablePageProcessingStatusItem } from '../../../../types.js';
 import { type CrawlerConfig } from '../core/config.js';
-import { crawlerEvents, updateRetryStatus  } from '../utils/progress.js';
+import { logger } from '../../../shared/utils/Logger.js';
+import { crawlerEvents, updateRetryStatus } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';
-import { BrowserManager } from '../browser/BrowserManager.js'; // Corrected path
-import { delay } from '../utils/delay.js';
+import { BrowserManager } from '../browser/BrowserManager.js';
+import { PageValidator } from '../utils/page-validator.js';
+import { CrawlingUtils } from '../../../shared/utils/CrawlingUtils.js';
+// import { delay } from '../utils/delay.js';
 
-// --- 사용자 정의 오류 클래스 --- 
-class PageOperationError extends Error {
-  constructor(message: string, public pageNumber: number, public attempt?: number) {
-    super(message);
-    this.name = this.constructor.name;
-  }
-}
-class PageTimeoutError extends PageOperationError { readonly type = 'Timeout'; }
-class PageAbortedError extends PageOperationError { readonly type = 'Abort'; }
-class PageNavigationError extends PageOperationError { readonly type = 'Navigation'; }
-class PageContentExtractionError extends PageOperationError { readonly type = 'Extraction'; }
-class PageInitializationError extends PageOperationError { readonly type = 'Initialization'; }
-// --- 사용자 정의 오류 클래스 끝 ---
+// 모듈화된 클래스 가져오기
+import { 
+  PageOperationError, PageTimeoutError, PageAbortedError,
+  PageNavigationError, PageContentExtractionError, PageInitializationError 
+} from '../utils/page-errors.js';
+import { PageCacheManager } from '../utils/page-cache-manager.js';
+import { SitePageInfo } from './product-list-types.js';
+import { DEFAULT_CACHE_TTL_MS } from './product-list-constants.js';
+import { PageCrawler } from './page-crawler.js';
+import { ProductDataProcessor } from './product-data-processor.js';
+import { ProgressManager } from './progress-manager.js';
 
-// 캐시
-let cachedTotalPages: number | null = null;
-let cachedTotalPagesFetchedAt: number | null = null;
+// 캐시 매니저 인스턴스 생성
+const sitePageInfoCache = new PageCacheManager<SitePageInfo>();
 
-// 진행 상황 콜백 타입 정의
+// 진행 상황 콜백 타입 정의 (하위 호환성 유지)
 export type EnhancedProgressCallback = (
-  processedSuccessfully: number, // Successfully completed pages
-  totalPagesInStage: number, // Total pages specifically for this stage 1 collection
-  stage1PageStatuses: PageProcessingStatusItem[],
-  currentOverallRetryCountForStage: number, // Overall retries for stage 1
-  stage1StartTime: number, // Start time of the current stage 1 processing
-  isStageComplete?: boolean,
-  timeEstimate?: { // 추가된 시간 예측 정보
-    estimatedTotalTimeMs: number, // 예상 총 소요 시간
-    remainingTimeMs: number // 예상 남은 시간
-  }
+  processedSuccessfully: number,
+  totalPagesInStage: number,
+  stage1PageStatuses: MutablePageProcessingStatusItem[],
+  currentOverallRetryCountForStage: number,
+  stage1StartTime: number,
+  isStageComplete?: boolean
 ) => void;
 
-// page.evaluate가 반환하는 원시 데이터 타입
-interface RawProductData {
-  url: string;
-  manufacturer?: string;
-  model?: string;
-  certificateId?: string;
-  siteIndexInPage: number; // DOM 순서 기반 인덱스
-}
-
 export class ProductListCollector {
-  private state: CrawlerState;
+  
   private abortController: AbortController;
   private enhancedProgressCallback: EnhancedProgressCallback | null = null;
-  private processedPagesSuccessfully: number = 0;
+  
   private readonly config: CrawlerConfig;
-  private readonly browserManager: BrowserManager;
+  
+  private readonly state: CrawlerState;
+
+  // private readonly browserManager: BrowserManager;
 
   private static lastPageProductCount: number | null = null;
   private productCache: Map<number, Product[]>;
 
   // New members for detailed stage 1 progress
-  private stage1PageStatuses: PageProcessingStatusItem[] = [];
+  private stage1PageStatuses: MutablePageProcessingStatusItem[] = [];
   private currentStageRetryCount: number = 0; // Tracks the number of retry *cycles* for the stage
-  private totalPagesForThisStage1Collection: number = 0; // Number of pages being attempted in current collect() call
-  private stage1StartTime: number = 0;
-
-  // 페이지별 처리 시간 추적 변수
-  private pageProcessingTimes: Map<number, number> = new Map(); // 페이지번호 -> 처리시간(ms)
-  private averagePageProcessingTimeMs: number = 30000; // 현재 평균 처리 시간 (기본값 30초)
-  private successfullyProcessedPagesCount: number = 0; // 시간 계산에 포함된 페이지 수
-  private totalProcessingTimeMs: number = 0; // 총 처리 시간
+  // Track total number of pages to process
+  
+  
+  
 
   // Cached configuration values
   private pageTimeoutMs: number;
   private productsPerPage: number;
   private matterFilterUrl: string;
+  
+  // 새로운 유틸리티 클래스 인스턴스
+  private readonly pageCrawler: PageCrawler;
+  private readonly productDataProcessor: ProductDataProcessor;
+  private progressManager: ProgressManager;
 
   constructor(state: CrawlerState, abortController: AbortController, config: CrawlerConfig, browserManager: BrowserManager) {
     this.state = state;
     this.abortController = abortController;
     this.config = config;
-    this.browserManager = browserManager;
+    // this.browserManager = browserManager;
     this.productCache = new Map();
     
     // 자주 사용하는 설정값 미리 추출
@@ -101,37 +89,67 @@ export class ProductListCollector {
     this.productsPerPage = config.productsPerPage || 12;
     this.matterFilterUrl = config.matterFilterUrl || '';
     
-    // 설정에서 이전에 저장된 평균 페이지 처리 시간 로드
-    if (config.averagePageProcessingTimeMs && config.averagePageProcessingTimeMs > 0) {
-      this.averagePageProcessingTimeMs = config.averagePageProcessingTimeMs;
-      debugLog(`[ProductListCollector] 이전 실행에서 저장된 평균 페이지 처리 시간 로드: ${this.averagePageProcessingTimeMs}ms`);
+    // 유틸리티 클래스 초기화 (config에서 crawlerType 사용)
+    this.pageCrawler = new PageCrawler(browserManager, config);
+    this.productDataProcessor = new ProductDataProcessor();
+    this.progressManager = new ProgressManager(state);
+  }
+  
+  /**
+   * 설정 정보를 갱신합니다.
+   * @param newConfig 새 설정 객체
+   */
+  refreshConfig(newConfig: CrawlerConfig): void {
+    // config는 readonly이므로 Object.assign으로 속성들을 복사
+    Object.assign(this.config, newConfig);
+    
+    // 캐싱된 설정값 갱신
+    this.pageTimeoutMs = newConfig.pageTimeoutMs || 60000;
+    this.productsPerPage = newConfig.productsPerPage || 12;
+    this.matterFilterUrl = newConfig.matterFilterUrl || '';
+    
+    // 유틸리티 클래스 설정 갱신
+    if (this.pageCrawler && typeof this.pageCrawler.refreshConfig === 'function') {
+      this.pageCrawler.refreshConfig(newConfig);
     }
   }
 
   public setProgressCallback(callback: EnhancedProgressCallback): void {
     this.enhancedProgressCallback = callback;
+    this.progressManager.setProgressCallback(callback);
+  }
+  
+  /**
+   * 크롤링 전략 변경
+   * @param crawlerType 크롤링 전략 유형 ('playwright' 또는 'axios')
+   */
+  public async switchCrawlerStrategy(crawlerType: 'playwright' | 'axios'): Promise<void> {
+    await this.pageCrawler.switchCrawlerStrategy(crawlerType);
+    console.log(`[ProductListCollector] 크롤링 전략이 ${crawlerType}로 변경되었습니다.`);
+  }
+  
+  /**
+   * 현재 사용 중인 크롤링 전략 확인
+   * @returns 현재 크롤링 전략 유형
+   */
+  public getCurrentCrawlerStrategy(): 'playwright' | 'axios' {
+    return this.pageCrawler.getCurrentStrategy();
   }
 
   private _sendProgressUpdate(isStageComplete: boolean = false): void {
     if (this.enhancedProgressCallback) {
-      this.processedPagesSuccessfully = this.stage1PageStatuses.filter(p => p.status === 'success').length;
-      
-      // 예상 시간 계산
-      const timeEstimate = this._calculateEstimatedRemainingTime();
-      
-      this.enhancedProgressCallback(
-        this.processedPagesSuccessfully,
-        this.totalPagesForThisStage1Collection, // Use the count of pages we are actually trying to process
-        [...this.stage1PageStatuses],
-        this.currentStageRetryCount,
-        this.stage1StartTime, // Pass the stage1StartTime
-        isStageComplete,
-        timeEstimate // 예상 시간 정보 추가
-      );
+      this.progressManager.sendProgressUpdate(isStageComplete);
     }
   }
 
   private _updatePageStatusInternal(pageNumber: number, newStatus: PageProcessingStatusValue, attempt?: number): void {
+    // ProgressManager를 통해 페이지 상태 업데이트
+    this.progressManager.updatePageStatus(pageNumber, newStatus, attempt);
+    
+    // CrawlerState 상태 업데이트
+    this.state.updatePageProcessingStatus(pageNumber, newStatus, attempt || 1);
+    
+    // 하위 호환성을 위해 로컬 상태도 함께 업데이트
     const pageStatusItem = this.stage1PageStatuses.find(p => p.pageNumber === pageNumber);
     if (pageStatusItem) {
       pageStatusItem.status = newStatus;
@@ -147,42 +165,18 @@ export class ProductListCollector {
     status: PageProcessingStatusValue,
     data: Record<string, any>
   ): void {
-    const messagePayload: Record<string, any> = {
-      stage: 1,
-      type: 'page',
-      pageNumber,
-      ...data
-    };
-    // 'running' 대신 'attempting'으로 변경 (PageProcessingStatusValue에 'running'이 없을 경우 대비)
-    if (status === 'attempting') { 
-      messagePayload.startTime = new Date().toISOString();
-      if (data.url) messagePayload.url = data.url;
-    } else {
-      messagePayload.endTime = new Date().toISOString();
-    }
-    Object.keys(messagePayload).forEach(key => {
-      if (messagePayload[key] === undefined) delete messagePayload[key];
-    });
-    crawlerEvents.emit('crawlingTaskStatus', {
-      taskId: `page-${pageNumber}`,
-      status,
-      message: JSON.stringify(messagePayload)
-    });
+    // ProgressManager를 통해 페이지 크롤링 상태 이벤트 발생
+    this.progressManager.emitPageCrawlStatus(pageNumber, status, data);
   }
 
   public async collect(userPageLimit: number = 0): Promise<Product[]> {
     this.productCache.clear();
-    this.state.setStage('productList:init', '1단계: 제품 목록 페이지 수 파악 중');
-    this.processedPagesSuccessfully = 0;
+    
+    // ProgressManager 초기화 및 단계 설정
+    this.progressManager.setInitStage();
+    
     this.currentStageRetryCount = 0;
     this.stage1PageStatuses = [];
-    this.totalPagesForThisStage1Collection = 0;
-    this.stage1StartTime = Date.now();
-    
-    // 시간 추적 변수 초기화
-    this.pageProcessingTimes.clear();
-    this.totalProcessingTimeMs = 0;
-    this.successfullyProcessedPagesCount = 0;
 
     try {
       const prepResult = await this._preparePageRange(userPageLimit);
@@ -193,18 +187,12 @@ export class ProductListCollector {
       // siteTotalPages is the total number of pages on the site, used for PageIndexManager
       const { totalPages: siteTotalPages, pageNumbersToCrawl, lastPageProductCount } = prepResult;
       ProductListCollector.lastPageProductCount = lastPageProductCount;
-      this.totalPagesForThisStage1Collection = pageNumbersToCrawl.length;
-      
-      debugLog(`[ProductListCollector] 시작 평균 페이지 처리 시간: ${this.averagePageProcessingTimeMs}ms`);
-      
-      // 초기 상태 설정
+
       this.stage1PageStatuses = pageNumbersToCrawl.map(pn => ({
         pageNumber: pn,
         status: 'waiting',
         attempt: 0
       }));
-      
-      // 초기 진행 상태 업데이트
       this._sendProgressUpdate();
 
       const { incompletePages: incompletePagesAfterInitialCrawl, allPageErrors } =
@@ -241,6 +229,95 @@ export class ProductListCollector {
     }
   }
 
+  /**
+   * 지정된 페이지 범위만 수집
+   * @param pageRange 수집할 페이지 범위 {startPage, endPage}
+   * @returns 수집된 제품 정보
+   */
+  public async collectPageRange(pageRange: {startPage: number, endPage: number}): Promise<Product[]> {
+    this.productCache.clear();
+    
+    // ProgressManager 초기화 및 단계 설정
+    this.progressManager.setInitStage();
+    
+    this.currentStageRetryCount = 0;
+    this.stage1PageStatuses = [];
+
+    try {
+      const { totalPages: siteTotalPages, lastPageProductCount } = await this.fetchTotalPagesCached(false);
+      ProductListCollector.lastPageProductCount = lastPageProductCount;
+      
+      // Generate page numbers within range
+      const pageNumbersToCrawl: number[] = [];
+      for (let page = pageRange.startPage; page >= pageRange.endPage; page--) {
+        pageNumbersToCrawl.push(page);
+      }
+      
+      if (pageNumbersToCrawl.length === 0) {
+        this._sendProgressUpdate(true);
+        return [];
+      }
+      
+      this.stage1PageStatuses = pageNumbersToCrawl.map(pn => ({
+        pageNumber: pn,
+        status: 'waiting',
+        attempt: 0
+      }));
+
+      // Prepare progress tracking
+      const totalPages = pageNumbersToCrawl.length;
+      this.progressManager.initializePages(pageNumbersToCrawl);
+      this._sendProgressUpdate();
+
+      // Process pages - similar to existing collect() method
+      console.log(`[ProductListCollector] Collecting ${totalPages} pages in range: ${pageRange.startPage}-${pageRange.endPage}`);
+      
+      // Use existing methods instead of startStage
+      this.progressManager.setInitStage();
+      this._sendProgressUpdate();
+      const collectedProducts = await this._crawlListOfPages(pageNumbersToCrawl, siteTotalPages);
+      
+      // Process any failed pages
+      const allPageErrors: Record<string, CrawlError[]> = {};
+      
+      // Retry mechanism (similar to collect())
+      const failedPageNumbers = pageNumbersToCrawl.filter(p => {
+        const pageStatus = this.stage1PageStatuses.find(s => s.pageNumber === p);
+        return pageStatus && (pageStatus.status === 'failed' || pageStatus.status === 'incomplete');
+      });
+
+      if (failedPageNumbers.length > 0) {
+        await this.retryFailedPages(failedPageNumbers, siteTotalPages, allPageErrors);
+      }
+
+      // Summarize collection results
+      this._summarizeCollectionOutcome(pageNumbersToCrawl, siteTotalPages, allPageErrors, collectedProducts);
+      
+      return collectedProducts;
+    } catch (error) {
+      console.error('[ProductListCollector] Error collecting page range:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 리소스 정리 및 해제
+   */
+  public async cleanupResources(): Promise<void> {
+    console.log('[ProductListCollector] Cleaning up resources...');
+    
+    // Clear caches
+    this.productCache.clear();
+    
+    // If we're using a page crawler, clean it up
+    if (this.pageCrawler) {
+      await this.pageCrawler.cleanup();
+    }
+    
+    // Allow garbage collection
+    this.stage1PageStatuses = [];
+  }
+
   private async _preparePageRange(userPageLimit: number): Promise<{
     totalPages: number; // Site's total pages
     pageNumbersToCrawl: number[]; // DB pageIds to crawl
@@ -248,15 +325,15 @@ export class ProductListCollector {
   } | null> {
     try {
       const { totalPages, lastPageProductCount } = await this.fetchTotalPagesCached(false);
-      debugLog(`[ProductListCollector] Site total pages: ${totalPages}, Last page product count: ${lastPageProductCount}`);
+      logger.debug(`Site total pages: ${totalPages}, Last page product count: ${lastPageProductCount}`, 'ProductListCollector');
 
       const { startPage, endPage } = await PageIndexManager.calculateCrawlingRange(
         totalPages, lastPageProductCount, userPageLimit
       );
-      debugLog(`[ProductListCollector] Crawling range (db pageId): ${startPage} to ${endPage}`);
+      logger.debug(`Crawling range (db pageId): ${startPage} to ${endPage}`, 'ProductListCollector');
 
       const pageNumbersToCrawl = Array.from({ length: startPage - endPage + 1 }, (_, i) => endPage + i).reverse();
-      debugLog(`[ProductListCollector] DB Page numbers to crawl: ${pageNumbersToCrawl.join(', ')}`);
+      logger.debug(`DB Page numbers to crawl: ${pageNumbersToCrawl.join(', ')}`, 'ProductListCollector');
 
       crawlerEvents.emit('crawlingTaskStatus', {
         taskId: 'list-range',
@@ -313,7 +390,7 @@ export class ProductListCollector {
     const allPageErrors: Record<string, CrawlError[]> = {};
     const initialAttemptNumber = 1;
 
-    debugLog(`[ProductListCollector] Starting initial crawl for ${pageNumbersToCrawl.length} pages.`);
+    logger.info(`Starting initial crawl for ${pageNumbersToCrawl.length} pages.`, 'ProductListCollector');
 
     pageNumbersToCrawl.forEach(pNum => {
       this._updatePageStatusInternal(pNum, 'attempting', initialAttemptNumber);
@@ -343,17 +420,30 @@ export class ProductListCollector {
         let newStatus: PageProcessingStatusValue = 'failed';
 
         if (result.error) {
+          // 오류 로그 기록
           if (!errorLog[pageNumStr]) errorLog[pageNumStr] = [];
           errorLog[pageNumStr].push(result.error);
-          newStatus = 'failed';
+          
+          // 오류 발생했지만 캐시에 충분한 제품이 있는 경우 성공으로 처리
+          if (result.isComplete) {
+            newStatus = 'success';
+            console.log(`[ProductListCollector] 페이지 ${result.pageNumber} 시도 ${attemptNumber}: 오류 발생했으나 캐시된 제품(${result.products.length}개)으로 성공 처리`);
+          } else {
+            newStatus = 'failed';
+          }
         } else if (!result.isComplete) {
           newStatus = 'incomplete';
         } else {
           newStatus = 'success';
         }
 
+        // 내부 상태 업데이트
         this._updatePageStatusInternal(result.pageNumber, newStatus, attemptNumber);
+        
+        // CrawlerState의 상태도 업데이트
+        this.state.updatePageProcessingStatus(result.pageNumber, newStatus, attemptNumber);
 
+        // 불완전/실패한 페이지 목록 관리
         if (newStatus === 'incomplete' || newStatus === 'failed') {
           if (!incompletePageListToPopulate.includes(result.pageNumber)) {
             incompletePageListToPopulate.push(result.pageNumber);
@@ -364,23 +454,32 @@ export class ProductListCollector {
         }
       }
     });
-    debugLog(`[_processBatchResultsAndUpdateStatus attempt ${attemptNumber}] Processed ${results.length} results. ${incompletePageListToPopulate.length} pages currently marked as incomplete/failed.`);
-    this._sendProgressUpdate();
+    
+    logger.debug(`Processed ${results.length} results. ${incompletePageListToPopulate.length} pages currently marked as incomplete/failed (attempt ${attemptNumber}).`);
   }
 
+  /**
+   * 페이지 크롤링 결과 처리 및 제품 정보 추출
+   * @param pageNumber 페이지 번호
+   * @param siteTotalPages 사이트 총 페이지 수
+   * @param signal 중단 신호
+   * @param attempt 시도 횟수
+   * @returns 크롤링 결과
+   */
   private async processPageCrawl(
     pageNumber: number,
     siteTotalPages: number,
     signal: AbortSignal,
     attempt: number = 1
   ): Promise<CrawlResult | null> {
-    // 페이지 처리 시작 시간 기록
-    this._recordPageProcessingStart(pageNumber);
-    
     const url = `${this.matterFilterUrl}&paged=${pageNumber}`;
     const sitePageNumberForTargetCount = PageIndexManager.toSitePageNumber(pageNumber, siteTotalPages);
     const actualLastPageProductCount = ProductListCollector.lastPageProductCount ?? 0;
     const targetProductCount = sitePageNumberForTargetCount === 0 ? actualLastPageProductCount : this.productsPerPage;
+    const isLastPage = sitePageNumberForTargetCount === 0;
+
+    // 설정된 기대 제품 수를 CrawlerState에 업데이트
+    this.state.setExpectedProductsPerPage(this.productsPerPage);
 
     let crawlError: CrawlError | undefined;
 
@@ -393,63 +492,127 @@ export class ProductListCollector {
       this._updatePageStatusInternal(pageNumber, 'failed', attempt); 
       updateTaskStatus(pageNumber, 'stopped'); 
       crawlError = { type: 'Abort', message: 'Aborted before start', pageNumber, attempt };
-      const cachedProducts = this.productCache.get(pageNumber) || [];
+      
+      // 중단 시 CrawlerState에서 기존 캐시된 제품 가져오기
+      const cachedProducts = this.state.getPageProductsCache(pageNumber);
+      
+      // 캐시된 제품으로 페이지 완전성 검증
+      const validationResult = this.state.validatePageCompleteness(
+        pageNumber, 
+        isLastPage,
+        isLastPage ? actualLastPageProductCount : undefined
+      );
+      
       return {
-        pageNumber, products: cachedProducts, error: crawlError,
-        isComplete: cachedProducts.length >= targetProductCount
+        pageNumber, 
+        products: cachedProducts, 
+        error: crawlError,
+        isComplete: validationResult.isComplete
       };
     }
 
     let newlyFetchedProducts: Product[] = [];
-    let currentProductsOnPage: Product[] = this.productCache.get(pageNumber) || [];
-    let isComplete = currentProductsOnPage.length >= targetProductCount;
+    let currentProductsOnPage: Product[] = this.state.getPageProductsCache(pageNumber);
+    
+    // 페이지 완전성 검증
+    let validationResult = this.state.validatePageCompleteness(
+      pageNumber, 
+      isLastPage,
+      isLastPage ? actualLastPageProductCount : undefined
+    );
+    
+    let isComplete = validationResult.isComplete;
 
     try {
-      this._recordPageProcessingStart(pageNumber);
+      // 이미 완전히 수집된 페이지라면 새로 수집하지 않음
+      if (isComplete && currentProductsOnPage.length >= targetProductCount) {
+        console.log(`[ProductListCollector] 페이지 ${pageNumber} 시도 ${attempt}: 이미 완전히 수집됨 (${currentProductsOnPage.length}/${targetProductCount})`);
+        
+        // 상태 업데이트
+        this._updatePageStatusInternal(pageNumber, 'success', attempt);
+        this.state.updatePageProcessingStatus(pageNumber, 'success', attempt);
+        
+        this._emitPageCrawlStatus(pageNumber, 'success', {
+          productsCount: currentProductsOnPage.length,
+          newlyFetchedCount: 0,
+          isComplete: true,
+          targetCount: targetProductCount,
+          attempt,
+          fromCache: true
+        });
+        
+        updateTaskStatus(pageNumber, 'success');
+        
+        return {
+          pageNumber,
+          products: currentProductsOnPage,
+          isComplete: true
+        };
+      }
+      
+      // 새 데이터 가져오기 (crawlPageWithTimeout에 타임아웃 적용됨)
+      newlyFetchedProducts = await this.crawlPageWithTimeout(pageNumber, signal, attempt);
+      
+      console.log(`[ProductListCollector] 페이지 ${pageNumber} 시도 ${attempt}: ${newlyFetchedProducts.length}개 제품 수집, 기존 캐시 ${currentProductsOnPage.length}개`);
 
-      newlyFetchedProducts = await Promise.race([
-        this.crawlPageWithTimeout(pageNumber, siteTotalPages, signal, attempt),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new PageTimeoutError('Timeout', pageNumber, attempt)), this.pageTimeoutMs)
-        )
-      ]);
+      // 수집된 제품 데이터 유효성 검사 (PageValidator 활용)
+      const { valid, invalid } = PageValidator.validateProductData(newlyFetchedProducts);
+      
+      if (invalid.length > 0) {
+        console.warn(`[ProductListCollector] 페이지 ${pageNumber}: ${invalid.length}개 제품이 유효하지 않음`);
+      }
+      
+      // 유효한 제품만 병합
+      if (valid.length > 0) {
+        // 스마트 병합: 새 제품과 기존 제품을 URL 기준으로 병합 (CrawlerState의 메서드 사용)
+        const mergedProducts = this.state.updatePageProductsCache(pageNumber, valid);
+        
+        // 로컬 캐시도 업데이트 (하위 호환성)
+        this.productCache.set(pageNumber, mergedProducts);
+        currentProductsOnPage = mergedProducts;
 
-      const existingProductsFromCache = this.productCache.get(pageNumber) || [];
-      const allProductsForPage = ProductListCollector._mergeAndDeduplicateProductLists(
-        existingProductsFromCache, newlyFetchedProducts
-      );
-      this.productCache.set(pageNumber, allProductsForPage);
-      currentProductsOnPage = allProductsForPage;
-      isComplete = currentProductsOnPage.length >= targetProductCount;
+        // 재검증: 페이지 완전성 검증 (병합 후)
+        validationResult = this.state.validatePageCompleteness(
+          pageNumber, 
+          isLastPage,
+          isLastPage ? actualLastPageProductCount : undefined
+        );
+        
+        isComplete = validationResult.isComplete;
+      }
 
+      // 페이지 처리 상태 업데이트
       const currentProcessingStatus: PageProcessingStatusValue = isComplete ? 'success' : 'incomplete';
       this._updatePageStatusInternal(pageNumber, currentProcessingStatus, attempt);
+      
+      // CrawlerState의 페이지 처리 상태도 업데이트
+      this.state.updatePageProcessingStatus(pageNumber, currentProcessingStatus, attempt);
+      
       this._emitPageCrawlStatus(pageNumber, currentProcessingStatus, {
         productsCount: currentProductsOnPage.length,
-        newlyFetchedCount: newlyFetchedProducts.length,
-        isComplete, targetCount: targetProductCount, attempt
+        newlyFetchedCount: valid?.length || 0,
+        invalidProductsCount: invalid?.length || 0,
+        isComplete,
+        targetCount: targetProductCount,
+        attempt,
+        mergedFromCache: currentProductsOnPage.length > newlyFetchedProducts.length,
+        validationDetails: validationResult
       });
-      updateTaskStatus(pageNumber, isComplete ? 'success' : 'incomplete'); 
       
-      // 성공한 페이지의 경우 처리 완료 시간 기록 및 즉시 UI 업데이트
-      if (isComplete) {
-        this._recordPageProcessingEnd(pageNumber);
-        
-        // 성공적인 페이지 완료 시점에 예상 남은 시간 로깅
-        const timeEstimate = this._calculateEstimatedRemainingTime();
-        const formattedRemainingTime = this._formatRemainingTime(timeEstimate.remainingTimeMs);
-        debugLog(`[ProductListCollector] 페이지 ${pageNumber} 완료 - 예상 남은 시간: ${formattedRemainingTime} (${this.processedPagesSuccessfully}/${this.totalPagesForThisStage1Collection} 완료)`);
-        
-        // 성공적인 페이지 완료 즉시 UI 업데이트 (즉각적인 피드백을 위해)
-        this._sendProgressUpdate();
-      }
+      updateTaskStatus(pageNumber, isComplete ? 'success' : 'incomplete'); 
     } catch (err) {
+      // 로컬 상태 업데이트
       this._updatePageStatusInternal(pageNumber, 'failed', attempt);
+      
+      // CrawlerState 상태 업데이트
+      this.state.updatePageProcessingStatus(pageNumber, 'failed', attempt);
+      
       const finalStatusForTaskSignal = signal.aborted ? 'stopped' : 'error';
       
       // _emitPageCrawlStatus는 PageProcessingStatusValue를 기대하므로, 'stopped'의 경우 'failed'로 전달
       const errorStatusForEmit: PageProcessingStatusValue = finalStatusForTaskSignal === 'stopped' ? 'failed' : 'failed';
 
+      // 오류 종류 분류
       if (err instanceof PageTimeoutError) {
         crawlError = { type: 'Timeout', message: err.message, pageNumber, attempt, originalError: err };
       } else if (err instanceof PageAbortedError) {
@@ -463,18 +626,56 @@ export class ProductListCollector {
       } else {
         crawlError = { type: 'Generic', message: err instanceof Error ? err.message : String(err), pageNumber, attempt, originalError: err };
       }
-      this._emitPageCrawlStatus(pageNumber, errorStatusForEmit, { error: crawlError, attempt });
+      
+      // 오류 이벤트 발생
+      this._emitPageCrawlStatus(pageNumber, errorStatusForEmit, { 
+        error: crawlError, 
+        attempt,
+        cachedProductsCount: currentProductsOnPage.length,
+        validationResult
+      });
+      
+      // 작업 상태 업데이트
       updateTaskStatus(pageNumber, finalStatusForTaskSignal, crawlError.message);
-      isComplete = currentProductsOnPage.length >= targetProductCount; 
-    } finally {
-      this._recordPageProcessingEnd(pageNumber);
+      
+      // 오류 발생했더라도 이전에 캐시된 제품이 충분한지 다시 검증
+      // 오류가 발생했지만 캐시된 데이터가 완전한 경우를 처리
+      const revalidationResult = this.state.validatePageCompleteness(
+        pageNumber, 
+        isLastPage,
+        isLastPage ? actualLastPageProductCount : undefined
+      );
+      
+      isComplete = revalidationResult.isComplete;
+      
+      // 오류가 발생했지만 캐시된 데이터가 완전하면 상태 업데이트
+      if (isComplete) {
+        console.log(`[ProductListCollector] 페이지 ${pageNumber}: 오류 발생했으나 캐시된 데이터가 완전하여 성공으로 처리`);
+        this._updatePageStatusInternal(pageNumber, 'success', attempt);
+        this.state.updatePageProcessingStatus(pageNumber, 'success', attempt);
+        updateTaskStatus(pageNumber, 'success');
+      }
+      
+      // 오류 정보를 CrawlerState에 기록
+      if (!isComplete) {
+        this.state.addFailedPage(pageNumber, crawlError.message);
+      }
     }
 
     return {
-      pageNumber, products: currentProductsOnPage, error: crawlError, isComplete
+      pageNumber, 
+      products: currentProductsOnPage, 
+      error: crawlError,
+      isComplete
     };
   }
 
+  /**
+   * 실패한 페이지 재시도 (강화된 검증 로직 적용)
+   * @param pagesToRetryInitially 초기 재시도 대상 페이지 번호 목록
+   * @param siteTotalPages 사이트 총 페이지 수
+   * @param failedPageErrors 페이지별 오류 정보
+   */
   private async retryFailedPages(
     pagesToRetryInitially: number[],
     siteTotalPages: number,
@@ -489,49 +690,149 @@ export class ProductListCollector {
       return;
     }
 
+    // 재시도 과정 시작 시 카운트를 1로 초기화
+    this.currentStageRetryCount = 1;
+    
+    // 실패한 페이지에 대한 상세 정보 기록
+    const failedPagesDetails = pagesToRetryInitially.map(pageNum => {
+      // 현재 캐시된 제품 정보
+      const cachedProducts = this.state.getPageProductsCache(pageNum);
+      
+      // 사이트 페이지 번호 계산
+      const sitePageNumber = PageIndexManager.toSitePageNumber(pageNum, siteTotalPages);
+      const isLastPage = sitePageNumber === 0;
+      const expectedProductCount = isLastPage ? (ProductListCollector.lastPageProductCount || this.productsPerPage) : this.productsPerPage;
+      
+      // 페이지 검증
+      const validationResult = this.state.validatePageCompleteness(
+        pageNum,
+        isLastPage,
+        isLastPage ? ProductListCollector.lastPageProductCount || undefined : undefined
+      );
+      
+      return {
+        pageNumber: pageNum,
+        sitePageNumber,
+        isLastPage,
+        expectedProductCount,
+        currentProductCount: cachedProducts.length,
+        isComplete: validationResult.isComplete,
+        validationResult,
+        errors: failedPageErrors[pageNum.toString()] || []
+      };
+    });
+    
+    console.log(`[ProductListCollector] 재시도 시작: ${failedPagesDetails.length}개 페이지 재시도 예정`);
+    failedPagesDetails.forEach(pageInfo => {
+      console.log(`[ProductListCollector] 재시도 대상 페이지 ${pageInfo.pageNumber}: 현재 ${pageInfo.currentProductCount}/${pageInfo.expectedProductCount} 제품 수집됨, 오류=${pageInfo.errors.length}개`);
+    });
+    
+    // 재시도 전 각 페이지의 상태를 재설정 (캐시는 유지)
+    pagesToRetryInitially.forEach(pageNumber => {
+      // CrawlerState의 resetPageStatus 사용하여 상태 재설정 (캐시는 유지)
+      this.state.resetPageStatus(pageNumber);
+      // 내부 상태도 업데이트
+      this._updatePageStatusInternal(pageNumber, 'waiting', 1);
+    });
+    
+    // ProgressManager에 재시도 상태 업데이트
+    this.progressManager.updateRetryStatus(
+      this.currentStageRetryCount,
+      productListRetryCount,
+      pagesToRetryInitially.length,
+      pagesToRetryInitially.length,
+      pagesToRetryInitially.map(p => p.toString())
+    );
+    
+    // UI 업데이트를 위한 이벤트 발생
+    this._sendProgressUpdate();
+
     let currentIncompletePages = [...pagesToRetryInitially];
-    const firstRetryCycleAttemptNumber = 1;
 
     for (let retryCycleIndex = 0; retryCycleIndex < productListRetryCount && currentIncompletePages.length > 0; retryCycleIndex++) {
-      this.currentStageRetryCount = firstRetryCycleAttemptNumber + retryCycleIndex;
+      // 첫 번째 사이클은 이미 설정했으므로, 두 번째 사이클부터 증가
+      if (retryCycleIndex > 0) {
+        this.currentStageRetryCount = retryCycleIndex + 1;
+      }
       const overallAttemptNumberForPagesInThisCycle = 1 + this.currentStageRetryCount;
+      
+      // 지수 백오프 적용 (CrawlingUtils 사용)
+      const baseDelay = 1000; // 기본 1초
+      const retryDelay = Math.min(
+        Math.pow(1.5, retryCycleIndex) * baseDelay + (Math.random() * 500),
+        30000 // 최대 30초
+      );
+      console.log(`[ProductListCollector] 재시도 사이클 ${this.currentStageRetryCount}/${productListRetryCount} 시작 전 ${Math.round(retryDelay)}ms 대기`);
+      await CrawlingUtils.delay(retryDelay, () => this.abortController.signal.aborted);
 
       if (this.abortController.signal.aborted) {
+        console.log(`[ProductListCollector] 재시도 중단: 중단 신호 감지됨`);
         currentIncompletePages.forEach(pNum => this._updatePageStatusInternal(pNum, 'failed', overallAttemptNumberForPagesInThisCycle));
         this._sendProgressUpdate();
         break;
       }
 
+      // 현재 재시도 사이클에서 처리할 페이지 
       const pagesForThisRetryCycle = [...currentIncompletePages];
       currentIncompletePages.length = 0;
+      
+      // 재시도 대상 페이지 검증
+      const pagesToActuallyRetry = pagesForThisRetryCycle.filter(pageNum => {
+        // 페이지 완전성 검증
+        // Get site page number for validation
+        const sitePageNumber = PageIndexManager.toSitePageNumber(pageNum, siteTotalPages);
+        const isLastPage = sitePageNumber === 0;
+        
+        const validationResult = this.state.validatePageCompleteness(
+          pageNum,
+          isLastPage,
+          isLastPage ? ProductListCollector.lastPageProductCount || undefined : undefined
+        );
+        
+        // 이미 완전하게 수집된 페이지는 재시도 대상에서 제외
+        if (validationResult.isComplete) {
+          console.log(`[ProductListCollector] 페이지 ${pageNum}: 이전 수집 또는 병합으로 완전해짐, 재시도 불필요`);
+          this._updatePageStatusInternal(pageNum, 'success', overallAttemptNumberForPagesInThisCycle);
+          return false;
+        }
+        
+        // 불완전 페이지는 재시도 대상으로 포함
+        return true;
+      });
+      
+      if (pagesToActuallyRetry.length === 0) {
+        console.log(`[ProductListCollector] 재시도 사이클 ${this.currentStageRetryCount}: 모든 페이지가 이미 완전함, 재시도 불필요`);
+        break;
+      }
+      
+      console.log(`[ProductListCollector] 재시도 사이클 ${this.currentStageRetryCount}: ${pagesToActuallyRetry.length}개 페이지 재시도`);
 
-      pagesForThisRetryCycle.forEach(pNum => {
+      // 상태 업데이트
+      pagesToActuallyRetry.forEach(pNum => {
         this._updatePageStatusInternal(pNum, 'attempting', overallAttemptNumberForPagesInThisCycle);
       });
       this._sendProgressUpdate();
 
-      updateRetryStatus('list-retry', {
-        stage: 'productList',
-        currentAttempt: this.currentStageRetryCount,
-        maxAttempt: productListRetryCount,
-        remainingItems: pagesForThisRetryCycle.length,
-        totalItems: pagesToRetryInitially.length,
-        startTime: Date.now(),
-        itemIds: pagesForThisRetryCycle.map(p => p.toString())
-      });
-      crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: 'list-retry', status: 'running',
-        message: `Product list retry cycle ${this.currentStageRetryCount}/${productListRetryCount} (Overall page attempt ${overallAttemptNumberForPagesInThisCycle}): ${pagesForThisRetryCycle.length} pages`
-      });
-      debugLog(`[RETRY] Product list cycle ${this.currentStageRetryCount}/${productListRetryCount} for pages: ${pagesForThisRetryCycle.join(', ')}`);
+      // ProgressManager를 통해 재시도 상태 업데이트
+      this.progressManager.updateRetryStatus(
+        this.currentStageRetryCount,
+        productListRetryCount,
+        pagesToActuallyRetry.length,
+        pagesToRetryInitially.length,
+        pagesToActuallyRetry.map(p => p.toString())
+      );
+      
+      logger.info(`Product list retry cycle ${this.currentStageRetryCount}/${productListRetryCount} for pages: ${pagesToActuallyRetry.join(', ')}`);
 
+      // 실제 재시도 실행
       const { results: retryBatchResults } = await this.executeParallelCrawling(
-        pagesForThisRetryCycle,
+        pagesToActuallyRetry,
         siteTotalPages,
         retryConcurrency,
         overallAttemptNumberForPagesInThisCycle
       );
 
+      // 재시도 결과 처리
       this._processBatchResultsAndUpdateStatus(
         retryBatchResults,
         currentIncompletePages,
@@ -539,40 +840,99 @@ export class ProductListCollector {
         overallAttemptNumberForPagesInThisCycle
       );
 
-      pagesForThisRetryCycle.forEach(() => {
-        // ... (existing detailed logging for each page in retry batch)
+      // 재시도 후 불완전 페이지 갱신 - 완전성 강화 검증 적용
+      currentIncompletePages = currentIncompletePages.filter(pageNum => {
+        // Get site page number for validation
+        const sitePageNumber = PageIndexManager.toSitePageNumber(pageNum, siteTotalPages);
+        const isLastPage = sitePageNumber === 0;
+        
+        const validationResult = this.state.validatePageCompleteness(
+          pageNum,
+          isLastPage,
+          isLastPage ? ProductListCollector.lastPageProductCount || undefined : undefined
+        );
+        
+        // 완전해진 페이지는 제외
+        return !validationResult.isComplete;
       });
 
+      // 재시도 상태 업데이트
       updateRetryStatus('list-retry', {
         remainingItems: currentIncompletePages.length,
         itemIds: currentIncompletePages.map(p => p.toString())
       });
 
+      // 모든 페이지가 완전해지면 종료
       if (currentIncompletePages.length === 0) {
-        debugLog(`[RETRY] All product list pages successfully completed after retry cycle ${this.currentStageRetryCount}.`);
+        logger.info(`모든 제품 목록 페이지가 재시도 사이클 ${this.currentStageRetryCount} 후 완전해짐.`);
         crawlerEvents.emit('crawlingTaskStatus', {
-          taskId: 'list-retry', status: 'success',
+          taskId: 'list-retry', 
+          status: 'success',
           message: `Product list retry successful after cycle ${this.currentStageRetryCount}.`
         });
         break;
       }
     }
 
+    // 최종 결과 보고
     if (currentIncompletePages.length > 0) {
-      debugLog(`[RETRY] After ${this.currentStageRetryCount} retry cycles, ${currentIncompletePages.length} pages remain incomplete.`);
+      // 남은 불완전 페이지 세부 정보 조회
+      const remainingIncompleteDetails = currentIncompletePages.map(pageNum => {
+        const cachedProducts = this.state.getPageProductsCache(pageNum);
+        const sitePageNumber = PageIndexManager.toSitePageNumber(pageNum, siteTotalPages);
+        const isLastPage = sitePageNumber === 0;
+        const expectedProductCount = isLastPage ? (ProductListCollector.lastPageProductCount || this.productsPerPage) : this.productsPerPage;
+        
+        const validationResult = this.state.validatePageCompleteness(
+          pageNum,
+          isLastPage,
+          isLastPage ? ProductListCollector.lastPageProductCount || undefined : undefined
+        );
+        
+        return {
+          pageNumber: pageNum,
+          sitePageNumber,
+          isLastPage,
+          expectedProductCount,
+          currentProductCount: cachedProducts.length,
+          validationDetails: validationResult
+        };
+      });
+      
+      const incompleteDetailsSummary = remainingIncompleteDetails.map(info => 
+        `페이지 ${info.pageNumber}: ${info.currentProductCount}/${info.expectedProductCount} 제품${info.isLastPage ? ' (마지막 페이지)' : ''}`
+      ).join(', ');
+      
+      logger.warn(`${this.currentStageRetryCount}번의 재시도 후에도 ${currentIncompletePages.length}개 페이지가 불완전함: ${incompleteDetailsSummary}`);
+      
       crawlerEvents.emit('crawlingTaskStatus', {
-        taskId: 'list-retry', status: 'error',
-        message: `Product list retry finished: ${currentIncompletePages.length} pages still incomplete after ${this.currentStageRetryCount} cycles.`
+        taskId: 'list-retry', 
+        status: 'error',
+        message: JSON.stringify({
+          stage: 1,
+          type: 'retry',
+          message: `재시도 완료 후에도 ${currentIncompletePages.length}개 페이지가 불완전함`,
+          details: incompleteDetailsSummary,
+          cycles: this.currentStageRetryCount
+        })
       });
     } else {
       if (this.currentStageRetryCount > 0) {
-        debugLog(`[RETRY] All product list pages completed within ${this.currentStageRetryCount} retry cycles.`);
+        logger.info(`모든 제품 목록 페이지가 ${this.currentStageRetryCount}번의 재시도 내에 완전히 수집됨.`);
+        
         crawlerEvents.emit('crawlingTaskStatus', {
-          taskId: 'list-retry', status: 'success',
-          message: 'Product list retry successful: All initially incomplete pages completed within retry cycles.'
+          taskId: 'list-retry', 
+          status: 'success',
+          message: JSON.stringify({
+            stage: 1,
+            type: 'retry',
+            message: '모든 초기 불완전 페이지가 재시도 사이클 내에 완전히 수집됨',
+            cycles: this.currentStageRetryCount
+          })
         });
       }
     }
+    
     this._sendProgressUpdate();
   }
 
@@ -582,64 +942,44 @@ export class ProductListCollector {
     _allPageErrors: Record<string, CrawlError[]>,
     collectedProducts: Product[]
   ): void {
-    let finalFailedCount = 0;
-    finalFailedCount = this.stage1PageStatuses.filter(p => p.status === 'failed' || p.status === 'incomplete').length;
-
-    const successPagesCount = this.totalPagesForThisStage1Collection - finalFailedCount;
-    const successRate = this.totalPagesForThisStage1Collection > 0 ? (successPagesCount / this.totalPagesForThisStage1Collection) : 1;
-
-    // 수집 완료 통계 및 시간 관련 정보 로깅
-    console.log(`[ProductListCollector] Final collection: ${successPagesCount}/${this.totalPagesForThisStage1Collection} pages fully collected. Total products: ${collectedProducts.length}`);
-    
-    // 시간 관련 통계 추가 로깅
-    const totalElapsedMs = Date.now() - this.stage1StartTime;
-    const avgTimePerSuccessfulPage = successPagesCount > 0 ? this.totalProcessingTimeMs / successPagesCount : 0;
-    const formattedElapsedTime = this._formatDuration(totalElapsedMs);
-    
-    console.log(`[ProductListCollector] 수집 시간 통계:`);
-    console.log(`  총 소요 시간: ${formattedElapsedTime}`);
-    console.log(`  페이지당 평균 처리 시간: ${Math.round(avgTimePerSuccessfulPage)}ms`);
-    console.log(`  페이지 성공률: ${(successRate * 100).toFixed(1)}%`);
-    
-    if (this.pageProcessingTimes.size > 0) {
-      const processingTimes = Array.from(this.pageProcessingTimes.values());
-      const minTime = Math.min(...processingTimes);
-      const maxTime = Math.max(...processingTimes);
-      console.log(`  최소 페이지 처리 시간: ${minTime}ms, 최대: ${maxTime}ms`);
-    }
-
-    crawlerEvents.emit('crawlingTaskStatus', {
-      taskId: 'list-complete', status: 'success',
-      message: JSON.stringify({
-        stage: 1, type: 'complete',
-        siteTotalPages: totalPages,
-        pagesAttemptedInStage: this.totalPagesForThisStage1Collection,
-        successfullyCollectedPagesInStage: successPagesCount,
-        collectedProducts: collectedProducts.length,
-        failedOrIncompletePagesInStage: finalFailedCount,
-        successRate: parseFloat((successRate * 100).toFixed(1)),
-        // 시간 관련 통계 추가
-        totalElapsedTimeMs: totalElapsedMs,
-        avgProcessingTimePerPageMs: Math.round(avgTimePerSuccessfulPage)
-      })
-    });
-
-    this.state.setStage('productList:processing', '수집된 제품 목록 처리 중');
+    // ProgressManager를 통해 수집 결과 요약 보고
+    this.progressManager.summarizeCollectionOutcome(totalPages, collectedProducts.length);
   }
-
-  private cleanupResources(): void {
-    console.log('[ProductListCollector] Cleaning up resources...');
+  
+  /**
+   * 페이지 목록을 크롤링하는 메서드
+   * @param pageNumbersToCrawl 크롤링할 페이지 번호 배열
+   * @param siteTotalPages 사이트의 총 페이지 수
+   * @returns 수집된 제품 목록
+   */
+  private async _crawlListOfPages(
+    pageNumbersToCrawl: number[],
+    siteTotalPages: number
+  ): Promise<Product[]> {
+    initializeTaskStates(pageNumbersToCrawl);
     
-    // 페이지 처리 시간 정보 저장을 위한 이벤트 발생
-    if (this.successfullyProcessedPagesCount > 0) {
-      console.log(`[ProductListCollector] 평균 페이지 처리 시간: ${this.averagePageProcessingTimeMs.toFixed(2)}ms (${this.successfullyProcessedPagesCount}개 페이지)`);
-      
-      // averagePageProcessingTimeMs 값을 설정에 저장하기 위한 이벤트 발생
-      crawlerEvents.emit('crawlingPageProcessingTime', {
-        averagePageProcessingTimeMs: Math.round(this.averagePageProcessingTimeMs),
-        processedPagesCount: this.successfullyProcessedPagesCount
-      });
-    }
+    const incompletePages: number[] = [];
+    const allPageErrors: Record<string, CrawlError[]> = {};
+    const initialAttemptNumber = 1;
+    
+    logger.info(`Starting crawl for ${pageNumbersToCrawl.length} pages.`);
+    
+    pageNumbersToCrawl.forEach(pNum => {
+      this._updatePageStatusInternal(pNum, 'attempting', initialAttemptNumber);
+    });
+    this._sendProgressUpdate();
+    
+    const { results } = await this.executeParallelCrawling(
+      pageNumbersToCrawl,
+      siteTotalPages,
+      this.config.initialConcurrency ?? 5,
+      initialAttemptNumber
+    );
+    
+    this._processBatchResultsAndUpdateStatus(results, incompletePages, allPageErrors, initialAttemptNumber);
+    
+    // Return the products that have been collected so far
+    return this.finalizeCollectedProducts(pageNumbersToCrawl);
   }
 
   public async getTotalPagesCached(force = false): Promise<number> {
@@ -651,160 +991,31 @@ export class ProductListCollector {
     totalPages: number;
     lastPageProductCount: number;
   }> {
-    const now = Date.now();
-    const cacheTtl = this.config.cacheTtlMs ?? 3600000;
-
-    if (!force &&
-      cachedTotalPages &&
-      ProductListCollector.lastPageProductCount !== null &&
-      cachedTotalPagesFetchedAt &&
-      (now - cachedTotalPagesFetchedAt < cacheTtl)) {
-      // debugLog('[ProductListCollector] Returning cached total pages data.');
+    const cacheTtl = this.config.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
+    sitePageInfoCache.setTtl(cacheTtl);
+    
+    return await sitePageInfoCache.getOrFetch(force, async () => {
+      logger.debug(`Fetching total pages. Force refresh: ${force}`);
+      const result = await this._fetchTotalPages();
+      ProductListCollector.lastPageProductCount = result.lastPageProductCount;
+      logger.debug(`Fetched and cached new total pages data: ${result.totalPages} pages, ${result.lastPageProductCount} products on last page.`);
       return {
-        totalPages: cachedTotalPages,
-        lastPageProductCount: ProductListCollector.lastPageProductCount!
+        totalPages: result.totalPages,
+        lastPageProductCount: result.lastPageProductCount,
+        fetchedAt: Date.now()  // 현재 시간을 fetchedAt 속성으로 추가
       };
-    }
-
-    debugLog(`[ProductListCollector] Fetching total pages. Force refresh: ${force}`);
-    const result = await this._fetchTotalPages();
-    cachedTotalPages = result.totalPages;
-    ProductListCollector.lastPageProductCount = result.lastPageProductCount;
-    cachedTotalPagesFetchedAt = now;
-    debugLog(`[ProductListCollector] Fetched and cached new total pages data: ${result.totalPages} pages, ${result.lastPageProductCount} products on last page.`);
-
-    return result;
+    });
   }
 
   private async _fetchTotalPages(): Promise<{ totalPages: number; lastPageProductCount: number }> {
-    const MAX_FETCH_ATTEMPTS = 3;
-    const RETRY_DELAY_MS = 2500; // 2.5 seconds delay
-
-    for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
-      let context: BrowserContext | null = null;
-      let page: Page | null = null;
-      try {
-        debugLog(`[ProductListCollector] _fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS}`);
-        context = await this.browserManager.getContextFromPool();
-        page = await this.browserManager.createPageInContext(context);
-        if (!page) {
-          throw new PageInitializationError('Failed to create page in new context for _fetchTotalPages', 0, attempt);
-        }
-
-        if (!this.matterFilterUrl) {
-          throw new Error('Configuration error: matterFilterUrl is not defined.');
-        }
-
-        if (attempt > 1) {
-          await delay(RETRY_DELAY_MS / 2);
-        }
-
-        debugLog(`[ProductListCollector] Navigating to ${this.matterFilterUrl} to fetch total pages (Attempt ${attempt}).`);
-        await this.optimizePage(page);
-        await this.optimizedNavigation(page, this.matterFilterUrl, this.pageTimeoutMs);
-
-        const pageElements = await page.locator('div.pagination-wrapper > nav > div > a > span').all();
-        let totalPages = 0;
-        if (pageElements.length > 0) {
-          const pageNumbers = await Promise.all(
-            pageElements.map(async (el) => {
-              const text = await el.textContent();
-              return text ? parseInt(text.trim(), 10) : 0;
-            })
-          );
-          totalPages = Math.max(...pageNumbers.filter(n => !isNaN(n) && n > 0), 0);
-        }
-        debugLog(`[ProductListCollector] Determined ${totalPages} total pages from pagination elements (Attempt ${attempt}).`);
-
-        let lastPageProductCount = 0;
-        if (totalPages > 0) {
-          const lastPageUrl = `${this.matterFilterUrl}&paged=${totalPages}`;
-          debugLog(`[ProductListCollector] Navigating to last page: ${lastPageUrl} (Attempt ${attempt})`);
-          if (page && lastPageUrl !== page.url()) {
-            await this.optimizePage(page);
-            await this.optimizedNavigation(page, lastPageUrl, this.pageTimeoutMs);
-          }
-
-          if (page) {
-            try {
-              lastPageProductCount = await page.evaluate(() => {
-                return document.querySelectorAll('div.post-feed article').length;
-              });
-            } catch (evalError: any) {
-              throw new PageContentExtractionError(`Failed to count products on last page ${totalPages} (Attempt ${attempt}): ${evalError?.message || String(evalError)}`, totalPages, attempt);
-            }
-            debugLog(`[ProductListCollector] Last page ${totalPages} has ${lastPageProductCount} products (Attempt ${attempt}).`);
-          }
-        } else { // totalPages is 0 or less
-          debugLog(`[ProductListCollector] No pagination elements found or totalPages is 0. Checking current page for products (Attempt ${attempt}).`);
-          if (page) {
-            try {
-              lastPageProductCount = await page.evaluate(() => {
-                return document.querySelectorAll('div.post-feed article').length;
-              });
-            } catch (evalError: any) {
-              // If counting products on the "first" page (when no pagination) fails, it's an extraction error.
-              throw new PageContentExtractionError(`Failed to count products on initial page (no pagination) (Attempt ${attempt}): ${evalError?.message || String(evalError)}`, 1, attempt);
-            }
-
-            if (lastPageProductCount > 0 && totalPages <= 0) { // Products found, but no pagination indicated more pages
-              totalPages = 1;
-              debugLog(`[ProductListCollector] Found ${lastPageProductCount} products on the first page. Setting totalPages to 1 (Attempt ${attempt}).`);
-            } else if (totalPages <= 0 && lastPageProductCount <= 0) { // Still no pages and no products
-              debugLog(`[ProductListCollector] No products found on the first page and no pagination. totalPages remains 0 (Attempt ${attempt}).`);
-              // This is the critical point: if totalPages is still 0, it's an error for this attempt.
-              throw new PageContentExtractionError(`No pages or products found on the site (Attempt ${attempt}).`, 0, attempt);
-            }
-          } else { // page is null, should have been caught by PageInitializationError earlier
-            throw new PageInitializationError('Page object was null when trying to count products on initial page.', 0, attempt);
-          }
-        }
-
-        // After all checks, if totalPages is still not positive, it's a failure for this attempt.
-        if (totalPages <= 0) {
-          throw new PageContentExtractionError(`Site reported ${totalPages} pages. This is considered an error (Attempt ${attempt}).`, totalPages, attempt);
-        }
-
-        // If successful and totalPages > 0, return the result
-        return { totalPages, lastPageProductCount };
-
-      } catch (error: unknown) {
-        const attemptError = error instanceof PageOperationError ? error :
-          new PageOperationError(error instanceof Error ? error.message : String(error), 0, attempt);
-
-        console.warn(`[ProductListCollector] _fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS} failed: ${attemptError.message}`);
-
-        if (attempt === MAX_FETCH_ATTEMPTS) {
-          console.error(`[ProductListCollector] _fetchTotalPages - All ${MAX_FETCH_ATTEMPTS} attempts failed. Last error: ${attemptError.message}`, attemptError);
-          throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts: ${attemptError.message}`, 0, attempt);
-        }
-        await delay(RETRY_DELAY_MS);
-      } finally {
-        if (page) {
-          try {
-            // 페이지만 닫고 컨텍스트는 풀로 반환
-            if (!page.isClosed()) {
-              await page.close();
-            }
-            
-            // 컨텍스트 풀에 반환
-            if (context) {
-              await this.browserManager.returnContextToPool(context);
-            }
-          } catch (e) {
-            console.error(`[ProductListCollector] Error releasing page and context in _fetchTotalPages (Attempt ${attempt}):`, e);
-          }
-        } else if (context) { // If page creation failed but context was made
-          try {
-            // 컨텍스트 풀에 반환
-            await this.browserManager.returnContextToPool(context);
-          } catch (e) {
-            console.error(`[ProductListCollector] Error returning context to pool in _fetchTotalPages (Attempt ${attempt}):`, e);
-          }
-        }
-      }
+    try {
+      // PageCrawler를 사용하여 총 페이지 수와 마지막 페이지 제품 수 조회
+      return await this.pageCrawler.fetchTotalPages();
+    } catch (error) {
+      // 기존 에러 처리 로직은 PageCrawler 내부에서 처리하므로 여기서는 에러를 그대로 전달
+      console.error(`[ProductListCollector] Failed to fetch total pages: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
     }
-    throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts (unexpectedly reached end of retry loop).`, 0, MAX_FETCH_ATTEMPTS);
   }
 
   private async executeParallelCrawling(
@@ -813,182 +1024,172 @@ export class ProductListCollector {
     concurrency: number,
     currentAttemptNumber: number
   ): Promise<{ results: (CrawlResult | null)[] }> {
+    // 연속 실패 감지를 위한 변수 추가
+    let consecutiveFailures = 0;
+    const MAX_CONSECUTIVE_FAILURES = 3;
+  
     const results: (CrawlResult | null)[] = await promisePool(
       pageNumbersToCrawl,
       async (pageNumber, signalFromPool) => {
-        return this.processPageCrawl(
-          pageNumber, siteTotalPages, signalFromPool, currentAttemptNumber
-        );
+        try {
+          const result = await this.processPageCrawl(
+            pageNumber, siteTotalPages, signalFromPool, currentAttemptNumber
+          );
+          
+          if (result && !result.error) {
+            consecutiveFailures = 0; // 성공 시 카운터 리셋
+          } else {
+            consecutiveFailures++;
+            
+            // 연속 실패가 임계값을 초과하면 잠시 대기
+            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+              const pauseTime = 5000; // 5초 대기
+              console.log(`[ProductListCollector] Detected ${consecutiveFailures} consecutive failures. Pausing for ${pauseTime}ms`);
+              await CrawlingUtils.delay(pauseTime, () => this.abortController.signal.aborted);
+              consecutiveFailures = 0; // 대기 후 카운터 리셋
+            }
+          }
+          
+          return result;
+        } catch (error) {
+          consecutiveFailures++;
+          // 연속 실패가 임계값을 초과하면 잠시 대기
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            const pauseTime = 5000; // 5초 대기
+            console.log(`[ProductListCollector] Detected ${consecutiveFailures} consecutive failures. Pausing for ${pauseTime}ms`);
+            await CrawlingUtils.delay(pauseTime, () => this.abortController.signal.aborted);
+            consecutiveFailures = 0; // 대기 후 카운터 리셋
+          }
+          throw error;
+        }
       },
       concurrency,
-      this.abortController,
-      false, // shouldStopCrawling
-      (pageNumber, result) => {
-        // 각 페이지 처리 완료 시마다 즉시 UI 업데이트
-        if (result && result.isComplete) {
-          // 성공적으로 완료된 페이지에 대한 상세 진행 정보 로깅
-          const timeEstimate = this._calculateEstimatedRemainingTime();
-          const formattedRemainingTime = this._formatRemainingTime(timeEstimate.remainingTimeMs);
-          const progress = `${this.processedPagesSuccessfully + 1}/${this.totalPagesForThisStage1Collection}`;
-          const completionRate = ((this.processedPagesSuccessfully + 1) / this.totalPagesForThisStage1Collection * 100).toFixed(1);
-          
-          debugLog(`[ProductListCollector] 페이지 ${pageNumber} 병렬 크롤링 완료 (${progress}, ${completionRate}%)`);
-          debugLog(`[ProductListCollector] 예상 남은 시간: ${formattedRemainingTime}, 예상 완료 시각: ${this._getEstimatedCompletionTime(timeEstimate.remainingTimeMs)}`);
-          
-          this._sendProgressUpdate();
-        }
-      }
+      this.abortController
     );
     return { results };
   }
 
-  private static _extractProductsFromPageDOM(): RawProductData[] {
-    console.log("DOM extraction started");
-    
-    // 첫 번째 방법: 표준 셀렉터
-    let articles = Array.from(document.querySelectorAll('div.post-feed article'));
-    console.log(`Found ${articles.length} articles with standard selector`);
-    
-    // 대체 셀렉터 시도 (기본 셀렉터가 충분한 항목을 찾지 못한 경우)
-    if (articles.length < 12) {
-      // 대체 셀렉터 시도 1
-      const altArticles1 = Array.from(document.querySelectorAll('.post-feed article'));
-      console.log(`Found ${altArticles1.length} articles with alternative selector 1`);
-      
-      if (altArticles1.length > articles.length) {
-        articles = altArticles1;
-      }
-      
-      // 대체 셀렉터 시도 2
-      const altArticles2 = Array.from(document.querySelectorAll('article.post'));
-      console.log(`Found ${altArticles2.length} articles with alternative selector 2`);
-      
-      if (altArticles2.length > articles.length) {
-        articles = altArticles2;
-      }
-    }
-    
-    // 페이지 분석 로그 (디버깅용)
-    console.log("페이지 구조:", 
-      {
-        postFeedExists: !!document.querySelector('.post-feed'),
-        totalArticleTags: document.querySelectorAll('article').length,
-        bodyContent: document.body.innerHTML.substring(0, 300) + '...'
-      }
-    );
+  // DOM에서 제품 추출 메서드는 PageCrawler로 이동하여 제거
 
-    // 추출 로직 - 더 안정적인 버전
-    return articles.reverse().map((article, siteIndexInPage) => {
-      // 가능한 모든 셀렉터 시도 (기본 + 대체)
-      const link = article.querySelector('a') || article.querySelector('a[href]');
-      const manufacturerEl = 
-        article.querySelector('p.entry-company.notranslate') || 
-        article.querySelector('.entry-company') || 
-        article.querySelector('.manufacturer');
-      const modelEl = 
-        article.querySelector('h3.entry-title') || 
-        article.querySelector('.entry-title') || 
-        article.querySelector('h3');
-      const certificateIdEl = 
-        article.querySelector('span.entry-cert-id') || 
-        article.querySelector('.cert-id');
-      const certificateIdPEl = 
-        article.querySelector('p.entry-certificate-id') || 
-        article.querySelector('.certificate-id');
-      
-      let certificateId;
 
-      if (certificateIdPEl && certificateIdPEl.textContent) {
-        const text = certificateIdPEl.textContent.trim();
-        if (text.startsWith('Certificate ID: ')) {
-          certificateId = text.replace('Certificate ID: ', '').trim();
-        } else {
-          certificateId = text;
-        }
-      } else if (certificateIdEl && certificateIdEl.textContent) {
-        certificateId = certificateIdEl.textContent.trim();
-      }
 
-      // 디버깅을 위한 요소 정보 로깅
-      const itemInfo = {
-        url: link && link.href ? link.href : '',
-        manufacturer: manufacturerEl ? manufacturerEl.textContent?.trim() : undefined,
-        model: modelEl ? modelEl.textContent?.trim() : undefined,
-        certificateId,
-        siteIndexInPage
-      };
-      
-      // 각 제품 아이템 로깅 (첫 5개만)
-      if (siteIndexInPage < 5) {
-        console.log(`Product ${siteIndexInPage + 1} info:`, itemInfo);
-      }
-      
-      return itemInfo;
-    });
-  }
 
-  private _mapRawProductsToProducts(
-    rawProducts: RawProductData[],
-    sitePageNumber: number,
-    offset: number
-  ): Product[] {
-    return rawProducts.map((product) => {
-      const { siteIndexInPage } = product;
-      const { pageId, indexInPage } = PageIndexManager.mapToLocalIndexing(
-        sitePageNumber,
-        siteIndexInPage,
-        offset
-      );
-      const { siteIndexInPage: _, ...rest } = product;
-      return {
-        ...rest,
-        pageId,
-        indexInPage
-      };
-    });
-  }
-
-  private static _mergeAndDeduplicateProductLists(
-    existingProducts: Product[],
-    newProducts: Product[]
-  ): Product[] {
-    const productMap = new Map<string, Product>();
-
-    for (const product of existingProducts) {
-      if (product.url) {
-        productMap.set(product.url, product);
-      }
-    }
-    for (const product of newProducts) {
-      if (product.url) {
-        productMap.set(product.url, product);
-      }
-    }
-    const mergedProducts = Array.from(productMap.values());
-    mergedProducts.sort((a, b) => {
-      if ((a.pageId ?? -1) === (b.pageId ?? -1)) {
-        return (a.indexInPage ?? -1) - (b.indexInPage ?? -1);
-      }
-      return (a.pageId ?? -1) - (b.pageId ?? -1);
-    });
-    return mergedProducts;
-  }
-
+  /**
+   * 최종 제품 목록 수집 및 트랜잭션 기반 저장
+   * 모든 페이지의 완전성을 다시 검사하고, 불완전한 페이지가 있으면 로그에 기록
+   * @param pageNumbersToCrawl 수집할 페이지 번호 목록
+   * @returns 수집된 모든 제품 목록
+   */
   private finalizeCollectedProducts(pageNumbersToCrawl: number[]): Product[] {
     let allCollectedProducts: Product[] = [];
     const sortedPageNumbers = [...pageNumbersToCrawl].sort((a, b) => a - b);
-
-    for (const pageNum of sortedPageNumbers) {
-      const productsOnPage = this.productCache.get(pageNum) || [];
-      allCollectedProducts.push(...productsOnPage);
+    
+    console.log(`[ProductListCollector] 페이지 수집 결과 최종화: ${sortedPageNumbers.length}개 페이지 처리`);
+    
+    // 불완전 페이지 추적
+    const incompletePages: { pageNumber: number; expected: number; actual: number; isLastPage: boolean }[] = [];
+    
+    // 사이트 정보 가져오기 (캐시된 totalPages와 lastPageProductCount 사용)
+    // 먼저 SitePageInfoCache에서 비동기식으로 정보를 가져오는 대신, 캐시된 값을 이용
+    let siteTotalPages = 0;
+    
+    try {
+      // 캐시된 값이 있으면 사용하고, 없으면 기본값 사용
+      const cachedInfo = sitePageInfoCache.getSync();
+      if (cachedInfo) {
+        siteTotalPages = cachedInfo.totalPages || 0;
+      }
+    } catch (error) {
+      console.warn('[ProductListCollector] 캐시된 사이트 페이지 정보를 가져오는 중 오류 발생:', error);
     }
+    
+    const actualLastPageProductCount = ProductListCollector.lastPageProductCount || this.productsPerPage;
+    
+    // 트랜잭션 시작 (여기서는 개념적으로만 표현, 실제 트랜잭션은 DB 저장 시 구현)
+    console.log(`[ProductListCollector] 트랜잭션 기반 제품 수집 시작`);
+    
+    for (const pageNum of sortedPageNumbers) {
+      // CrawlerState에서 캐시된 제품 가져오기
+      const productsOnPage = this.state.getPageProductsCache(pageNum);
+      
+      // 페이지 완전성 최종 검증
+      const sitePageNumberForValidation = siteTotalPages ? PageIndexManager.toSitePageNumber(pageNum, siteTotalPages) : -1;
+      const isLastPage = sitePageNumberForValidation === 0;
+      
+      const validationResult = this.state.validatePageCompleteness(
+        pageNum, 
+        isLastPage,
+        isLastPage ? actualLastPageProductCount : undefined
+      );
+      
+      // 검증 결과를 로그에 기록
+      const expectedCount = validationResult.expectedCount;
+      const actualCount = productsOnPage.length;
+      
+      console.log(`[ProductListCollector] 페이지 ${pageNum} 최종 상태: ${actualCount}/${expectedCount} 제품, 완전성=${validationResult.isComplete ? '완전' : '불완전'}`);
+      
+      // 불완전 페이지 추적
+      if (!validationResult.isComplete) {
+        incompletePages.push({
+          pageNumber: pageNum,
+          expected: expectedCount,
+          actual: actualCount,
+          isLastPage
+        });
+      }
+      
+      // 데이터 병합 (트랜잭션 내에서)
+      allCollectedProducts.push(...productsOnPage);
+      
+      // 로컬 캐시도 업데이트 (하위 호환성)
+      this.productCache.set(pageNum, productsOnPage);
+    }
+    
+    // 불완전한 페이지가 있는 경우 로그에 기록
+    if (incompletePages.length > 0) {
+      const incompletePagesSummary = incompletePages.map(p => 
+        `페이지 ${p.pageNumber}: ${p.actual}/${p.expected} 제품${p.isLastPage ? ' (마지막 페이지)' : ''}`
+      ).join(', ');
+      
+      console.warn(`[ProductListCollector] 수집 완료 후에도 ${incompletePages.length}개 페이지가 불완전함: ${incompletePagesSummary}`);
+      
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'list-finalize',
+        status: 'warning',
+        message: JSON.stringify({
+          stage: 1,
+          type: 'finalize',
+          incompletePages: incompletePages.length,
+          details: incompletePagesSummary
+        })
+      });
+    } else {
+      console.log(`[ProductListCollector] 모든 페이지가 완전히 수집됨: ${sortedPageNumbers.length}개 페이지, 총 ${allCollectedProducts.length}개 제품`);
+      
+      crawlerEvents.emit('crawlingTaskStatus', {
+        taskId: 'list-finalize',
+        status: 'success',
+        message: JSON.stringify({
+          stage: 1,
+          type: 'finalize',
+          pages: sortedPageNumbers.length,
+          products: allCollectedProducts.length
+        })
+      });
+    }
+    
+    // 트랜잭션 완료 (여기서는 개념적으로만 표현)
+    console.log(`[ProductListCollector] 트랜잭션 기반 제품 수집 완료: ${allCollectedProducts.length}개 제품`);
+    
+    // 로컬 캐시만 초기화 (CrawlerState의 캐시는 유지하여 재시도 시 활용)
     this.productCache.clear();
+    
     return allCollectedProducts;
   }
 
   private async crawlPageWithTimeout(
     pageNumber: number,
-    _siteTotalPages: number,
+    // siteTotalPages: number,
     signal: AbortSignal,
     attempt: number
   ): Promise<Product[]> {
@@ -996,298 +1197,48 @@ export class ProductListCollector {
       throw new PageAbortedError('Aborted before crawlPageWithTimeout call', pageNumber, attempt);
     }
 
-    const pageUrl = `${this.matterFilterUrl}&paged=${pageNumber}`;
-    const timeout = this.pageTimeoutMs;
-
-    let context: BrowserContext | null = null;
-    let page: Page | null = null;
-
     try {
-      // 컨텍스트 풀에서 컨텍스트 가져오기
-      context = await this.browserManager.getContextFromPool();
-      page = await this.browserManager.createPageInContext(context);
-      if (!page) {
-        throw new PageInitializationError('Failed to create page in new context', pageNumber, attempt);
-      }
-
-      if (attempt > 1) {
-        await delay(this.config.minRequestDelayMs ?? 500);
-      }
-      await this.optimizePage(page);
-      await this.optimizedNavigation(page, pageUrl, timeout);
-      
-      // 제품 목록 컨테이너가 완전히 로드될 때까지 대기 (최대 10초)
-      await page.waitForSelector('div.post-feed article', { timeout: 10000 }).catch(e => {
-        debugLog(`[ProductListCollector] Warning: Waiting for article elements timed out: ${e.message}`);
+      // 명시적인 타임아웃 적용
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new PageTimeoutError(
+          `Page ${pageNumber} timed out after ${this.pageTimeoutMs}ms on attempt ${attempt}`,
+          pageNumber,
+          attempt
+        )), this.pageTimeoutMs);
       });
       
-      // 안정성을 위한 추가 대기 시간
-      await delay(1000);
+      // PageCrawler를 사용하여 페이지 크롤링
+      // Promise.race로 타임아웃 처리
+      const result = await Promise.race([
+        this.pageCrawler.crawlPage(pageNumber, signal, attempt),
+        timeoutPromise
+      ]);
       
-      const rawProducts = await page.evaluate<RawProductData[]>(
-        ProductListCollector._extractProductsFromPageDOM
-      );
-
+      // 수집된 데이터 처리
       const { totalPages: siteTotal, lastPageProductCount: siteLastPageCount } = await this.fetchTotalPagesCached();
       const sitePageNumber = PageIndexManager.toSitePageNumber(pageNumber, siteTotal);
       const offset = PageIndexManager.calculateOffset(siteLastPageCount);
 
-      const products = this._mapRawProductsToProducts(rawProducts, sitePageNumber, offset);
-      return products;
-
+      // ProductDataProcessor를 사용하여 데이터 변환
+      return this.productDataProcessor.mapRawProductsToProducts(
+        result.rawProducts, 
+        sitePageNumber, 
+        offset
+      );
     } catch (error: unknown) {
+      // 기존 에러 처리는 그대로 유지
       if (error instanceof PageOperationError) throw error;
 
+      const pageUrl = `${this.matterFilterUrl}&paged=${pageNumber}`;
+      const timeout = this.pageTimeoutMs;
+      
       if (error instanceof Error) {
         if (error.name === 'TimeoutError') {
           throw new PageTimeoutError(`Page ${pageNumber} timed out after ${timeout}ms on attempt ${attempt}. URL: ${pageUrl}`, pageNumber, attempt);
         }
         throw new PageOperationError(`Error crawling page ${pageNumber} (attempt ${attempt}): ${error.message}. URL: ${pageUrl}`, pageNumber, attempt);
       }
-      throw new PageOperationError(`Unknown error crawling page ${pageNumber} (attempt ${attempt}). URL: ${pageUrl}`, pageNumber, attempt);
-    } finally {
-      if (page) {
-        // 페이지만 닫고 컨텍스트는 풀로 반환
-        if (!page.isClosed()) {
-          await page.close().catch(e => {
-            debugLog(`[ProductListCollector] Error closing page for ${pageNumber}: ${e}`);
-          });
-        }
-        
-        // 컨텍스트가 유효하면 풀에 반환
-        if (context) {
-          await this.browserManager.returnContextToPool(context);
-        }
-      } else if (context) {
-        // 페이지 생성 실패 시 컨텍스트 반환
-        await this.browserManager.returnContextToPool(context);
+        throw new PageOperationError(`Unknown error crawling page ${pageNumber} (attempt ${attempt}). URL: ${pageUrl}`, pageNumber, attempt);
       }
     }
-  }
-
-  // 페이지 최적화를 위한 새로운 메서드
-  private async optimizePage(page: Page): Promise<void> {
-    // 덜 공격적인 리소스 차단 정책 (필요한 JS 허용)
-    await page.route('**/*', (route) => {
-      const request = route.request();
-      const resourceType = request.resourceType();
-      
-      // 필수 리소스 허용 목록 확장
-      if (resourceType === 'document' || 
-          resourceType === 'script' ||  // JavaScript 허용
-          (resourceType === 'stylesheet') || // 모든 CSS 허용
-          (resourceType === 'fetch' || resourceType === 'xhr')) { // AJAX 요청 허용
-        route.continue();
-      } else {
-        // 여전히 불필요한 리소스는 차단 (이미지, 폰트, 미디어 등)
-        route.abort();
-      }
-    });
-  }
-
-  // 개선된 네비게이션 함수
-  private async optimizedNavigation(page: Page, url: string, timeout: number): Promise<boolean> {
-    let navigationSucceeded = false;
-    
-    try {
-      // 적절한 타임아웃과 네트워크 유휴 상태 추가된 네비게이션
-      await page.goto(url, { 
-        waitUntil: 'networkidle', // 'networkidle'은 네트워크 요청이 완료되기를 기다림
-        timeout: Math.max(10000, timeout / 2) // 최소 10초 이상의 타임아웃 보장
-      });
-      navigationSucceeded = true;
-      
-      // 페이지가 제대로 로드되었는지 추가 검증
-      const readyState = await page.evaluate(() => document.readyState).catch(() => 'unknown');
-      debugLog(`Page ready state: ${readyState}`);
-      
-      // 내용이 완전히 로드될 때까지 짧게 대기 (초기 JS 실행을 위한 시간)
-      await delay(500);
-      
-    } catch (error: any) {
-      if (error && error.name === 'TimeoutError') {
-        // 타임아웃 발생해도 HTML이 로드되었다면 성공으로 간주
-        const readyState = await page.evaluate(() => document.readyState).catch(() => 'unknown');
-        if (readyState === 'interactive' || readyState === 'complete') {
-          navigationSucceeded = true;
-          debugLog(`Navigation timed out but document is in '${readyState}' state. Continuing...`);
-          
-          // 타임아웃이 발생했지만 문서가 로드되었으면 추가 대기
-          await delay(1000);
-        } else {
-          // 첫 시도 실패 시, 두 번째 시도 - 조금 더 긴 타임아웃과 단순한 로드 조건
-          try {
-            debugLog(`Retrying navigation with simpler load condition...`);
-            await page.goto(url, { 
-              waitUntil: 'load', // 기본 load 이벤트만 기다림
-              timeout: timeout
-            });
-            navigationSucceeded = true;
-            
-            // 성공했지만 추가 대기
-            await delay(500);
-          } catch (secondError: any) {
-            // 마지막 시도: 단순 요청 후 준비 상태 확인
-            try {
-              debugLog(`Final navigation attempt with basic request...`);
-              await page.goto(url, { timeout });
-              const finalReadyState = await page.evaluate(() => document.readyState).catch(() => 'unknown');
-              
-              if (finalReadyState === 'interactive' || finalReadyState === 'complete') {
-                navigationSucceeded = true;
-                debugLog(`Basic navigation succeeded with state: ${finalReadyState}`);
-                await delay(1500); // 더 긴 대기
-              } else {
-                debugLog(`Navigation failed after all attempts. Final state: ${finalReadyState}`);
-              }
-            } catch (finalError: any) {
-              debugLog(`Final navigation attempt failed: ${finalError.message}`);
-            }
-          }
-        }
-      }
-    }
-    
-    // 네비게이션 성공 시 추가 검증
-    if (navigationSucceeded) {
-      try {
-        // 페이지 내용 검증 (기본 구조가 있는지)
-        const hasContent = await page.evaluate(() => {
-          return {
-            hasBody: !!document.body,
-            hasPosts: !!document.querySelector('.post-feed') || 
-                     !!document.querySelector('article') ||
-                     !!document.querySelector('.entry-title'),
-            documentHeight: document.body?.scrollHeight || 0
-          };
-        });
-        
-        debugLog(`Page content validation: ${JSON.stringify(hasContent)}`);
-        
-        // 콘텐츠가 너무 작거나 필요한 요소가 없으면 추가 대기
-        if (!hasContent.hasPosts || hasContent.documentHeight < 500) {
-          debugLog(`Page seems to be incompletely loaded, waiting additional time...`);
-          await delay(2000);
-        }
-      } catch (e) {
-        debugLog(`Error during page content validation: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-    
-    return navigationSucceeded;
-  }
-
-  private _recordPageProcessingStart(pageNumber: number): void {
-    const pageStatusItem = this.stage1PageStatuses.find(p => p.pageNumber === pageNumber);
-    if (pageStatusItem) {
-      pageStatusItem.startTime = Date.now();
-      // 시작할 때는 endTime과 processingTimeMs를 초기화
-      pageStatusItem.endTime = undefined;
-      pageStatusItem.processingTimeMs = undefined;
-    }
-  }
-
-  private _recordPageProcessingEnd(pageNumber: number): void {
-    const now = Date.now();
-    const pageStatusItem = this.stage1PageStatuses.find(p => p.pageNumber === pageNumber);
-    
-    if (pageStatusItem && pageStatusItem.startTime) {
-      pageStatusItem.endTime = now;
-      const processingTime = now - pageStatusItem.startTime;
-      pageStatusItem.processingTimeMs = processingTime;
-      
-      // 성공한 페이지만 평균 계산에 포함
-      if (pageStatusItem.status === 'success') {
-        this._updateAverageProcessingTime(pageNumber, processingTime);
-      }
-    }
-  }
-
-  private _updateAverageProcessingTime(pageNumber: number, processingTimeMs: number): void {
-    // 이동 평균(Moving Average) 계산 - 최근 값에 더 가중치 부여
-    const weight = 0.3; // 가중치 계수 (0-1 사이, 클수록 최근 값에 더 많은 가중치)
-    
-    this.pageProcessingTimes.set(pageNumber, processingTimeMs);
-    
-    // 첫 번째 성공 페이지면 그대로 설정
-    if (this.successfullyProcessedPagesCount === 0) {
-      this.averagePageProcessingTimeMs = processingTimeMs;
-    } else {
-      // 이동 평균 계산 (Exponential Moving Average)
-      this.averagePageProcessingTimeMs = (
-        (1 - weight) * this.averagePageProcessingTimeMs + 
-        weight * processingTimeMs
-      );
-    }
-    
-    this.totalProcessingTimeMs += processingTimeMs;
-    this.successfullyProcessedPagesCount++;
-    
-    debugLog(`[ProductListCollector] 페이지 ${pageNumber} 처리 시간: ${processingTimeMs}ms, 새로운 평균: ${this.averagePageProcessingTimeMs.toFixed(2)}ms (총 ${this.successfullyProcessedPagesCount}개 페이지)`);
-    
-    // 예상 남은 시간 로그 추가
-    const remainingTimeMs = this._calculateEstimatedRemainingTime().remainingTimeMs;
-    debugLog(`[ProductListCollector] 페이지 ${pageNumber} 완료 후 예상 남은 시간: ${this._formatRemainingTime(remainingTimeMs)}`);
-  }
-
-  private _calculateEstimatedRemainingTime(): { 
-    estimatedTotalTimeMs: number, 
-    remainingTimeMs: number 
-  } {
-    const successfulPagesCount = this.successfullyProcessedPagesCount;
-    const remainingPagesCount = this.totalPagesForThisStage1Collection - this.processedPagesSuccessfully;
-    
-    // 평균 처리 시간 기반 예측
-    const estimatedTotalTimeMs = this.totalPagesForThisStage1Collection * this.averagePageProcessingTimeMs;
-    const remainingTimeMs = remainingPagesCount * this.averagePageProcessingTimeMs;
-    
-    return {
-      estimatedTotalTimeMs,
-      remainingTimeMs
-    };
-  }
-  
-  // 예상 남은 시간을 사람이 읽기 쉬운 형식으로 변환
-  private _formatRemainingTime(milliseconds: number): string {
-    if (milliseconds <= 0) return '완료됨';
-    
-    const seconds = Math.floor(milliseconds / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    if (hours > 0) {
-      return `약 ${hours}시간 ${minutes % 60}분 남음`;
-    } else if (minutes > 0) {
-      return `약 ${minutes}분 ${seconds % 60}초 남음`;
-    } else {
-      return `약 ${seconds}초 남음`;
-    }
-  }
-
-  // 예상 완료 시간을 계산하고 형식화
-  private _getEstimatedCompletionTime(remainingTimeMs: number): string {
-    if (remainingTimeMs <= 0) return '지금';
-    
-    const completionTime = new Date(Date.now() + remainingTimeMs);
-    const hours = completionTime.getHours().toString().padStart(2, '0');
-    const minutes = completionTime.getMinutes().toString().padStart(2, '0');
-    const seconds = completionTime.getSeconds().toString().padStart(2, '0');
-    
-    return `${hours}:${minutes}:${seconds}`;
-  }
-
-  // 시간 길이를 사람이 읽기 쉬운 형식으로 변환 (밀리초 → HH:MM:SS 또는 M분 S초)
-  private _formatDuration(milliseconds: number): string {
-    const seconds = Math.floor(milliseconds / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    if (hours > 0) {
-      return `${hours}시간 ${minutes % 60}분 ${seconds % 60}초`;
-    } else if (minutes > 0) {
-      return `${minutes}분 ${seconds % 60}초`;
-    } else {
-      return `${seconds}초`;
-    }
-  }
 }

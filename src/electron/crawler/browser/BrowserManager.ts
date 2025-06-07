@@ -4,6 +4,7 @@
  */
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-chromium';
 import { debugLog } from '../../util.js';
+import { logger } from '../../../shared/utils/Logger.js';
 import type { CrawlerConfig } from '../../../../types.d.ts';
 
 // It's good practice to define user agent strings or import them if they are many.
@@ -50,7 +51,7 @@ export class BrowserManager {
     }
 
     const headless = this.config.headlessBrowser ?? true;
-    debugLog(`[BrowserManager] Initializing new browser instance (headless: ${headless})...`);
+    logger.debug(`Initializing new browser instance (headless: ${headless})...`, 'BrowserManager');
     try {
       this.browser = await chromium.launch({ 
         headless,

@@ -1,52 +1,68 @@
 // Types for Matter Certification Collection Application
-// 이 파일을 모듈로 만들기 위해 export 키워드를 추가합니다.
+// Modern TypeScript Type System - Phase 1 Consolidated
 
-// Statistics 타입 정의 업데이트
-export type Statistics = {
-    timestamp: number;
-    cpuUsage: number;
-    memoryUsage: number;
-    ramUsage?: number; // 이전 호환성을 위해 선택적으로 유지
-    storageUsage?: number; // 이전 호환성을 위해 선택적으로 유지
+/**
+ * =====================================================
+ * UTILITY TYPES FOR INTERNAL USE
+ * =====================================================
+ */
+
+/**
+ * Utility type to make all properties mutable (remove readonly)
+ */
+type Mutable<T> = {
+    -readonly [K in keyof T]: T[K]
 };
 
-// Matter 제품 정보 타입
-export type MatterProduct = {
-    url: string;
-    pageId?: number;
-    indexInPage?: number;
-    id?: string;
-    manufacturer?: string;
-    model?: string;
-    deviceType?: string;
-    certificateId?: string;
-    certificationDate?: string | Date;
-    softwareVersion?: string;
-    hardwareVersion?: string;
-    vid?: string;
-    pid?: string;
-    familySku?: string;
-    familyVariantSku?: string;
-    firmwareVersion?: string;
-    familyId?: string;
-    tisTrpTested?: string;
-    specificationVersion?: string;
-    transportInterface?: string;
-    primaryDeviceTypeId?: string;
-    applicationCategories?: string[];
-    // isNewProduct 필드 삭제됨
-};
+/**
+ * Mutable versions for internal state management
+ * These allow modification while keeping public interfaces readonly
+ */
+export type MutableCrawlerConfig = Mutable<CrawlerConfig>;
+export type MutableMatterProduct = Mutable<MatterProduct>;
+export type MutablePageProcessingStatusItem = Mutable<PageProcessingStatusItem>;
 
-export type Product = {
-    url: string;
-    manufacturer?: string;
-    model?: string;
-    certificateId?: string;
-    pageId?: number;
-    indexInPage?: number;
-};
+/**
+ * =====================================================
+ * CORE DOMAIN TYPES (Modern TypeScript)
+ * =====================================================
+ */
 
-// 크롤링 상태 타입 (통합)
+/**
+ * System resource usage statistics
+ */
+export interface Statistics {
+    readonly timestamp: number;
+    readonly cpuUsage: number;
+    readonly memoryUsage: number;
+    readonly ramUsage?: number; // Legacy compatibility
+    readonly storageUsage?: number; // Legacy compatibility
+}
+
+/**
+ * Static application data
+ */
+export interface StaticData {
+    readonly totalStorage: number;
+    readonly cpuModel: string;
+    readonly totalMemoryGB: number;
+}
+
+/**
+ * Application mode
+ */
+export type AppMode = 'development' | 'production';
+
+/**
+ * =====================================================
+ * CRAWLING DOMAIN TYPES (Consolidated & Modern)
+ * =====================================================
+ */
+
+/**
+ * Crawling status - consolidated from all duplicates
+ * Used across: CrawlerState, CrawlingStore, shared types
+ */
 export type CrawlingStatus = 
     | 'idle' 
     | 'running' 
@@ -57,257 +73,819 @@ export type CrawlingStatus =
     | 'stopped' 
     | 'completed_stage_1';
 
-// 1단계 각 페이지 처리 상태
-export type PageProcessingStatusValue = 'waiting' | 'attempting' | 'success' | 'failed' | 'incomplete';
+/**
+ * Crawling stage identifiers - modern enum approach
+ * Replaces multiple inconsistent definitions across files
+ */
+export type CrawlingStage = 
+    // Legacy numeric stages (for compatibility)
+    | number  
+    // Modern stage identifiers
+    | 'idle' 
+    | 'preparation'
+    | 'productList:init' 
+    | 'productList:fetching'
+    | 'productList:collecting' 
+    | 'productList:processing'
+    | 'productList:retrying' 
+    | 'productList:complete'
+    | 'validation:init'
+    | 'validation:processing'
+    | 'validation:complete'
+    | 'productDetail:init' 
+    | 'productDetail:fetching'
+    | 'productDetail:collecting' 
+    | 'productDetail:processing'
+    | 'productDetail:retrying' 
+    | 'productDetail:complete'
+    | 'completed'
+    | 'failed'
+    | 'complete' 
+    | 'error';
 
-export type PageProcessingStatusItem = {
-    pageNumber: number;
-    status: PageProcessingStatusValue;
-    attempt?: number; // 현재 시도 횟수 (해당 페이지에 대해)
-    
-    // 시간 추적 관련 필드
-    startTime?: number; // 페이지 처리 시작 시간
-    endTime?: number;   // 페이지 처리 완료 시간
-    processingTimeMs?: number; // 처리에 소요된 시간(밀리초)
-};
+/**
+ * Enhanced stage identifiers for new type system
+ */
+export type CrawlingStageId = 
+    | 'ready'             
+    | 'initialization'    
+    | 'category-extraction' 
+    | 'product-search'    
+    | 'completion'        
+    | 'status-check'      
+    | 'product-list'      // Stage 1
+    | 'db-comparison'     // Stage 1.5
+    | 'product-detail';   // Stage 2
 
-// 크롤링 진행 상태 타입 (통합)
-export type CrawlingProgress = {
-    current: number; // 전체 진행률의 현재 값 (예: 총 처리 항목 수)
-    total: number;   // 전체 진행률의 총 값 (예: 총 수집 대상 항목 수)
-    percentage: number;
-    currentStep: string;
-    remainingTime?: number;
-    elapsedTime: number;
-    status?: CrawlingStatus;
-    currentPage?: number;      // 1단계: 현재 처리/완료된 페이지 수, 2단계: 현재 처리/완료된 제품 수
-    totalPages?: number;       // 1단계: 수집 대상 총 페이지 수, 2단계: 수집 대상 총 제품 수
-    processedItems?: number; // 전체 단계에서 총 처리된 아이템 수 (페이지 또는 제품)
-    totalItems?: number;     // 전체 단계에서 총 아이템 수 (페이지 또는 제품)
-    startTime?: number;
-    estimatedEndTime?: number;
-    newItems?: number;
-    updatedItems?: number;
-    currentStage?: number; // 1=목록 수집, 2=상세정보 수집
-    message?: string; 
-    criticalError?: string; 
-    
-    retryCount?: number;      // 현재 스테이지의 총 재시도 횟수
-    maxRetries?: number;      // 현재 스테이지의 최대 재시도 횟수
-    retryItem?: string; 
+/**
+ * Stage progress status
+ */
+export type StageStatus = 
+    | 'pending'    
+    | 'running'    
+    | 'completed'  
+    | 'failed'     
+    | 'skipped';
 
-    // 1단계 제품 목록 페이지 읽기 현황
-    stage1PageStatuses?: PageProcessingStatusItem[];
-};
+/**
+ * Page processing status values
+ */
+export type PageProcessingStatusValue = 
+    | 'waiting' 
+    | 'attempting' 
+    | 'success' 
+    | 'failed' 
+    | 'incomplete';
 
-// 크롤링 상태 요약 정보 타입
-export type CrawlingStatusSummary = {
-    dbLastUpdated: Date | null;
-    dbProductCount: number;
-    siteTotalPages: number;
-    siteProductCount: number;
-    diff: number;
-    needCrawling: boolean;
-    crawlingRange: { startPage: number; endPage: number };
-    lastPageProductCount?: number; 
-    selectedPageCount?: number; 
-    estimatedProductCount?: number; 
-    estimatedTotalTime?: number; 
-    userPageLimit?: number; 
-    error?: string; 
-};
-
-// 데이터베이스 요약 정보 타입
-export type DatabaseSummary = {
-    totalProducts: number;
-    productCount: number;
-    lastUpdated: Date | null;
-    newlyAddedCount: number;
-};
-
-// 앱 모드 타입
-export type AppMode = 'development' | 'production';
-
-export type StaticData = {
-    totalStorage: number;
-    cpuModel: string;
-    totalMemoryGB: number;
-};
-
-// 크롤러 설정 타입
-export interface CrawlerConfig {
-    // 기본 설정
-    pageRangeLimit: number;
-    productListRetryCount: number;
-    productDetailRetryCount: number;
-    headlessBrowser?: boolean; // Added headlessBrowser property
-    
-    // UI 관련 추가 설정
-    maxConcurrentTasks?: number;
-    requestDelay?: number;
-    customUserAgent?: string;
-    productsPerPage: number;
-    
-    // 엑셀 내보내기 관련 설정
-    lastExcelExportPath?: string;  // 마지막으로 내보낸 엑셀 파일 경로
-    
-    // DB 관련 설정
-    autoAddToLocalDB: boolean;  // 수집 성공 시 자동으로 로컬DB에 추가 여부
-    
-    // 크롤러 코어 관련 설정 (선택적으로 만들어 호환성 유지)
-    baseUrl?: string;
-    matterFilterUrl?: string;
-    pageTimeoutMs?: number;
-    productDetailTimeoutMs?: number;
-    
-    // 성능 측정 및 예측 관련 설정
-    averagePageProcessingTimeMs?: number; // 평균 페이지 처리 시간 (밀리초)
-    initialConcurrency?: number;
-    detailConcurrency?: number;
-    retryConcurrency?: number;
-    minRequestDelayMs?: number;
-    maxRequestDelayMs?: number;
-    retryStart?: number;
-    retryMax?: number;
-    cacheTtlMs?: number;
+/**
+ * Individual page processing status
+ */
+export interface PageProcessingStatusItem {
+    readonly pageNumber: number;
+    readonly status: PageProcessingStatusValue;
+    readonly attempt?: number;
 }
 
-// 동시 처리 작업 상태 타입
-export type ConcurrentTaskStatus = 'pending' | 'running' | 'success' | 'error' | 'stopped' | 'waiting' | 'attempting' | 'failed' | 'incomplete';
-export type ConcurrentCrawlingTask = {
-    pageNumber: number;
-    status: ConcurrentTaskStatus;
-    startedAt?: number;
-    finishedAt?: number;
-    error?: string;
-};
+/**
+ * Crawling error information
+ */
+export interface CrawlingError {
+    readonly name: string;
+    readonly message: string;
+    readonly stack?: string;
+    readonly details?: any;
+}
 
-// 이벤트 페이로드 맵핑 확장
-export type EventPayloadMapping = {
-    statistics: Statistics;
-    getStaticData: StaticData;
-    crawlingProgress: CrawlingProgress;
-    crawlingComplete: { success: boolean; count: number };
-    crawlingError: { message: string; details?: string };
-    dbSummary: DatabaseSummary;
-    products: MatterProduct[];
-    crawlingTaskStatus: ConcurrentCrawlingTask[];
-    crawlingStopped: ConcurrentCrawlingTask[];
-    crawlingFailedPages: { pageNumber: number; errors: string[] }[];
-    dbSaveError: { error?: string }; 
-    dbSaveComplete: { success: boolean }; // <-- Add this line
-    dbSaveSkipped: any; // <-- Add this if you use 'dbSaveSkipped' elsewhere
-};
+/**
+ * =====================================================
+ * PROGRESS TRACKING TYPES (Consolidated)
+ * =====================================================
+ */
 
-// 메서드 매개변수 맵핑
-export type MethodParamsMapping = {
-    'startCrawling': { mode: AppMode; config?: CrawlerConfig };
-    'stopCrawling': void;
-    'exportToExcel': { path?: string };
-    'getProducts': { search?: string; page?: number; limit?: number };
-    'getProductById': string;
-    'searchProducts': { query: string; page?: number; limit?: number };
-    'getDatabaseSummary': void;
-    'getStaticData': void;
-    'markLastUpdated': number;
-    'checkCrawlingStatus': void;
-    // 설정 관련 메서드 추가
-    'crawler:get-config': void;
-    'crawler:update-config': Partial<CrawlerConfig>;
-    'crawler:reset-config': void;
-    // 페이지 범위로 레코드 삭제 기능 추가
-    'deleteRecordsByPageRange': { startPageId: number; endPageId: number };
-    // 제품 수동 저장 메서드 추가
-    'saveProductsToDB': MatterProduct[];
-};
+/**
+ * Legacy crawling progress interface (for compatibility)
+ * Consolidated from multiple duplicate definitions
+ */
+export interface CrawlingProgress {
+    // Core progress fields
+    readonly current: number; 
+    readonly total: number;   
+    readonly percentage: number;
+    readonly currentStep: string;
+    readonly elapsedTime: number;
+    
+    // Status and timing
+    readonly status?: CrawlingStatus;
+    readonly remainingTime?: number;
+    readonly startTime?: number;
+    readonly estimatedEndTime?: number;
+    
+    // Stage information
+    readonly currentStage?: number; 
+    readonly stage?: CrawlingStage;
+    readonly message?: string; 
+    
+    // Progress tracking
+    readonly currentPage?: number;      
+    readonly totalPages?: number;
+    readonly processedItems?: number; 
+    readonly totalItems?: number;     
+    readonly newItems?: number;
+    readonly updatedItems?: number;
+    readonly errors?: number;
+    
+    // Error handling
+    readonly criticalError?: string; 
+    readonly retryCount?: number;      
+    readonly maxRetries?: number;      
+    readonly retryItem?: string; 
 
-// 메서드 반환값 맵핑
-export type MethodReturnMapping = {
-    'startCrawling': { success: boolean };
-    'stopCrawling': { success: boolean };
-    'exportToExcel': { success: boolean; path?: string };
-    'getProducts': { products: MatterProduct[]; total: number; maxPageId?: number };
-    'getProductById': MatterProduct | null;
-    'searchProducts': { products: MatterProduct[]; total: number };
-    'getDatabaseSummary': DatabaseSummary;
-    'getStaticData': StaticData;
-    'markLastUpdated': void;
-    'checkCrawlingStatus': { success: boolean; status?: CrawlingStatusSummary; error?: string };
-    // 설정 관련 메서드 반환 타입 추가
-    'crawler:get-config': { success: boolean; config?: CrawlerConfig; error?: string };
-    'crawler:update-config': { success: boolean; config?: CrawlerConfig; error?: string };
-    'crawler:reset-config': { success: boolean; config?: CrawlerConfig; error?: string };
-    // 페이지 범위로 레코드 삭제 기능 반환 타입 추가
-    'deleteRecordsByPageRange': { success: boolean; deletedCount: number; maxPageId?: number; error?: string };
-    // 제품 수동 저장 메서드 반환 타입 추가
-    'saveProductsToDB': { 
-        success: boolean; 
-        added?: number; 
-        updated?: number; 
-        unchanged?: number; 
-        failed?: number; 
-        error?: string;
-        duplicateInfo?: any;
+    // Batch processing
+    readonly currentBatch?: number;     
+    readonly totalBatches?: number;     
+    readonly batchRetryCount?: number;  
+    readonly batchRetryLimit?: number;  
+
+    // Stage 1 specific
+    readonly stage1PageStatuses?: PageProcessingStatusItem[];
+    
+    // Validation (Stage 1.5)
+    readonly validationSummary?: ValidationSummary;
+    readonly rangeRecommendations?: string[];
+}
+
+/**
+ * Modern stage progress interface (Phase 1 enhanced)
+ */
+export interface StageProgress {
+    readonly stageId: CrawlingStageId;
+    readonly status: StageStatus;
+    readonly current: number;
+    readonly total: number;
+    readonly percentage: number;
+    readonly currentStep: string;
+    readonly startTime?: Date;
+    readonly endTime?: Date;
+    readonly elapsedTime: number;
+    readonly remainingTime?: number;
+    readonly retryCount?: number;
+    readonly maxRetries?: number;
+    readonly error?: CrawlingError;
+    readonly metadata?: Readonly<Record<string, any>>;
+}
+
+/**
+ * Modern session progress interface (Phase 1 enhanced)
+ */
+export interface CrawlingSessionProgress {
+    readonly sessionId: string;
+    readonly overallStatus: CrawlingStatus;
+    readonly stages: Readonly<Record<CrawlingStageId, StageProgress>>;
+    readonly currentStage: CrawlingStageId | null;
+    readonly startTime: Date;
+    readonly endTime?: Date;
+    readonly totalElapsedTime: number;
+    readonly totalRemainingTime?: number;
+}
+
+/**
+ * Batch processing progress
+ */
+export interface BatchProgress {
+    readonly currentBatch: number;
+    readonly totalBatches: number;
+    readonly currentInBatch: number;
+    readonly totalInBatch: number;
+    readonly batchRetryCount?: number;
+    readonly batchRetryLimit?: number;
+    readonly pageStatuses?: ReadonlyArray<PageProcessingStatusItem>;
+}
+
+/**
+ * =====================================================
+ * PRODUCT DOMAIN TYPES
+ * =====================================================
+ */
+
+/**
+ * Matter product basic information (for listing)
+ */
+export interface Product {
+    readonly url: string;
+    readonly manufacturer?: string;
+    readonly model?: string;
+    readonly certificateId?: string;
+    readonly pageId?: number;
+    readonly indexInPage?: number;
+}
+
+/**
+ * Complete Matter product information
+ */
+export interface MatterProduct {
+    readonly url: string;
+    readonly pageId?: number;
+    readonly indexInPage?: number;
+    readonly id?: string;
+    readonly manufacturer?: string;
+    readonly model?: string;
+    readonly deviceType?: string;
+    readonly certificateId?: string;
+    readonly certificationDate?: string | Date;
+    readonly softwareVersion?: string;
+    readonly hardwareVersion?: string;
+    readonly vid?: string;
+    readonly pid?: string;
+    readonly familySku?: string;
+    readonly familyVariantSku?: string;
+    readonly firmwareVersion?: string;
+    readonly familyId?: string;
+    readonly tisTrpTested?: string;
+    readonly specificationVersion?: string;
+    readonly transportInterface?: string;
+    readonly primaryDeviceTypeId?: string;
+    readonly applicationCategories?: ReadonlyArray<string>;
+    readonly createdAt?: string;
+    readonly updatedAt?: string;
+}
+
+/**
+ * Vendor information
+ */
+export interface Vendor {
+    readonly vendorId: string;
+    readonly vendorNumber: number;
+    readonly vendorName: string;
+    readonly companyLegalName: string;
+}
+
+/**
+ * =====================================================
+ * VALIDATION & SUMMARY TYPES
+ * =====================================================
+ */
+
+/**
+ * Local DB validation results (Stage 1.5)
+ */
+export interface ValidationSummary {
+    readonly totalProducts: number;
+    readonly newProducts: number;
+    readonly existingProducts: number;
+    readonly duplicateProducts: number;
+    readonly skipRatio: number;
+    readonly duplicateRatio: number;
+}
+
+/**
+ * Crawling status summary with server comparison
+ */
+export interface CrawlingStatusSummary {
+    readonly dbLastUpdated: Date | null;
+    readonly dbProductCount: number;
+    readonly siteTotalPages?: number;
+    readonly siteProductCount: number;
+    readonly diff: number;
+    readonly needCrawling: boolean;
+    readonly crawlingRange?: { 
+        readonly startPage: number; 
+        readonly endPage: number; 
     };
-};
+    readonly actualTargetPageCountForStage1?: number;
+    readonly isRecrawling?: boolean;
+    readonly lastCrawlTimestamp?: number | null;
+    readonly lastPageProductCount?: number;
+    readonly [key: string]: any; // Index signature for flexibility
+}
 
+/**
+ * Database summary information
+ */
+export interface DatabaseSummary {
+    readonly totalProducts: number;
+    readonly productCount: number;
+    readonly lastUpdated: Date | null;
+    readonly newlyAddedCount: number;
+    readonly lastPageId?: number;  // Highest pageId in the database
+}
+
+/**
+ * Final crawling results
+ */
+export interface FinalCrawlingResult {
+    readonly collected: number;
+    readonly newItems: number;
+    readonly updatedItems: number;
+    readonly unchangedItems?: number;
+    readonly failedItems?: number;
+}
+
+/**
+ * =====================================================
+ * CONFIGURATION TYPES (Modern TypeScript)
+ * =====================================================
+ */
+
+/**
+ * Crawler configuration interface
+ * Consolidated from multiple config definitions
+ */
+export interface CrawlerConfig {
+    // Core settings
+    readonly pageRangeLimit: number;
+    readonly productListRetryCount: number;
+    readonly productDetailRetryCount: number;
+    readonly productsPerPage: number;
+    readonly autoAddToLocalDB: boolean;
+    readonly autoStatusCheck: boolean;
+    
+    // Browser settings
+    readonly headlessBrowser?: boolean;
+    readonly crawlerType?: 'playwright' | 'axios';
+    readonly customUserAgent?: string;
+    readonly userAgent?: string;
+    
+    // Performance settings
+    readonly maxConcurrentTasks?: number;
+    readonly requestDelay?: number;
+    readonly requestTimeout?: number;
+    readonly validateSSL?: boolean;
+    
+    // Batch processing
+    readonly enableBatchProcessing?: boolean;
+    readonly batchSize?: number;
+    readonly batchDelayMs?: number;
+    readonly maxBatchRetries?: number;
+    readonly batchRetryLimit?: number;
+    
+    // Advanced crawler settings
+    readonly baseUrl?: string;
+    readonly matterFilterUrl?: string;
+    readonly pageTimeoutMs?: number;
+    readonly productDetailTimeoutMs?: number;
+    readonly initialConcurrency?: number;
+    readonly detailConcurrency?: number;
+    readonly retryConcurrency?: number;
+    readonly minRequestDelayMs?: number;
+    readonly maxRequestDelayMs?: number;
+    readonly retryStart?: number;
+    readonly retryMax?: number;
+    readonly cacheTtlMs?: number;
+    
+    // Strategy settings
+    readonly useHybridStrategy?: boolean;
+    readonly adaptiveConcurrency?: boolean;
+    readonly maxRetryDelayMs?: number;
+    readonly baseRetryDelayMs?: number;
+    readonly axiosTimeoutMs?: number;
+    
+    // Export settings
+    readonly lastExcelExportPath?: string;
+    
+    // Logging configuration
+    readonly logging?: {
+        readonly level?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+        readonly components?: {
+            readonly CrawlerState?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+            readonly CrawlerEngine?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+            readonly ProductListCollector?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+            readonly ProductDetailCollector?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+            readonly PageCrawler?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+            readonly BrowserManager?: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'VERBOSE';
+        };
+        readonly enableStackTrace?: boolean;
+        readonly enableTimestamp?: boolean;
+    };
+}
+
+/**
+ * =====================================================
+ * GAP DETECTION TYPES
+ * =====================================================
+ */
+
+/**
+ * 페이지 갭 정보
+ */
+export interface PageGap {
+    readonly pageId: number;
+    readonly missingIndices: ReadonlyArray<number>;
+    readonly expectedCount: number;
+    readonly actualCount: number;
+    readonly completenessRatio: number; // 0.0 ~ 1.0
+}
+
+/**
+ * 크롤링 페이지 범위 정보
+ */
+export interface CrawlingPageRange {
+    readonly startPage: number; // 사이트 페이지 번호 시작
+    readonly endPage: number;   // 사이트 페이지 번호 끝
+    readonly missingPageIds: ReadonlyArray<number>; // 이 범위에 포함된 누락 pageId들
+    readonly reason: string; // 이 범위가 생성된 이유
+    readonly priority: number; // 우선순위 (1: 높음, 2: 보통, 3: 낮음)
+    readonly estimatedProducts: number; // 예상 수집 제품 수
+}
+
+/**
+ * 갭 탐지 결과 (확장됨)
+ */
+export interface GapDetectionResult {
+    readonly totalMissingProducts: number;
+    readonly missingPages: ReadonlyArray<PageGap>;
+    readonly completelyMissingPageIds: ReadonlyArray<number>;
+    readonly partiallyMissingPageIds: ReadonlyArray<number>;
+    readonly summary: {
+        readonly totalExpectedProducts: number;
+        readonly totalActualProducts: number;
+        readonly completionPercentage: number;
+    };
+    // 새로 추가: 크롤링 범위 정보
+    readonly crawlingRanges: ReadonlyArray<CrawlingPageRange>;
+    readonly totalSitePages: number; // 사이트의 총 페이지 수
+    readonly batchInfo: {
+        readonly totalBatches: number; // 총 배치 수
+        readonly estimatedTime: number; // 예상 소요 시간 (분)
+        readonly recommendedConcurrency: number; // 권장 동시 실행 수
+    };
+}
+
+/**
+ * 갭 수집 옵션
+ */
+export interface GapCollectionOptions {
+    readonly maxConcurrentPages?: number;
+    readonly delayBetweenPages?: number;
+    readonly skipCompletePages?: boolean;
+    readonly prioritizePartialPages?: boolean;
+    readonly useExtendedCollection?: boolean; // 주변 페이지 포함 수집 옵션
+}
+
+/**
+ * 갭 수집 결과
+ */
+export interface GapCollectionResult {
+    readonly collected: number;
+    readonly failed: number;
+    readonly skipped: number;
+    readonly collectedPages: ReadonlyArray<number>;
+    readonly failedPages: ReadonlyArray<number>;
+    readonly errors: ReadonlyArray<string>;
+}
+
+/**
+ * =====================================================
+ * CONCURRENT PROCESSING TYPES
+ * =====================================================
+ */
+
+/**
+ * Concurrent task status
+ */
+export type ConcurrentTaskStatus = 
+    | 'pending' 
+    | 'running' 
+    | 'success' 
+    | 'error' 
+    | 'stopped' 
+    | 'waiting' 
+    | 'attempting' 
+    | 'failed' 
+    | 'incomplete';
+
+/**
+ * Concurrent crawling task
+ */
+export interface ConcurrentCrawlingTask {
+    readonly pageNumber: number;
+    readonly status: ConcurrentTaskStatus;
+    readonly startedAt?: number;
+    readonly finishedAt?: number;
+    readonly error?: string;
+}
+
+/**
+ * =====================================================
+ * PLATFORM API TYPES (Modern Interface Design)
+ * =====================================================
+ */
+
+/**
+ * Event payload mapping for type-safe event handling
+ */
+export interface EventPayloadMapping {
+    readonly statistics: Statistics;
+    readonly getStaticData: StaticData;
+    readonly crawlingProgress: CrawlingProgress;
+    readonly crawlingComplete: { readonly success: boolean; readonly count: number };
+    readonly crawlingError: { readonly message: string; readonly details?: string };
+    readonly dbSummary: DatabaseSummary;
+    readonly products: ReadonlyArray<MatterProduct>;
+    readonly crawlingTaskStatus: ReadonlyArray<ConcurrentCrawlingTask>;
+    readonly crawlingStopped: ReadonlyArray<ConcurrentCrawlingTask>;
+    readonly crawlingFailedPages: ReadonlyArray<{ readonly pageNumber: number; readonly errors: ReadonlyArray<string> }>;
+    readonly dbSaveError: { readonly error?: string }; 
+    readonly dbSaveComplete: { 
+        readonly success: boolean; 
+        readonly added?: number; 
+        readonly updated?: number; 
+        readonly unchanged?: number; 
+        readonly failed?: number; 
+    }; 
+    readonly dbSaveSkipped: any;
+    readonly finalCrawlingResult: FinalCrawlingResult;
+    readonly crawlingStatusSummary: CrawlingStatusSummary;
+}
+
+/**
+ * Method parameter mapping for type-safe method calls
+ */
+export interface MethodParamsMapping {
+    readonly 'startCrawling': { readonly mode: AppMode; readonly config?: CrawlerConfig };
+    readonly 'stopCrawling': void;
+    readonly 'exportToExcel': { readonly path?: string };
+    readonly 'getProducts': { readonly search?: string; readonly page?: number; readonly limit?: number };
+    readonly 'getProductById': string;
+    readonly 'searchProducts': { readonly query: string; readonly page?: number; readonly limit?: number };
+    readonly 'getDatabaseSummary': void;
+    readonly 'getStaticData': void;
+    readonly 'markLastUpdated': number;
+    readonly 'checkCrawlingStatus': void;
+    readonly 'crawler:get-config': void;
+    readonly 'crawler:update-config': Partial<CrawlerConfig>;
+    readonly 'crawler:reset-config': void;
+    readonly 'deleteRecordsByPageRange': { readonly startPageId: number; readonly endPageId: number };
+    readonly 'saveProductsToDB': ReadonlyArray<MatterProduct>;
+    readonly 'fetchAndUpdateVendors': void;
+    readonly 'getVendors': void;
+    readonly 'testBatchUI': { readonly batchCount?: number; readonly delayMs?: number };
+    readonly 'getConfigPath': void;
+    readonly 'detectGaps': { readonly config?: CrawlerConfig };
+    readonly 'collectGaps': { readonly gapResult: GapDetectionResult; readonly options?: GapCollectionOptions };
+    readonly 'executeGapBatchCollection': { readonly config?: CrawlerConfig };
+}
+
+/**
+ * Method return mapping for type-safe return values
+ */
+export interface MethodReturnMapping {
+    readonly 'startCrawling': { readonly success: boolean };
+    readonly 'stopCrawling': { readonly success: boolean };
+    readonly 'exportToExcel': { readonly success: boolean; readonly path?: string };
+    readonly 'getProducts': { readonly products: ReadonlyArray<MatterProduct>; readonly total: number; readonly maxPageId?: number };
+    readonly 'getProductById': MatterProduct | null;
+    readonly 'searchProducts': { readonly products: ReadonlyArray<MatterProduct>; readonly total: number };
+    readonly 'getDatabaseSummary': DatabaseSummary;
+    readonly 'getStaticData': StaticData;
+    readonly 'markLastUpdated': void;
+    readonly 'checkCrawlingStatus': { readonly success: boolean; readonly status?: CrawlingStatusSummary; readonly error?: string };
+    readonly 'crawler:get-config': { readonly success: boolean; readonly config?: CrawlerConfig; readonly error?: string };
+    readonly 'crawler:update-config': { readonly success: boolean; readonly config?: CrawlerConfig; readonly error?: string };
+    readonly 'crawler:reset-config': { readonly success: boolean; readonly config?: CrawlerConfig; readonly error?: string };
+    readonly 'deleteRecordsByPageRange': { readonly success: boolean; readonly deletedCount: number; readonly maxPageId?: number; readonly error?: string };
+    readonly 'saveProductsToDB': { 
+        readonly success: boolean; 
+        readonly added?: number; 
+        readonly updated?: number; 
+        readonly unchanged?: number; 
+        readonly failed?: number; 
+        readonly error?: string;
+    };
+    readonly 'fetchAndUpdateVendors': {
+        readonly success?: boolean;
+        readonly added: number;
+        readonly updated: number;
+        readonly total: number;
+        readonly error?: string;
+    };
+    readonly 'getVendors': {
+        readonly success: boolean;
+        readonly vendors: ReadonlyArray<Vendor>;
+        readonly error?: string;
+    };
+    readonly 'testBatchUI': {
+        readonly success: boolean;
+        readonly message?: string;
+        readonly error?: string;
+    };
+    readonly 'getConfigPath': {
+        readonly success: boolean;
+        readonly configPath?: string;
+        readonly error?: string;
+    };
+    readonly 'detectGaps': {
+        readonly success: boolean;
+        readonly result?: GapDetectionResult;
+        readonly error?: string;
+    };
+    readonly 'collectGaps': {
+        readonly success: boolean;
+        readonly result?: GapCollectionResult;
+        readonly error?: string;
+    };
+    readonly 'executeGapBatchCollection': {
+        readonly success: boolean;
+        readonly gapResult?: GapDetectionResult;
+        readonly collectionResult?: GapCollectionResult;
+        readonly error?: string;
+    };
+}
+
+/**
+ * Unsubscribe function type
+ */
 export type UnsubscribeFunction = () => void;
 
-// 플랫폼 독립적인 API 인터페이스
+/**
+ * =====================================================
+ * PLATFORM API INTERFACES (Modern & Type-Safe)
+ * =====================================================
+ */
+
+/**
+ * Platform-independent API interface
+ */
 export interface IPlatformAPI {
-    // 구독 기반 API
     subscribeToEvent<K extends keyof EventPayloadMapping>(
         eventName: K, 
         callback: (data: EventPayloadMapping[K]) => void
     ): UnsubscribeFunction;
     
-    // 요청-응답 기반 API
     invokeMethod<K extends keyof MethodParamsMapping, R = MethodReturnMapping[K]>(
         methodName: K,
         params?: MethodParamsMapping[K]
     ): Promise<R>;
 }
 
-// 구현체는 실제 구현에서 각 플랫폼별 API로 연결됩니다
+/**
+ * Electron-specific API interface
+ */
 export interface IElectronAPI extends IPlatformAPI {
-    // 구독 메서드
-    subscribeStatistics: (callback: (statistics: Statistics) => void) => UnsubscribeFunction;
-    subscribeCrawlingProgress: (callback: (progress: CrawlingProgress) => void) => UnsubscribeFunction;
-    subscribeCrawlingComplete: (callback: (data: EventPayloadMapping['crawlingComplete']) => void) => UnsubscribeFunction;
-    subscribeCrawlingError: (callback: (data: EventPayloadMapping['crawlingError']) => void) => UnsubscribeFunction;
-    subscribeCrawlingTaskStatus: (callback: (tasks: ConcurrentCrawlingTask[]) => void) => UnsubscribeFunction;
-    subscribeCrawlingStopped: (callback: (tasks: ConcurrentCrawlingTask[]) => void) => UnsubscribeFunction;
-    subscribeCrawlingFailedPages: (callback: (failedPages: EventPayloadMapping['crawlingFailedPages']) => void) => UnsubscribeFunction;
-    subscribeDbSummary: (callback: (data: DatabaseSummary) => void) => UnsubscribeFunction;
-    subscribeProducts: (callback: (products: MatterProduct[]) => void) => UnsubscribeFunction;
+    // Event listeners
+    readonly on: (channel: string, listener: (...args: any[]) => void) => void;
+    readonly removeAllListeners: (channel: string) => void;
     
-    // 호출 메서드
-    getStaticData: () => Promise<StaticData>;
-    startCrawling: (params: MethodParamsMapping['startCrawling']) => Promise<MethodReturnMapping['startCrawling']>;
-    stopCrawling: () => Promise<MethodReturnMapping['stopCrawling']>;
-    exportToExcel: (params: MethodParamsMapping['exportToExcel']) => Promise<MethodReturnMapping['exportToExcel']>;
-    getProducts: (params: MethodParamsMapping['getProducts']) => Promise<MethodReturnMapping['getProducts']>;
-    getProductById: (id: MethodParamsMapping['getProductById']) => Promise<MethodReturnMapping['getProductById']>;
-    getDatabaseSummary: () => Promise<MethodReturnMapping['getDatabaseSummary']>;
-    checkCrawlingStatus: () => Promise<MethodReturnMapping['checkCrawlingStatus']>;
-    searchProducts: (params: MethodParamsMapping['searchProducts']) => Promise<MethodReturnMapping['searchProducts']>;
-    markLastUpdated: (timestamp: MethodParamsMapping['markLastUpdated']) => Promise<MethodReturnMapping['markLastUpdated']>;
+    // Subscription methods
+    readonly subscribeStatistics: (callback: (statistics: Statistics) => void) => UnsubscribeFunction;
+    readonly subscribeCrawlingProgress: (callback: (progress: CrawlingProgress) => void) => UnsubscribeFunction;
+    readonly subscribeToCrawlingProgress: (callback: (progress: CrawlingProgress) => void) => boolean;
+    readonly subscribeCrawlingComplete: (callback: (data: EventPayloadMapping['crawlingComplete']) => void) => UnsubscribeFunction;
+    readonly subscribeToCrawlingComplete: (callback: (data: EventPayloadMapping['crawlingComplete']) => void) => boolean;
+    readonly subscribeCrawlingError: (callback: (data: EventPayloadMapping['crawlingError']) => void) => UnsubscribeFunction;
+    readonly subscribeToCrawlingError: (callback: (data: EventPayloadMapping['crawlingError']) => void) => boolean;
+    readonly subscribeCrawlingTaskStatus: (callback: (tasks: ReadonlyArray<ConcurrentCrawlingTask>) => void) => UnsubscribeFunction;
+    readonly subscribeCrawlingStopped: (callback: (tasks: ReadonlyArray<ConcurrentCrawlingTask>) => void) => UnsubscribeFunction;
+    readonly subscribeCrawlingFailedPages: (callback: (failedPages: EventPayloadMapping['crawlingFailedPages']) => void) => UnsubscribeFunction;
+    readonly subscribeDbSummary: (callback: (data: DatabaseSummary) => void) => UnsubscribeFunction;
+    readonly subscribeProducts: (callback: (products: ReadonlyArray<MatterProduct>) => void) => UnsubscribeFunction;
+    readonly subscribeCrawlingStatusSummary: (callback: (data: EventPayloadMapping['crawlingStatusSummary']) => void) => UnsubscribeFunction;
     
-    // 설정 관련 메서드 추가
-    getConfig: () => Promise<MethodReturnMapping['crawler:get-config']>;
-    updateConfig: (config: MethodParamsMapping['crawler:update-config']) => Promise<MethodReturnMapping['crawler:update-config']>;
-    resetConfig: (config: MethodParamsMapping['crawler:reset-config']) => Promise<MethodReturnMapping['crawler:reset-config']>;
+    // Method calls
+    readonly getStaticData: () => Promise<StaticData>;
+    readonly startCrawling: (params: MethodParamsMapping['startCrawling']) => Promise<MethodReturnMapping['startCrawling']>;
+    readonly stopCrawling: () => Promise<MethodReturnMapping['stopCrawling']>;
+    readonly exportToExcel: (params: MethodParamsMapping['exportToExcel']) => Promise<MethodReturnMapping['exportToExcel']>;
+    readonly getProducts: (params: MethodParamsMapping['getProducts']) => Promise<MethodReturnMapping['getProducts']>;
+    readonly getProductById: (id: MethodParamsMapping['getProductById']) => Promise<MethodReturnMapping['getProductById']>;
+    readonly getDatabaseSummary: () => Promise<MethodReturnMapping['getDatabaseSummary']>;
+    readonly searchProducts: (params: MethodParamsMapping['searchProducts']) => Promise<MethodReturnMapping['searchProducts']>;
+    readonly markLastUpdated: (count: MethodParamsMapping['markLastUpdated']) => Promise<MethodReturnMapping['markLastUpdated']>;
+    readonly checkCrawlingStatus: () => Promise<MethodReturnMapping['checkCrawlingStatus']>;
+    readonly getConfig: () => Promise<MethodReturnMapping['crawler:get-config']>;
+    readonly updateConfig: (config: MethodParamsMapping['crawler:update-config']) => Promise<MethodReturnMapping['crawler:update-config']>;
+    readonly resetConfig: () => Promise<MethodReturnMapping['crawler:reset-config']>;
+    readonly getConfigPath: () => Promise<MethodReturnMapping['getConfigPath']>;
+    readonly deleteRecordsByPageRange: (params: MethodParamsMapping['deleteRecordsByPageRange']) => Promise<MethodReturnMapping['deleteRecordsByPageRange']>;
+    readonly fetchAndUpdateVendors: () => Promise<MethodReturnMapping['fetchAndUpdateVendors']>;
+    readonly getVendors: () => Promise<MethodReturnMapping['getVendors']>;
+    readonly testBatchUI: (params: MethodParamsMapping['testBatchUI']) => Promise<MethodReturnMapping['testBatchUI']>;
+    readonly detectGaps: (params: MethodParamsMapping['detectGaps']) => Promise<MethodReturnMapping['detectGaps']>;
+    readonly collectGaps: (params: MethodParamsMapping['collectGaps']) => Promise<MethodReturnMapping['collectGaps']>;
+    readonly executeGapBatchCollection: (params: MethodParamsMapping['executeGapBatchCollection']) => Promise<MethodReturnMapping['executeGapBatchCollection']>;
     
-    // 페이지 범위로 레코드 삭제 메서드 추가
-    deleteRecordsByPageRange: (params: MethodParamsMapping['deleteRecordsByPageRange']) => Promise<MethodReturnMapping['deleteRecordsByPageRange']>;
+    // 누락 제품 수집 API
+    readonly analyzeMissingProducts: () => Promise<any>;
+    readonly crawlMissingProducts: (params: any) => Promise<any>;
+    readonly calculatePageRanges: () => Promise<any>;
+    
+    // 일반적인 invoke 메서드
+    readonly invoke: (channel: string, ...args: any[]) => Promise<any>;
 }
 
-// Window 인터페이스 확장은 글로벌로 유지
+/**
+ * =====================================================
+ * UI COMPONENT TYPES (Modern TypeScript Patterns)
+ * =====================================================
+ */
+
+/**
+ * Base component props with modern TypeScript patterns
+ */
+export interface ComponentProps<T = {}> {
+    readonly className?: string;
+    readonly testId?: string;
+    readonly children?: React.ReactNode;
+}
+
+/**
+ * Button component variants
+ */
+export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'success' | 'warning';
+export type ButtonSize = 'sm' | 'md' | 'lg';
+
+/**
+ * Button component props with conditional types
+ */
+export interface ButtonProps extends ComponentProps {
+    readonly variant?: ButtonVariant;
+    readonly size?: ButtonSize;
+    readonly disabled?: boolean;
+    readonly loading?: boolean;
+    readonly onClick?: () => void;
+}
+
+/**
+ * Conditional props based on crawling status
+ */
+export type ConditionalCrawlingProps<T extends CrawlingStatus> = 
+  T extends 'running' ? { readonly onStop: () => void } :
+  T extends 'stopping' ? { readonly showOverlay: true } :
+  { readonly onStart?: () => void };
+
+/**
+ * =====================================================
+ * MISSING DATA ANALYSIS TYPES
+ * =====================================================
+ */
+
+/**
+ * 누락된 제품 정보
+ */
+export interface MissingProduct {
+    readonly url: string;
+    readonly pageId: number;
+    readonly indexInPage: number;
+}
+
+/**
+ * 불완전한 페이지 정보
+ */
+export interface IncompletePage {
+    readonly pageId: number;
+    readonly missingIndices: readonly number[];
+    readonly expectedCount: number;
+    readonly actualCount: number;
+}
+
+/**
+ * 누락 데이터 분석 결과
+ */
+export interface MissingDataAnalysis {
+    readonly missingDetails: readonly MissingProduct[];
+    readonly incompletePages: readonly IncompletePage[];
+    readonly totalMissingDetails: number;
+    readonly totalIncompletePages: number;
+    readonly summary: {
+        readonly productsCount: number;
+        readonly productDetailsCount: number;
+        readonly difference: number;
+    };
+}
+
+/**
+ * 크롤링 범위 정의 (비연속적 페이지 처리용)
+ */
+export interface CrawlingRange {
+    readonly startPage: number;
+    readonly endPage: number;
+    readonly reason: string;
+    readonly priority?: number;
+    readonly estimatedProducts?: number;
+}
+
+/**
+ * 누락 제품 수집 결과
+ */
+export interface MissingProductCollectionResult {
+    readonly collected: number;
+    readonly failed: number;
+    readonly skipped: number;
+    readonly collectedUrls: readonly string[];
+    readonly failedUrls: readonly string[];
+    readonly errors: readonly string[];
+}
+
+/**
+ * =====================================================
+ * GLOBAL DECLARATIONS
+ * =====================================================
+ */
+
 declare global {
     interface Window {
         electron: IElectronAPI;
     }
 }
 
-// 모듈로서 이 파일을 다루도록 빈 export 추가
+// Module marker to ensure this file is treated as a module
 export {};

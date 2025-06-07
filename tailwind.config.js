@@ -19,6 +19,8 @@ export default {
         'flip-hourglass': 'flipHourglass 1s ease-out',
         'confetti': 'confetti 4s ease-in-out forwards',
         'failure': 'failure 1s ease-in-out infinite',
+        'fade-in': 'fadeIn 0.5s ease-out forwards',
+        'pulse-once': 'pulseOnce 2s ease-out forwards',
       },
       keyframes: {
         progressWave: {
@@ -33,6 +35,15 @@ export default {
           '0%': { transform: 'scale(1)' },
           '50%': { transform: 'scale(1.15)' },
           '100%': { transform: 'scale(1)' },
+        },
+        fadeIn: {
+          '0%': { opacity: 0, transform: 'translateY(10px)' },
+          '100%': { opacity: 1, transform: 'translateY(0)' },
+        },
+        pulseOnce: {
+          '0%': { opacity: 1, backgroundColor: 'rgba(254, 252, 232, 1)' }, /* yellow-50 */
+          '50%': { opacity: 1, backgroundColor: 'rgba(250, 204, 21, 0.2)' }, /* yellow-400 with transparency */
+          '100%': { opacity: 1, backgroundColor: 'rgba(254, 252, 232, 1)' }, /* yellow-50 */
         },
         bounceIn: {
           '0%': { transform: 'scale(0.8)', opacity: 0 },

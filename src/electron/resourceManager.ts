@@ -14,15 +14,21 @@ export const electronResourcePaths = {
     
     // 데이터 저장 경로
     get dataPath() {
-        if (app) {
-            return path.join(app.getPath('userData'), 'data');
+        if (app && app.isReady()) {
+            const userDataPath = app.getPath('userData');
+            console.log(`[resourceManager] Electron app ready, userData path: ${userDataPath}`);
+            return path.join(userDataPath, 'data');
+        } else {
+            // 개발 모드이거나 앱이 아직 준비되지 않은 경우
+            const devDataPath = path.join(process.cwd(), 'data');
+            console.log(`[resourceManager] Electron app not ready, using dev path: ${devDataPath}`);
+            return devDataPath;
         }
-        return path.join(process.cwd(), 'data');
     },
     
     // 임시 파일 경로
     get tempPath() {
-        if (app) {
+        if (app && app.isReady()) {
             return app.getPath('temp');
         }
         return os.tmpdir();
@@ -30,7 +36,7 @@ export const electronResourcePaths = {
     
     // 로그 파일 경로
     get logsPath() {
-        if (app) {
+        if (app && app.isReady()) {
             return path.join(app.getPath('logs'));
         }
         return path.join(process.cwd(), 'logs');
