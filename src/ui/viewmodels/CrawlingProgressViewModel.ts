@@ -171,6 +171,13 @@ export class CrawlingProgressViewModel {
     this.currentProgress = progress;
     this.lastProgressUpdate = Date.now();
     
+    // Gap Collection의 경우 진행 상태 관리를 별도로 처리
+    if (progress.gapCollectionInfo) {
+      console.log('[CrawlingProgressViewModel] Gap Collection progress detected, skipping regression check');
+      // Gap Collection은 일반 크롤링 단계와 별개로 처리
+      return;
+    }
+    
     if (progress.currentStage !== undefined) {
       const stageId = STAGE_NUMBER_TO_ID[progress.currentStage];
       if (stageId) {

@@ -31,7 +31,7 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
    */
   constructor(config: CrawlerConfig) {
     this.matterFilterUrl = config.matterFilterUrl || '';
-    this.pageTimeoutMs = config.pageTimeoutMs || 60000;
+    this.pageTimeoutMs = config.pageTimeoutMs || 90000; // 60초에서 90초로 증가하여 타임아웃 방지
     this.minRequestDelayMs = config.minRequestDelayMs || 500;
     this.userAgent = config.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
   }
@@ -87,24 +87,38 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
     }
 
     const pageUrl = `${this.matterFilterUrl}&paged=${pageNumber}`;
+    const pageStartTime = Date.now();
+    
+    // 상세 페이지 타임아웃 로깅
+    debugLog(`[AxiosCrawler] Starting page ${pageNumber} crawl (attempt ${attempt}) - URL: ${pageUrl}, Timeout: ${this.pageTimeoutMs}ms`);
     
     try {
       if (attempt > 1) {
         await delay(this.minRequestDelayMs);
+        debugLog(`[AxiosCrawler] Page ${pageNumber} - Applied retry delay of ${this.minRequestDelayMs}ms`);
       }
       
+      const requestStartTime = Date.now();
       const response = await axios.get(pageUrl, {
         timeout: this.pageTimeoutMs,
         headers: this.getEnhancedHeaders(),
         signal
       });
+      const requestElapsed = Date.now() - requestStartTime;
+      debugLog(`[AxiosCrawler] Page ${pageNumber} - HTTP request completed in ${requestElapsed}ms`);
 
       if (response.status !== 200) {
         throw new PageNavigationError(`Failed to load page: Status ${response.status}`, pageNumber, attempt);
       }
 
+      const extractStartTime = Date.now();
       const html = response.data;
       const rawProducts = this.extractProductsFromHTML(html);
+      const extractElapsed = Date.now() - extractStartTime;
+      const totalElapsed = Date.now() - pageStartTime;
+      
+      debugLog(`[AxiosCrawler] Page ${pageNumber} - Product extraction completed in ${extractElapsed}ms, found ${rawProducts.length} products`);
+      debugLog(`[AxiosCrawler] Page ${pageNumber} - ✅ Total page crawl completed in ${totalElapsed}ms (timeout was ${this.pageTimeoutMs}ms)`);
 
       return {
         rawProducts,
@@ -114,17 +128,23 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
       };
 
     } catch (error: unknown) {
+      const errorElapsed = Date.now() - pageStartTime;
+      debugLog(`[AxiosCrawler] Page ${pageNumber} - ❌ Error occurred after ${errorElapsed}ms (timeout was ${this.pageTimeoutMs}ms)`);
+      
       if (error instanceof PageOperationError) throw error;
 
       if (axios.isAxiosError(error)) {
         if (error.code === 'ECONNABORTED') {
-          throw new PageTimeoutError(`Page ${pageNumber} timed out after ${this.pageTimeoutMs}ms on attempt ${attempt}. URL: ${pageUrl}`, pageNumber, attempt);
+          debugLog(`[AxiosCrawler] Page ${pageNumber} - Timeout error: ${error.message}`);
+          throw new PageTimeoutError(`Page ${pageNumber} timed out after ${this.pageTimeoutMs}ms on attempt ${attempt}. Actual elapsed: ${errorElapsed}ms. URL: ${pageUrl}`, pageNumber, attempt);
         }
-        throw new PageNavigationError(`Error navigating to page ${pageNumber} (attempt ${attempt}): ${error.message}. URL: ${pageUrl}`, pageNumber, attempt);
+        debugLog(`[AxiosCrawler] Page ${pageNumber} - Axios error: ${error.message}`);
+        throw new PageNavigationError(`Error navigating to page ${pageNumber} (attempt ${attempt}): ${error.message}. Elapsed: ${errorElapsed}ms. URL: ${pageUrl}`, pageNumber, attempt);
       }
 
       if (error instanceof Error) {
-        throw new PageOperationError(`Error crawling page ${pageNumber} (attempt ${attempt}): ${error.message}. URL: ${pageUrl}`, pageNumber, attempt);
+        debugLog(`[AxiosCrawler] Page ${pageNumber} - General error: ${error.message}`);
+        throw new PageOperationError(`Error crawling page ${pageNumber} (attempt ${attempt}): ${error.message}. Elapsed: ${errorElapsed}ms. URL: ${pageUrl}`, pageNumber, attempt);
       }
       
       throw new PageOperationError(`Unknown error crawling page ${pageNumber} (attempt ${attempt}). URL: ${pageUrl}`, pageNumber, attempt);

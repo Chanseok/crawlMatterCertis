@@ -33,7 +33,7 @@ export class PlaywrightCrawlerStrategy implements ICrawlerStrategy {
   constructor(browserManager: BrowserManager, config: CrawlerConfig) {
     this.browserManager = browserManager;
     this.matterFilterUrl = config.matterFilterUrl || '';
-    this.pageTimeoutMs = config.pageTimeoutMs || 60000;
+    this.pageTimeoutMs = config.pageTimeoutMs || 90000; // 60초에서 90초로 증가하여 타임아웃 방지
     this.minRequestDelayMs = config.minRequestDelayMs || 500;
   }
 
@@ -64,6 +64,10 @@ export class PlaywrightCrawlerStrategy implements ICrawlerStrategy {
 
     const pageUrl = `${this.matterFilterUrl}&paged=${pageNumber}`;
     const timeout = this.pageTimeoutMs;
+    const pageStartTime = Date.now();
+
+    // 상세 페이지 타임아웃 로깅
+    debugLog(`[PlaywrightCrawler] Starting page ${pageNumber} crawl (attempt ${attempt}) - URL: ${pageUrl}, Timeout: ${timeout}ms`);
 
     let context: BrowserContext | null = null;
     let page: Page | null = null;
@@ -78,12 +82,24 @@ export class PlaywrightCrawlerStrategy implements ICrawlerStrategy {
 
       if (attempt > 1) {
         await delay(this.minRequestDelayMs);
+        debugLog(`[PlaywrightCrawler] Page ${pageNumber} - Applied retry delay of ${this.minRequestDelayMs}ms`);
       }
       
       await this.optimizePage(page);
+      debugLog(`[PlaywrightCrawler] Page ${pageNumber} - Page optimization completed`);
+      
+      const navStartTime = Date.now();
       await this.optimizedNavigation(page, pageUrl, timeout);
+      const navElapsed = Date.now() - navStartTime;
+      debugLog(`[PlaywrightCrawler] Page ${pageNumber} - Navigation completed in ${navElapsed}ms`);
 
+      const extractStartTime = Date.now();
       const rawProducts = await page.evaluate<RawProductData[]>(this.extractProductsFromPageDOM);
+      const extractElapsed = Date.now() - extractStartTime;
+      const totalElapsed = Date.now() - pageStartTime;
+      
+      debugLog(`[PlaywrightCrawler] Page ${pageNumber} - Product extraction completed in ${extractElapsed}ms, found ${rawProducts.length} products`);
+      debugLog(`[PlaywrightCrawler] Page ${pageNumber} - ✅ Total page crawl completed in ${totalElapsed}ms (timeout was ${timeout}ms)`);
 
       return {
         rawProducts,
@@ -93,16 +109,22 @@ export class PlaywrightCrawlerStrategy implements ICrawlerStrategy {
       };
 
     } catch (error: unknown) {
+      const errorElapsed = Date.now() - pageStartTime;
+      debugLog(`[PlaywrightCrawler] Page ${pageNumber} - ❌ Error occurred after ${errorElapsed}ms (timeout was ${timeout}ms)`);
+      
       if (error instanceof PageOperationError) throw error;
 
       if (error instanceof Error) {
         if (error.name === 'TimeoutError') {
-          throw new PageTimeoutError(`Page ${pageNumber} timed out after ${timeout}ms on attempt ${attempt}. URL: ${pageUrl}`, pageNumber, attempt);
+          debugLog(`[PlaywrightCrawler] Page ${pageNumber} - Timeout error: ${error.message}`);
+          throw new PageTimeoutError(`Page ${pageNumber} timed out after ${timeout}ms on attempt ${attempt}. Actual elapsed: ${errorElapsed}ms. URL: ${pageUrl}`, pageNumber, attempt);
         }
-        throw new PageOperationError(`Error crawling page ${pageNumber} (attempt ${attempt}): ${error.message}. URL: ${pageUrl}`, pageNumber, attempt);
+        debugLog(`[PlaywrightCrawler] Page ${pageNumber} - General error: ${error.message}`);
+        throw new PageOperationError(`Error crawling page ${pageNumber} (attempt ${attempt}): ${error.message}. Elapsed: ${errorElapsed}ms. URL: ${pageUrl}`, pageNumber, attempt);
       }
       
-      throw new PageOperationError(`Unknown error crawling page ${pageNumber} (attempt ${attempt}). URL: ${pageUrl}`, pageNumber, attempt);
+      debugLog(`[PlaywrightCrawler] Page ${pageNumber} - Unknown error type`);
+      throw new PageOperationError(`Unknown error crawling page ${pageNumber} (attempt ${attempt}). Elapsed: ${errorElapsed}ms. URL: ${pageUrl}`, pageNumber, attempt);
     } finally {
       if (page) {
         await this.browserManager.closePageAndContext(page);
@@ -279,36 +301,62 @@ export class PlaywrightCrawlerStrategy implements ICrawlerStrategy {
    */
   private async optimizedNavigation(page: Page, url: string, timeout: number): Promise<boolean> {
     let navigationSucceeded = false;
+    const startTime = Date.now();
+    
+    // 상세 타임아웃 로깅
+    debugLog(`[PlaywrightNavigation] Starting optimized navigation to ${url}, timeout: ${timeout}ms`);
     
     try {
       // 첫 시도: 매우 짧은 타임아웃으로 시도
+      const firstAttemptTimeout = Math.min(5000, timeout / 3);
+      debugLog(`[PlaywrightNavigation] First attempt with timeout: ${firstAttemptTimeout}ms`);
+      
       await page.goto(url, { 
         waitUntil: 'domcontentloaded', // 더 가벼운 로드 조건
-        timeout: Math.min(5000, timeout / 3) // 매우 짧은 타임아웃
+        timeout: firstAttemptTimeout
       });
       navigationSucceeded = true;
+      const elapsedTime = Date.now() - startTime;
+      debugLog(`[PlaywrightNavigation] ✅ First attempt succeeded in ${elapsedTime}ms`);
     } catch (error: any) {
+      const firstAttemptElapsed = Date.now() - startTime;
+      debugLog(`[PlaywrightNavigation] ⚠️ First attempt failed after ${firstAttemptElapsed}ms: ${error?.message || 'Unknown error'}`);
+      
       if (error && error.name === 'TimeoutError') {
         // 타임아웃 발생해도 HTML이 로드되었다면 성공으로 간주
         const readyState = await page.evaluate(() => document.readyState).catch(() => 'unknown');
+        debugLog(`[PlaywrightNavigation] Document readyState after timeout: ${readyState}`);
+        
         if (readyState !== 'loading' && readyState !== 'unknown') {
           navigationSucceeded = true;
-          debugLog(`Navigation timed out but document is in '${readyState}' state. Continuing...`);
+          debugLog(`[PlaywrightNavigation] ✅ Navigation timed out but document is in '${readyState}' state. Continuing... (${firstAttemptElapsed}ms)`);
         } else {
           // 첫 시도 실패 시, 두 번째 시도 - 조금 더 긴 타임아웃
+          const secondAttemptTimeout = timeout / 2;
+          debugLog(`[PlaywrightNavigation] Starting second attempt with timeout: ${secondAttemptTimeout}ms`);
+          
           try {
             await page.goto(url, { 
               waitUntil: 'domcontentloaded',
-              timeout: timeout / 2
+              timeout: secondAttemptTimeout
             });
             navigationSucceeded = true;
+            const totalElapsed = Date.now() - startTime;
+            debugLog(`[PlaywrightNavigation] ✅ Second attempt succeeded in ${totalElapsed}ms total`);
           } catch (secondError: any) {
+            const totalElapsed = Date.now() - startTime;
+            debugLog(`[PlaywrightNavigation] ❌ Second attempt failed after ${totalElapsed}ms total: ${secondError?.message || 'Unknown error'}`);
             // 최종 실패 시 오류 로깅
-            debugLog(`Navigation failed after retry: ${secondError && secondError.message ? secondError.message : 'Unknown error'}`);
+            debugLog(`[PlaywrightNavigation] Navigation failed after retry: ${secondError && secondError.message ? secondError.message : 'Unknown error'}`);
           }
         }
+      } else {
+        debugLog(`[PlaywrightNavigation] ❌ Non-timeout error in first attempt: ${error?.message || 'Unknown error'}`);
       }
     }
+    
+    const totalElapsed = Date.now() - startTime;
+    debugLog(`[PlaywrightNavigation] Navigation ${navigationSucceeded ? 'succeeded' : 'failed'} - Total time: ${totalElapsed}ms, Target timeout: ${timeout}ms`);
     
     return navigationSucceeded;
   }

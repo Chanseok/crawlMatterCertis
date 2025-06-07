@@ -20,7 +20,8 @@ import { BaseViewModel } from './core/BaseViewModel';
 import { makeObservable, observable, action, runInAction } from 'mobx';
 import { logStore } from '../stores/domain/LogStore';
 import { ServiceFactory } from '../services/ServiceFactory';
-import type { GapCollectionOptions as IPCGapCollectionOptions } from '../../../types';
+import { CrawlingService } from '../services/domain/CrawlingService';
+import type { CrawlerConfig } from '../../../types';
 
 /**
  * Gap Detection 작업 상태
@@ -55,27 +56,42 @@ export interface GapCollectionOptions extends GapDetectionOptions {
   autoCollect: boolean;
   enableRetry: boolean;
   notificationEnabled: boolean;
+  useExtendedCollection: boolean; // 주변 페이지 포함 수집 옵션
 }
 
 /**
- * Gap Detection 결과 정보
+ * Gap Detection 결과 정보 (갭 탐지 엔진과 호환)
  */
 export interface GapDetectionResult {
-  totalMissingPages: number;
-  missingPagesList: number[];
-  missingProductsCount: number;
-  detectionTime: number;
-  lastDetectionDate: Date;
-  analysisDetails?: {
-    largestGap: {
-      startPage: number;
-      endPage: number;
-      count: number;
-    };
-    gapPatterns: Array<{
-      range: [number, number];
-      count: number;
-    }>;
+  totalMissingProducts: number;
+  missingPages: ReadonlyArray<{
+    pageId: number;
+    missingIndices: ReadonlyArray<number>;
+    expectedCount: number;
+    actualCount: number;
+    completenessRatio: number;
+  }>;
+  completelyMissingPageIds: ReadonlyArray<number>;
+  partiallyMissingPageIds: ReadonlyArray<number>;
+  summary: {
+    totalExpectedProducts: number;
+    totalActualProducts: number;
+    completionPercentage: number;
+  };
+  // 새로 추가: 크롤링 범위 정보
+  crawlingRanges: ReadonlyArray<{
+    startPage: number;
+    endPage: number;
+    missingPageIds: ReadonlyArray<number>;
+    reason: string;
+    priority: number;
+    estimatedProducts: number;
+  }>;
+  totalSitePages: number;
+  batchInfo: {
+    totalBatches: number;
+    estimatedTime: number;
+    recommendedConcurrency: number;
   };
 }
 
@@ -95,6 +111,12 @@ export interface GapCollectionProgress {
     error: string;
     timestamp: Date;
   }>;
+  // 배치 처리 관련 추가 정보
+  currentBatch: number;
+  totalBatches: number;
+  batchProgress: number; // 현재 배치 내 진행률 (0-100)
+  collectedProducts: number;
+  totalMissingProducts: number;
 }
 
 /**
@@ -127,6 +149,7 @@ export class GapDetectionViewModel extends BaseViewModel {
       startDetection: action,
       startCollection: action,
       startDetectionAndCollection: action,
+      startBatchCollection: action,
       cancelOperation: action,
       resetState: action,
       clearError: action,
@@ -186,7 +209,7 @@ export class GapDetectionViewModel extends BaseViewModel {
    * 유효한 결과가 있는지 확인
    */
   get hasValidResult(): boolean {
-    return this.result !== null && this.result.missingPagesList.length > 0;
+    return this.result !== null && (this.result.completelyMissingPageIds.length > 0 || this.result.partiallyMissingPageIds.length > 0);
   }
 
   // === Action Methods ===
@@ -228,11 +251,11 @@ export class GapDetectionViewModel extends BaseViewModel {
       runInAction(() => {
         this.result = detectionResult;
         this.stage = GapDetectionStage.COMPLETED;
-        this.lastOperation = `Detection completed - ${detectionResult.totalMissingPages} gaps found`;
+        this.lastOperation = `Detection completed - ${detectionResult.missingPages.length} gaps found`;
       });
 
       this.logStore.addLog(
-        `Gap detection completed: ${detectionResult.totalMissingPages} missing pages found`,
+        `Gap detection completed: ${detectionResult.missingPages.length} missing pages found`,
         'info',
         'GAP_DETECTION'
       );
@@ -256,16 +279,18 @@ export class GapDetectionViewModel extends BaseViewModel {
       this.lastOperation = 'Collection';
       
       this.resetProgress();
-      this.progress.totalPages = this.result!.missingPagesList.length;
+      const totalPagesToCollect = this.result!.completelyMissingPageIds.length + this.result!.partiallyMissingPageIds.length;
+      this.progress.totalPages = totalPagesToCollect;
 
       this.logStore.addLog(
-        `Starting gap collection for ${this.result!.missingPagesList.length} pages...`,
+        `Starting gap collection for ${totalPagesToCollect} pages...`,
         'info',
         'GAP_DETECTION'
       );
 
       // TODO: IPC 통신으로 백엔드 Gap Collection 호출
-      await this.performGapCollection(this.result!.missingPagesList);
+      const pagesToCollect = [...this.result!.completelyMissingPageIds, ...this.result!.partiallyMissingPageIds];
+      await this.performGapCollection(pagesToCollect);
       
       runInAction(() => {
         this.stage = GapDetectionStage.COMPLETED;
@@ -298,6 +323,63 @@ export class GapDetectionViewModel extends BaseViewModel {
 
     } catch (error) {
       this.handleError('Gap detection and collection workflow failed', error);
+    }
+  }
+
+  /**
+   * Gap Batch Collection 전체 워크플로우 실행
+   * 3-batch 수집 시스템을 사용하여 효율적인 배치 처리 수행
+   */
+  @action async startBatchCollection(): Promise<void> {
+    if (!this.canStartDetection) {
+      throw new Error('Cannot start batch collection in current stage');
+    }
+
+    try {
+      this.stage = GapDetectionStage.DETECTING;
+      this.error = null;
+      this.lastOperation = 'Batch Collection';
+      this.resetProgress();
+      
+      this.logStore.addLog('Starting gap batch collection workflow...', 'info', 'GAP_DETECTION');
+
+      // Gap Batch Collection 수행
+      const batchResult = await this.performGapBatchCollection();
+      
+      runInAction(() => {
+        // Detection 결과 설정
+        if (batchResult.gapResult) {
+          this.result = batchResult.gapResult;
+        }
+        
+        // Collection 진행률 업데이트
+        if (batchResult.collectionResult) {
+          this.progress.collectedPages = batchResult.collectionResult.collected;
+          this.progress.failedPages = batchResult.collectionResult.failedPages.slice();
+          this.progress.totalPages = batchResult.collectionResult.attempted;
+          this.progress.collectedProducts = batchResult.collectionResult.totalProductsCollected || 0;
+          
+          if (batchResult.collectionResult.errors.length > 0) {
+            this.progress.errors = batchResult.collectionResult.errors.map((error: any) => ({
+              page: 0,
+              error: error,
+              timestamp: new Date()
+            }));
+          }
+        }
+        
+        this.stage = GapDetectionStage.COMPLETED;
+        this.lastOperation = `Batch collection completed - ${this.progress.collectedPages} pages collected`;
+      });
+
+      this.logStore.addLog(
+        `Gap batch collection completed: ${this.progress.collectedPages} pages collected, ${this.progress.failedPages.length} failed`,
+        'info',
+        'GAP_DETECTION'
+      );
+
+    } catch (error) {
+      this.handleError('Gap batch collection workflow failed', error);
     }
   }
 
@@ -377,7 +459,8 @@ export class GapDetectionViewModel extends BaseViewModel {
       delayBetweenPages: 1000,
       autoCollect: true,
       enableRetry: true,
-      notificationEnabled: true
+      notificationEnabled: true,
+      useExtendedCollection: false // 기본값: false (표준 수집)
     };
   }
 
@@ -393,7 +476,13 @@ export class GapDetectionViewModel extends BaseViewModel {
       failedPages: [],
       estimatedTimeRemaining: 0,
       processingRate: 0,
-      errors: []
+      errors: [],
+      // 배치 처리 관련 기본값
+      currentBatch: 0,
+      totalBatches: 0,
+      batchProgress: 0,
+      collectedProducts: 0,
+      totalMissingProducts: 0
     };
   }
 
@@ -408,8 +497,6 @@ export class GapDetectionViewModel extends BaseViewModel {
    * Gap Detection 수행 (실제 IPC 통신)
    */
   private async performGapDetection(): Promise<GapDetectionResult> {
-    const startTime = Date.now();
-    
     try {
       // 실제 Gap Detection Service 호출
       const result = await this.gapDetectionService.detectGaps();
@@ -420,23 +507,17 @@ export class GapDetectionViewModel extends BaseViewModel {
 
       // IPC 결과를 ViewModel 형식으로 변환
       const ipcResult = result.data;
+      
+      // IPC 결과는 이미 새로운 GapDetectionResult 형식이므로 그대로 반환
       return {
-        totalMissingPages: ipcResult.missingPages.length,
-        missingPagesList: ipcResult.completelyMissingPageIds.concat(ipcResult.partiallyMissingPageIds),
-        missingProductsCount: ipcResult.totalMissingProducts,
-        detectionTime: Date.now() - startTime,
-        lastDetectionDate: new Date(),
-        analysisDetails: {
-          largestGap: {
-            startPage: Math.min(...ipcResult.completelyMissingPageIds) || 0,
-            endPage: Math.max(...ipcResult.completelyMissingPageIds) || 0,
-            count: ipcResult.completelyMissingPageIds.length
-          },
-          gapPatterns: ipcResult.missingPages.map(page => ({
-            range: [page.pageId, page.pageId] as [number, number],
-            count: page.expectedCount - page.actualCount
-          }))
-        }
+        totalMissingProducts: ipcResult.totalMissingProducts,
+        missingPages: ipcResult.missingPages,
+        completelyMissingPageIds: ipcResult.completelyMissingPageIds,
+        partiallyMissingPageIds: ipcResult.partiallyMissingPageIds,
+        summary: ipcResult.summary,
+        crawlingRanges: ipcResult.crawlingRanges,
+        totalSitePages: ipcResult.totalSitePages,
+        batchInfo: ipcResult.batchInfo
       };
     } catch (error) {
       this.logStore.addLog(
@@ -453,55 +534,103 @@ export class GapDetectionViewModel extends BaseViewModel {
    */
   private async performGapCollection(pages: number[]): Promise<void> {
     try {
-      // IPC 갭 탐지 결과를 먼저 얻어야 함
-      const detectionResult = await this.gapDetectionService.detectGaps();
-      
-      if (!detectionResult.success || !detectionResult.data) {
-        throw new Error('Gap detection failed before collection');
+      // 최신 config를 CrawlingService에서 가져옴
+      const crawlingService = CrawlingService.getInstance();
+      const configResult = await crawlingService.getConfig();
+      if (!configResult.success || !configResult.data) {
+        throw new Error('Failed to fetch current crawler config');
       }
+      
 
-      // Gap Collection 옵션 구성
-      const collectionOptions: IPCGapCollectionOptions = {
+      // Gap Collection 특화 옵션만 오버라이드
+      const options = {
         maxConcurrentPages: this.options.maxConcurrentPages,
         delayBetweenPages: this.options.delayBetweenPages,
-        skipCompletePages: true,
-        prioritizePartialPages: true
+        maxRetries: this.options.maxRetries,
+        autoCollect: this.options.autoCollect,
+        enableRetry: this.options.enableRetry,
+        notificationEnabled: this.options.notificationEnabled,
+        useExtendedCollection: this.options.useExtendedCollection
       };
 
-      // 실제 Gap Collection Service 호출 (특정 페이지들에 대해)
-      const result = await this.gapDetectionService.collectGaps(
-        detectionResult.data,
-        collectionOptions
-      );
-      
+      // Gap Detection 결과가 반드시 필요
+      if (!this.result) throw new Error('No gap detection result available');
+      // 실제 Gap Collection Service 호출
+      const result = await this.gapDetectionService.collectGaps(this.result, options);
       if (!result.success || !result.data) {
         throw new Error(result.error?.message || 'Gap collection failed');
       }
-
       const collectionResult = result.data;
-      
-      // 결과를 진행률에 반영
       runInAction(() => {
         this.progress.collectedPages = collectionResult.collected;
         this.progress.failedPages = collectionResult.failedPages.slice();
         if (collectionResult.errors.length > 0) {
-          this.progress.errors = collectionResult.errors.map(error => ({
-            page: 0, // Gap collection doesn't provide specific page info
+          this.progress.errors = collectionResult.errors.map((error: string) => ({
+            page: 0,
             error: error,
             timestamp: new Date()
           }));
         }
       });
-
       this.logStore.addLog(
         `Gap collection completed for ${pages.length} pages: ${collectionResult.collected} collected, ${collectionResult.failed} failed`,
         'info',
         'GAP_DETECTION'
       );
-
     } catch (error) {
       this.logStore.addLog(
         `Gap collection service call failed: ${error}`,
+        'error',
+        'GAP_DETECTION'
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Gap Batch Collection 수행 (실제 IPC 통신)
+   */
+  private async performGapBatchCollection(): Promise<{
+    gapResult: GapDetectionResult | null;
+    collectionResult: any | null;
+  }> {
+    try {
+      // 최신 config를 CrawlingService에서 가져옴
+      const crawlingService = CrawlingService.getInstance();
+      const configResult = await crawlingService.getConfig();
+      if (!configResult.success || !configResult.data) {
+        throw new Error('Failed to fetch current crawler config');
+      }
+      const currentConfig = configResult.data;
+
+      // Gap Collection 특화 옵션만 오버라이드
+      const config: CrawlerConfig = {
+        ...currentConfig,
+        maxConcurrentTasks: this.options.maxConcurrentPages,
+        requestDelay: this.options.delayBetweenPages,
+        productListRetryCount: this.options.maxRetries,
+        // 기존 값 유지: productsPerPage, baseUrl 등
+      };
+
+      // productsPerPage 값 확인 및 로깅
+      this.logStore.addLog(
+        `Gap Batch Collection config: productsPerPage=${config.productsPerPage}, maxConcurrentTasks=${config.maxConcurrentTasks}`,
+        'info',
+        'GAP_DETECTION'
+      );
+
+      // 실제 Gap Batch Collection Service 호출
+      const result = await this.gapDetectionService.executeGapBatchCollection(config);
+      if (!result.success) {
+        throw new Error(result.error?.message || 'Gap batch collection failed');
+      }
+      return {
+        gapResult: result.data?.gapResult || null,
+        collectionResult: result.data?.collectionResult || null
+      };
+    } catch (error) {
+      this.logStore.addLog(
+        `Gap batch collection service call failed: ${error}`,
         'error',
         'GAP_DETECTION'
       );

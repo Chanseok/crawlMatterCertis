@@ -19,6 +19,7 @@ export interface GapCollectionOptions {
   delayBetweenPages?: number; // 페이지 간 지연 시간 (ms)
   skipCompletePages?: boolean; // 완전한 페이지 건너뛰기 여부
   prioritizePartialPages?: boolean; // 부분적 누락 페이지 우선 처리
+  useExtendedCollection?: boolean; // 주변 페이지 포함 수집 옵션
 }
 
 /**
@@ -207,9 +208,9 @@ export class GapCollector {
         result.collected += saveResult.added;
         result.collectedPages.push(pageId);
         
-        logger.info(`[GapCollector] 페이지 ${pageId} 수집 완료: ${saveResult.added}개 제품 추가`, "GapCollector");
+        logger.info(`[GapCollector] pageId ${pageId} (사이트 페이지 ${sitePageNumber}) 수집 완료: ${saveResult.added}개 제품 추가`, "GapCollector");
       } else {
-        logger.info(`[GapCollector] 페이지 ${pageId}에서 제품을 수집하지 못했습니다.`, "GapCollector");
+        logger.info(`[GapCollector] pageId ${pageId} (사이트 페이지 ${sitePageNumber})에서 제품을 수집하지 못했습니다.`, "GapCollector");
         result.skipped += missingIndices.length;
       }
       
@@ -306,7 +307,7 @@ export class GapCollector {
       // pageId를 사이트 페이지 번호로 변환
       // pageId 0 = 최신 페이지 (사이트 페이지 462)
       // pageId 461 = 가장 오래된 페이지 (사이트 페이지 1)
-      // 공식: sitePageNumber = totalSitePages - pageId
+      // 수정된 공식: sitePageNumber = totalSitePages - pageId + 1
       const sitePageNumber = totalSitePages - pageId;
       
       // 유효성 검사
@@ -355,5 +356,178 @@ export class GapCollector {
     }
     
     console.log('==========================================================\n');
+  }
+  
+  /**
+   * 확장된 갭 수집 - 누락된 pageId 주변 페이지들도 함께 수집
+   * @param gapResult 갭 탐지 결과
+   * @param crawlerInstance 크롤러 인스턴스
+   * @param options 수집 옵션
+   * @returns 확장된 수집 결과
+   */
+  public static async collectMissingProductsWithContext(
+    gapResult: GapDetectionResult,
+    crawlerInstance: any,
+    options: GapCollectionOptions = {}
+  ): Promise<GapCollectionResult> {
+    logger.info(`[GapCollector] 확장된 갭 수집 시작: 누락된 ${gapResult.totalMissingProducts}개 제품`, "GapCollector");
+    
+    try {
+      // 누락된 pageId 목록 추출
+      const missingPageIds = gapResult.missingPages.map(page => page.pageId);
+      
+      // 수집 대상 pageId 목록 생성 (주변 페이지 포함)
+      const targetPageIds = await this.generateExtendedCollectionTargets(missingPageIds);
+      
+      logger.info(`[GapCollector] 확장된 수집 대상: ${targetPageIds.length}개 페이지`, "GapCollector");
+      logger.debug(`[GapCollector] 수집 대상 pageId 목록: [${targetPageIds.join(', ')}]`, "GapCollector");
+      
+      // 확장된 페이지 목록으로 갭 결과 재구성
+      const extendedGapResult = await this.createExtendedGapResult(targetPageIds);
+      
+      // 기본 수집 로직 실행
+      return await this.collectMissingProducts(extendedGapResult, crawlerInstance, options);
+      
+    } catch (error) {
+      logger.error("[GapCollector] 확장된 갭 수집 중 오류", "GapCollector", error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
+  }
+
+  /**
+   * 누락된 pageId 목록을 기반으로 확장된 수집 대상 목록 생성
+   * 각 누락된 pageId에 대해 이전, 현재, 다음 페이지를 포함하여 3개씩 수집
+   * @param missingPageIds 누락된 pageId 목록
+   * @returns 확장된 수집 대상 pageId 목록
+   */
+  private static async generateExtendedCollectionTargets(missingPageIds: number[]): Promise<number[]> {
+    logger.info(`[GapCollector] 확장된 수집 대상 생성: ${missingPageIds.length}개 누락 페이지`, "GapCollector");
+    
+    try {
+      // 총 페이지 수 가져오기 (유효한 pageId 범위 확인용)
+      const { CrawlerEngine } = await import("./core/CrawlerEngine.js");
+      const crawlerEngine = new CrawlerEngine();
+      const statusSummary = await crawlerEngine.checkCrawlingStatus();
+      const totalSitePages = statusSummary.siteTotalPages;
+      
+      if (!totalSitePages || totalSitePages <= 0) {
+        throw new Error(`사이트 총 페이지 수를 가져올 수 없습니다: ${totalSitePages}`);
+      }
+      
+      // pageId 유효 범위: 0 ~ (totalSitePages - 1)
+      const minPageId = 0;
+      const maxPageId = totalSitePages - 1;
+      
+      logger.info(`[GapCollector] 유효한 pageId 범위: ${minPageId} ~ ${maxPageId}`, "GapCollector");
+      
+      const targetPageIds = new Set<number>();
+      
+      // 각 누락된 pageId에 대해 주변 3개 페이지 (이전, 현재, 다음) 추가
+      for (const missingPageId of missingPageIds) {
+        const contextPages = this.generateContextPages(missingPageId, minPageId, maxPageId);
+        
+        contextPages.forEach(pageId => targetPageIds.add(pageId));
+        
+        logger.debug(`[GapCollector] pageId ${missingPageId} -> 컨텍스트 페이지: [${contextPages.join(', ')}]`, "GapCollector");
+      }
+      
+      // Set을 배열로 변환하고 정렬
+      const sortedTargetPageIds = Array.from(targetPageIds).sort((a, b) => a - b);
+      
+      logger.info(`[GapCollector] 최종 수집 대상: ${sortedTargetPageIds.length}개 페이지 (중복 제거 완료)`, "GapCollector");
+      
+      return sortedTargetPageIds;
+      
+    } catch (error) {
+      logger.error("[GapCollector] 확장된 수집 대상 생성 중 오류", "GapCollector", error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
+  }
+
+  /**
+   * 특정 pageId에 대한 컨텍스트 페이지들(이전, 현재, 다음) 생성
+   * @param pageId 기준 pageId
+   * @param minPageId 최소 pageId (보통 0)
+   * @param maxPageId 최대 pageId (totalSitePages - 1)
+   * @returns 컨텍스트 페이지 배열
+   */
+  private static generateContextPages(pageId: number, minPageId: number, maxPageId: number): number[] {
+    const contextPages: number[] = [];
+    
+    // 이전 페이지 (pageId - 1, 단, minPageId 이상)
+    const previousPageId = pageId - 1;
+    if (previousPageId >= minPageId) {
+      contextPages.push(previousPageId);
+    }
+    
+    // 현재 페이지 (pageId)
+    if (pageId >= minPageId && pageId <= maxPageId) {
+      contextPages.push(pageId);
+    }
+    
+    // 다음 페이지 (pageId + 1, 단, maxPageId 이하)
+    const nextPageId = pageId + 1;
+    if (nextPageId <= maxPageId) {
+      contextPages.push(nextPageId);
+    }
+    
+    return contextPages;
+  }
+
+  /**
+   * 확장된 pageId 목록으로 GapDetectionResult 재구성
+   * @param targetPageIds 수집 대상 pageId 목록
+   * @returns 재구성된 GapDetectionResult
+   */
+  private static async createExtendedGapResult(targetPageIds: number[]): Promise<GapDetectionResult> {
+    logger.info(`[GapCollector] 확장된 갭 결과 생성: ${targetPageIds.length}개 페이지`, "GapCollector");
+    
+    try {
+      // 각 pageId에 대해 PageGap 생성 (전체 페이지를 수집 대상으로 간주)
+      const missingPages: PageGap[] = targetPageIds.map(pageId => ({
+        pageId,
+        expectedCount: 30, // 기본값: 페이지당 30개 제품
+        actualCount: 0,    // 누락된 것으로 간주
+        missingIndices: Array.from({ length: 30 }, (_, i) => i), // 0~29 모든 인덱스
+        completenessRatio: 0.0
+      }));
+      
+      // 총 누락 제품 수 계산
+      const totalMissingProducts = missingPages.reduce((sum, page) => sum + page.missingIndices.length, 0);
+      
+      const extendedGapResult: GapDetectionResult = {
+        totalMissingProducts,
+        missingPages,
+        completelyMissingPageIds: targetPageIds.filter(pageId => {
+          const page = missingPages.find(p => p.pageId === pageId);
+          return page && page.actualCount === 0;
+        }),
+        partiallyMissingPageIds: targetPageIds.filter(pageId => {
+          const page = missingPages.find(p => p.pageId === pageId);
+          return page && page.actualCount > 0;
+        }),
+        summary: {
+          totalExpectedProducts: totalMissingProducts,
+          totalActualProducts: 0, // 확장된 수집에서는 0으로 간주
+          completionPercentage: 0.0
+        },
+        // 새로 추가된 필수 속성들
+        crawlingRanges: [], // 확장된 수집에서는 빈 배열
+        totalSitePages: 1, // 기본값
+        batchInfo: {
+          totalBatches: 1,
+          estimatedTime: Math.ceil(targetPageIds.length * 5 / 60), // 페이지당 5초 추정
+          recommendedConcurrency: 1
+        }
+      };
+      
+      logger.info(`[GapCollector] 확장된 갭 결과 생성 완료: ${totalMissingProducts}개 제품`, "GapCollector");
+      
+      return extendedGapResult;
+      
+    } catch (error) {
+      logger.error("[GapCollector] 확장된 갭 결과 생성 중 오류", "GapCollector", error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
   }
 }

@@ -20,14 +20,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // 갭 감지 및 수집 시스템 임포트
-import { GapDetector } from '../src/electron/crawler/gap-detector.js';
-import { GapCollector } from '../src/electron/crawler/gap-collector.js';
+import { GapDetector } from '../dist-electron/electron/crawler/gap-detector.js';
+import { GapCollector } from '../dist-electron/electron/crawler/gap-collector.js';
 
 // 기존 크롤러 시스템 임포트
-import { CrawlerEngine } from '../src/electron/crawler/core/CrawlerEngine.js';
-import { BrowserManager } from '../src/electron/crawler/browser/BrowserManager.js';
-import { PageCrawler } from '../src/electron/crawler/tasks/page-crawler.js';
-import { configManager } from '../src/electron/ConfigManager.js';
+import { CrawlerEngine } from '../dist-electron/electron/crawler/core/CrawlerEngine.js';
+import { BrowserManager } from '../dist-electron/electron/crawler/browser/BrowserManager.js';
+import { PageCrawler } from '../dist-electron/electron/crawler/tasks/page-crawler.js';
+import { configManager } from '../dist-electron/electron/ConfigManager.js';
 import type { CrawlerConfig } from '../types.js';
 
 // 데이터베이스 설정

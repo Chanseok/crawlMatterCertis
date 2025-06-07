@@ -148,6 +148,34 @@ export class GapDetectionService extends BaseService {
   }
 
   /**
+   * 갭 배치 수집 실행 (3-batch 처리 시스템)
+   * @param config 크롤러 설정 (옵션)
+   */
+  async executeGapBatchCollection(
+    config?: CrawlerConfig
+  ): Promise<ServiceResult<{
+    gapResult: GapDetectionResult | null;
+    collectionResult: GapCollectionResult | null;
+  }>> {
+    return this.executeOperation(async () => {
+      if (!this.isIPCAvailable()) {
+        throw new Error('IPC not available');
+      }
+
+      const result = await this.ipcService.executeGapBatchCollection({ config });
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Gap batch collection failed');
+      }
+
+      return {
+        gapResult: result.gapResult || null,
+        collectionResult: result.collectionResult || null
+      };
+    }, 'executeGapBatchCollection');
+  }
+
+  /**
    * 갭 탐지 결과를 요약 정보로 변환
    * @param result 갭 탐지 결과
    */

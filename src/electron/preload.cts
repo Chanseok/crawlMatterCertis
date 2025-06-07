@@ -233,7 +233,8 @@ const electronAPI: IElectronAPI = {
     
     // Gap Detection API 추가
     detectGaps: createMethodHandler('detectGaps'),
-    collectGaps: createMethodHandler('collectGaps')
+    collectGaps: createMethodHandler('collectGaps'),
+    executeGapBatchCollection: createMethodHandler('executeGapBatchCollection')
 };
 
 // contextBridge를 통해 안전하게 API 노출

@@ -77,7 +77,8 @@ const IPC_CHANNELS = {
     
     // Gap Detection 관련 채널 추가
     DETECT_GAPS: 'detectGaps',
-    COLLECT_GAPS: 'collectGaps'
+    COLLECT_GAPS: 'collectGaps',
+    EXECUTE_GAP_BATCH_COLLECTION: 'executeGapBatchCollection'
 };
 
 app.on('ready', async () => {
@@ -697,8 +698,17 @@ app.on('ready', async () => {
                 
                 log.info(`[IPC] Starting gap collection with ${gapResult.totalMissingProducts} missing products`);
                 
-                // 실제 Gap Collection 수행
-                const result = await GapCollector.collectMissingProducts(gapResult, pageCrawler, options);
+                // 확장된 갭 수집 옵션 확인
+                const useExtendedCollection = options?.useExtendedCollection || false;
+                
+                let result;
+                if (useExtendedCollection) {
+                    log.info('[IPC] Using extended gap collection (with context pages)');
+                    result = await GapCollector.collectMissingProductsWithContext(gapResult, pageCrawler, options);
+                } else {
+                    log.info('[IPC] Using standard gap collection');
+                    result = await GapCollector.collectMissingProducts(gapResult, pageCrawler, options);
+                }
                 
                 log.info(`[IPC] Gap collection complete - ${result.collected} products collected, ${result.failed} failed`);
                 
@@ -719,6 +729,67 @@ app.on('ready', async () => {
                 error: {
                     message: error instanceof Error ? error.message : String(error),
                     code: 'GAP_COLLECTION_FAILED'
+                }
+            };
+        }
+    });
+    
+    // Gap Batch Collection 핸들러 - 새로운 배치 처리 시스템 사용
+    ipcMain.handle(IPC_CHANNELS.EXECUTE_GAP_BATCH_COLLECTION, async (_event, args) => {
+        log.info('[IPC] executeGapBatchCollection called with args:', args);
+        try {
+            const GapBatchProcessor = (await import('./crawler/gap-batch-processor.js')).default;
+            const { config } = args || {};
+            
+            // 크롤러 설정 가져오기 (인자로 전달된 설정이 없으면 기본 설정 사용)
+            const crawlerConfig = config || configManager.getConfig();
+            
+            // Ensure matterFilterUrl is explicitly set in the config
+            if (!crawlerConfig.matterFilterUrl) {
+                crawlerConfig.matterFilterUrl = 'https://csa-iot.org/csa-iot_products/?p_keywords=&p_type%5B%5D=14&p_program_type%5B%5D=1049&p_certificate=&p_family=&p_firmware_ver=';
+            }
+            
+            // Gap Batch Processor 인스턴스 생성
+            const gapBatchProcessor = new GapBatchProcessor();
+            
+            log.info('[IPC] Starting Gap Batch Collection with derived crawling ranges...');
+            
+            // 배치 처리 실행 전 설정 로깅
+            log.info(`[IPC] Gap Batch Collection starting with config:`, {
+                baseUrl: crawlerConfig.baseUrl,
+                matterFilterUrl: crawlerConfig.matterFilterUrl,
+                pageRangeLimit: crawlerConfig.pageRangeLimit
+            });
+            
+            // 배치 처리 실행 (내부에서 Gap Detection + 파생된 범위로 Gap Collection 수행)
+            const batchResult = await gapBatchProcessor.executeGapCollectionInBatches(crawlerConfig);
+            
+            if (batchResult.success) {
+                log.info(`[IPC] Gap Batch Collection complete - Detection: ${batchResult.gapResult?.totalMissingProducts || 0} missing, Collection: ${batchResult.collectionResult?.collected || 0} collected`);
+                
+                // If we detected gaps but collected 0 products, log a warning
+                if (batchResult.gapResult?.totalMissingProducts && batchResult.gapResult.totalMissingProducts > 0 && 
+                    batchResult.collectionResult?.collected === 0) {
+                    log.warn(`[IPC] Warning: Detected ${batchResult.gapResult.totalMissingProducts} missing products but collected 0. This may indicate an issue with the crawler configuration or page structure.`);
+                }
+            } else {
+                log.error(`[IPC] Gap Batch Collection failed: ${batchResult.error}`);
+            }
+            
+            return {
+                success: batchResult.success,
+                gapResult: batchResult.gapResult,
+                collectionResult: batchResult.collectionResult,
+                error: batchResult.error
+            };
+            
+        } catch (error) {
+            log.error('[IPC] Error executing gap batch collection:', error);
+            return {
+                success: false,
+                error: {
+                    message: error instanceof Error ? error.message : String(error),
+                    code: 'GAP_BATCH_COLLECTION_FAILED'
                 }
             };
         }

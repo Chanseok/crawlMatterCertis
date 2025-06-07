@@ -43,6 +43,11 @@ export interface UIDatabaseSummary extends Omit<DatabaseSummary, 'lastUpdated'> 
 
 export interface UICrawlingProgress extends CrawlingProgress {
   progress?: number;
+  gapCollectionInfo?: {
+    collectedProducts: number;
+    totalMissingProducts: number;
+    stage: 'detection' | 'collection';
+  };
 }
 
 // UI-specific database service interface

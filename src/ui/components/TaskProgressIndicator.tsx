@@ -94,14 +94,20 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = obser
       const pageTimeoutMs = currentConfig.pageTimeoutMs || 60000; // 기본값 60초
       const taskStartTime = currentTask.startTime || Date.now();
 
-      // 디버깅을 위한 로그
+      // 상세 타임아웃 디버깅 로그
       console.log(`[TaskProgressIndicator] Page ${pageNumber} - Status: ${currentTask.status}, StartTime: ${new Date(taskStartTime).toISOString()}, Timeout: ${pageTimeoutMs}ms`);
+      console.log(`[TaskProgressIndicator] Page ${pageNumber} - Config timeout: ${currentConfig.pageTimeoutMs}ms, Fallback: ${pageTimeoutMs}ms`);
+      
+      // 타임아웃 설정 불일치 경고
+      if (currentConfig.pageTimeoutMs && currentConfig.pageTimeoutMs !== 60000) {
+        console.warn(`[TaskProgressIndicator] ⚠️ Frontend timeout (${pageTimeoutMs}ms) may differ from backend timeout. Check ConfigManager settings.`);
+      }
 
       const updateTimer = () => {
         const elapsedTime = Date.now() - taskStartTime;
         const timeLeftMs = pageTimeoutMs - elapsedTime;
 
-        console.log(`[TaskProgressIndicator] Page ${pageNumber} - Elapsed: ${elapsedTime}ms, TimeLeft: ${timeLeftMs}ms`);
+        console.log(`[TaskProgressIndicator] Page ${pageNumber} - Elapsed: ${elapsedTime}ms, TimeLeft: ${timeLeftMs}ms, Progress: ${((elapsedTime/pageTimeoutMs)*100).toFixed(1)}%`);
 
         if (timeLeftMs <= 9000 && timeLeftMs > 0) {
           // 타임아웃 9초 전부터 카운트다운 모드
@@ -121,7 +127,7 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = obser
           setDisplayState('default');
           setSecondsLeft(null);
           setShowRocketAnimation(false);
-          console.log(`[TaskProgressIndicator] Page ${pageNumber} - Timeout reached or task completed`);
+          console.log(`[TaskProgressIndicator] Page ${pageNumber} - Timeout reached or task completed (elapsed: ${elapsedTime}ms, configured timeout: ${pageTimeoutMs}ms)`);
           if (timerId) clearInterval(timerId);
         } else {
           // 수집 중이지만, 카운트다운 시작 전

@@ -97,6 +97,17 @@ function GapDetectionSettingsComponent({
   };
 
   /**
+   * Gap Batch Collection 실행 (3-batch 처리 시스템)
+   */
+  const handleStartBatchCollection = async () => {
+    try {
+      await gapDetectionViewModel.startBatchCollection();
+    } catch (error) {
+      console.error('Failed to start gap batch collection:', error);
+    }
+  };
+
+  /**
    * 작업 취소
    */
   const handleCancel = async () => {
@@ -215,6 +226,22 @@ function GapDetectionSettingsComponent({
         </label>
         <p className="text-xs text-gray-500 mt-1 ml-6">
           Gap 감지 후 자동으로 수집을 시작합니다
+        </p>
+      </div>
+
+      <div>
+        <label className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            checked={options.useExtendedCollection}
+            onChange={(e) => handleOptionChange('useExtendedCollection', e.target.checked)}
+            disabled={isDisabled || options.detectOnly}
+            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span className="text-sm font-medium text-gray-700">확장된 수집</span>
+        </label>
+        <p className="text-xs text-gray-500 mt-1 ml-6">
+          누락된 페이지 주변 페이지들도 함께 수집합니다 (이전, 현재, 다음)
         </p>
       </div>
 
@@ -400,39 +427,65 @@ function GapDetectionSettingsComponent({
         <div className="grid grid-cols-2 gap-4 text-sm text-green-700">
           <div>
             <span className="font-medium">누락된 페이지:</span>
-            <span className="ml-2">{result.totalMissingPages}개</span>
+            <span className="ml-2">{result.missingPages.length}개</span>
           </div>
           <div>
             <span className="font-medium">예상 누락 제품:</span>
-            <span className="ml-2">{result.missingProductsCount}개</span>
+            <span className="ml-2">{result.totalMissingProducts}개</span>
           </div>
           <div>
-            <span className="font-medium">감지 시간:</span>
-            <span className="ml-2">{(result.detectionTime / 1000).toFixed(1)}초</span>
+            <span className="font-medium">완료율:</span>
+            <span className="ml-2">{result.summary.completionPercentage.toFixed(1)}%</span>
           </div>
           <div>
-            <span className="font-medium">감지 날짜:</span>
-            <span className="ml-2">{result.lastDetectionDate.toLocaleDateString()}</span>
+            <span className="font-medium">총 페이지:</span>
+            <span className="ml-2">{result.totalSitePages}페이지</span>
           </div>
         </div>
 
-        {showResultDetails && result.analysisDetails && (
+        {showResultDetails && result.crawlingRanges && result.crawlingRanges.length > 0 && (
           <div className="mt-3 pt-3 border-t border-green-200">
             <div className="text-xs text-green-600 space-y-2">
               <div>
-                <span className="font-medium">최대 Gap:</span>
-                <span className="ml-2">
-                  페이지 {result.analysisDetails.largestGap.startPage}-{result.analysisDetails.largestGap.endPage} 
-                  ({result.analysisDetails.largestGap.count}개)
-                </span>
-              </div>
-              <div>
-                <span className="font-medium">누락 pageId 목록:</span>
-                <div className="mt-1 p-2 bg-white rounded text-xs font-mono">
-                  {result.missingPagesList.slice(0, 50).sort().join(', ')}
-                  {result.missingPagesList.length > 20 && '...'}
+                <span className="font-medium">크롤링 범위:</span>
+                <div className="mt-1 space-y-1">
+                  {result.crawlingRanges.slice(0, 3).map((range, index) => (
+                    <div key={index} className="text-xs">
+                      사이트 페이지 {range.startPage}-{range.endPage} 
+                      ({range.estimatedProducts}개 예상, 우선순위: {range.priority})
+                    </div>
+                  ))}
+                  {result.crawlingRanges.length > 3 && (
+                    <div className="text-xs text-gray-500">
+                      ...외 {result.crawlingRanges.length - 3}개 범위
+                    </div>
+                  )}
                 </div>
               </div>
+              <div>
+                <span className="font-medium">완전 누락 pageId:</span>
+                <div className="mt-1 p-2 bg-white rounded text-xs font-mono">
+                  {result.completelyMissingPageIds.slice(0, 20).join(', ')}
+                  {result.completelyMissingPageIds.length > 20 && '...'}
+                </div>
+              </div>
+              <div>
+                <span className="font-medium">부분 누락 pageId:</span>
+                <div className="mt-1 p-2 bg-white rounded text-xs font-mono">
+                  {result.partiallyMissingPageIds.slice(0, 20).join(', ')}
+                  {result.partiallyMissingPageIds.length > 20 && '...'}
+                </div>
+              </div>
+              {result.batchInfo && (
+                <div>
+                  <span className="font-medium">배치 정보:</span>
+                  <div className="mt-1 text-xs">
+                    총 {result.batchInfo.totalBatches}개 배치, 
+                    예상 시간 {result.batchInfo.estimatedTime}분, 
+                    권장 동시실행 {result.batchInfo.recommendedConcurrency}개
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -499,6 +552,16 @@ function GapDetectionSettingsComponent({
         className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         감지 + 수집
+      </button>
+
+      {/* Batch Collection 버튼 */}
+      <button
+        onClick={handleStartBatchCollection}
+        disabled={!gapDetectionViewModel.canStartDetection || isDisabled}
+        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        title="3-batch 시스템을 사용한 고급 갭 수집"
+      >
+        배치 수집
       </button>
 
       {/* 취소 버튼 (실행 중일 때만) */}
