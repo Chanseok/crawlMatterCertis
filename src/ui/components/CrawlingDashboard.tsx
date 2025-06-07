@@ -2,7 +2,8 @@ console.log('[DASHBOARD] 🚀 CrawlingDashboard.tsx module loaded');
 
 import { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
 import { observer } from 'mobx-react-lite';
-import type { CrawlingStatusSummary } from '../../../types'; // Only import what's used
+import { toJS } from 'mobx';
+import type { CrawlingStatusSummary, MissingDataAnalysis } from '../../../types';
 
 // Clean Architecture - Display Components (Single Responsibility)
 import { CrawlingStageDisplay } from './displays/CrawlingStageDisplay';
@@ -157,7 +158,17 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     missingCount: number;
     analysisResult?: any;
   } | null>(null);
+  
+  // === Manual Crawling 관련 상태 ===
+  const [isManualCrawling, setIsManualCrawling] = useState(false);
   const [forceUpdateCounter, setForceUpdateCounter] = useState(0); // 강제 리렌더링용
+  
+  // === Computed Values ===
+  const hasMissingProducts = useMemo(() => {
+    if (statusSummary?.diff && statusSummary.diff > 0) return true;
+    if (missingProductsInfo && missingProductsInfo.missingCount > 0) return true;
+    return false;
+  }, [statusSummary, missingProductsInfo]);
   const [animatedDigits, setAnimatedDigits] = useState({
     currentPage: false,
     processedItems: false,
@@ -604,9 +615,44 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     try {
       console.log('[CrawlingDashboard] 🚀 Starting missing product crawling...');
       
+      // Create a clean, serializable version of the analysis result
+      const analysisResult = missingProductsInfo.analysisResult as MissingDataAnalysis;
+      
+      // Create a completely clean object with only primitive values
+      const cleanAnalysisResult: MissingDataAnalysis = {
+        missingDetails: (analysisResult.missingDetails || []).map(d => ({
+          url: String(d.url),
+          pageId: Number(d.pageId),
+          indexInPage: Number(d.indexInPage)
+        })),
+        incompletePages: (analysisResult.incompletePages || []).map(p => ({
+          pageId: Number(p.pageId),
+          missingIndices: Array.isArray(p.missingIndices) ? p.missingIndices.map(i => Number(i)) : [],
+          expectedCount: Number(p.expectedCount),
+          actualCount: Number(p.actualCount)
+        })),
+        totalMissingDetails: Number(analysisResult.totalMissingDetails || 0),
+        totalIncompletePages: Number(analysisResult.totalIncompletePages || 0),
+        summary: {
+          productsCount: Number(analysisResult.summary?.productsCount || 0),
+          productDetailsCount: Number(analysisResult.summary?.productDetailsCount || 0),
+          difference: Number(analysisResult.summary?.difference || 0)
+        }
+      };
+
+      console.log('[CrawlingDashboard] Sending clean analysis result:', {
+        missingDetailsCount: cleanAnalysisResult.missingDetails.length,
+        incompletePagesCount: cleanAnalysisResult.incompletePages.length,
+        totalMissingDetails: cleanAnalysisResult.totalMissingDetails
+      });
+
+      // Also clean the config object
+      const currentConfig = toJS(configurationViewModel.config);
+      const cleanConfig = JSON.parse(JSON.stringify(currentConfig));
+
       const result = await window.electron.crawlMissingProducts({
-        analysisResult: missingProductsInfo.analysisResult,
-        config: configurationViewModel.config
+        analysisResult: cleanAnalysisResult,
+        config: cleanConfig
       });
       
       if (result.success) {
@@ -627,22 +673,90 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     }
   }, [isMissingProductCrawling, status, missingProductsInfo, configurationViewModel.config, handleCheckStatus]);
 
-  // === 누락 제품 감지 로직 ===
-  const hasMissingProducts = useMemo(() => {
-    if (!statusSummary) return false;
+  // === Manual Crawling 관련 함수들 ===
+  const handleStartManualCrawling = useCallback(async (ranges: Array<{
+    startPage: number;
+    endPage: number;
+    reason: string;
+    priority: number;
+    estimatedProducts: number;
+  }>) => {
+    if (isManualCrawling || status === 'running') return;
     
-    // 사이트 제품 수가 DB 제품 수보다 많은 경우
-    if (statusSummary.diff && statusSummary.diff > 0) {
-      return true;
+    setIsManualCrawling(true);
+    try {
+      console.log('[CrawlingDashboard] 🚀 Starting manual page range crawling...', ranges);
+      
+      // Manual page range crawling을 위해 CrawlerEngine의 crawlMissingProductPages 사용
+      const result = await window.electron.crawlMissingProducts({
+        analysisResult: {
+          missingProductPages: ranges.map(range => ({
+            startPage: range.startPage,
+            endPage: range.endPage,
+            reason: range.reason,
+            priority: range.priority,
+            estimatedProducts: range.estimatedProducts
+          }))
+        },
+        config: configurationViewModel.config
+      });
+      
+      if (result.success) {
+        console.log('[CrawlingDashboard] ✅ Manual crawling completed successfully');
+        // 상태 체크를 다시 실행하여 최신 정보 업데이트
+        await handleCheckStatus();
+      } else {
+        console.error('[CrawlingDashboard] ❌ Manual crawling failed:', result.error);
+        // TODO: Show error to user
+      }
+    } catch (error) {
+      console.error('[CrawlingDashboard] ❌ Error during manual crawling:', error);
+      // TODO: Show error to user
+    } finally {
+      setIsManualCrawling(false);
     }
+  }, [isManualCrawling, status, configurationViewModel.config, handleCheckStatus]);
+
+  const handleStartTargetedCrawling = useCallback(async (pages: number[]) => {
+    if (isManualCrawling || status === 'running') return;
     
-    // 분석 결과에 누락 제품이 있는 경우
-    if (missingProductsInfo && missingProductsInfo.missingCount > 0) {
-      return true;
+    setIsManualCrawling(true);
+    try {
+      console.log('[CrawlingDashboard] 🎯 Starting targeted page crawling...', pages);
+      
+      // Convert page numbers to ranges for the crawler
+      const ranges = pages.map(page => ({
+        startPage: page,
+        endPage: page,
+        reason: 'Targeted crawling',
+        priority: 1,
+        estimatedProducts: configurationViewModel.config.productsPerPage || 12
+      }));
+      
+      const result = await window.electron.crawlMissingProducts({
+        analysisResult: {
+          missingProductPages: ranges
+        },
+        config: configurationViewModel.config
+      });
+      
+      if (result.success) {
+        console.log('[CrawlingDashboard] ✅ Targeted crawling completed successfully');
+        // 상태 체크를 다시 실행하여 최신 정보 업데이트
+        await handleCheckStatus();
+        // 분석 결과 초기화 (재분석 필요)
+        setMissingProductsInfo(null);
+      } else {
+        console.error('[CrawlingDashboard] ❌ Targeted crawling failed:', result.error);
+        // TODO: Show error to user
+      }
+    } catch (error) {
+      console.error('[CrawlingDashboard] ❌ Error during targeted crawling:', error);
+      // TODO: Show error to user
+    } finally {
+      setIsManualCrawling(false);
     }
-    
-    return false;
-  }, [statusSummary, missingProductsInfo]);
+  }, [isManualCrawling, status, configurationViewModel.config, handleCheckStatus]);
 
   // === RENDER ===
   return (
@@ -1304,6 +1418,14 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           isMissingAnalyzing={isMissingAnalyzing}
           onStartMissingProductCrawling={handleStartMissingProductCrawling}
           onAnalyzeMissingProducts={handleAnalyzeMissingProducts}
+          // Manual crawling props
+          totalSitePages={statusSummary?.siteTotalPages}
+          isManualCrawling={isManualCrawling}
+          onStartManualCrawling={handleStartManualCrawling}
+          // Missing data analysis props
+          statusSummary={statusSummary || undefined}
+          missingProductsInfo={missingProductsInfo || undefined}
+          onStartTargetedCrawling={handleStartTargetedCrawling}
         />
       </div>
 

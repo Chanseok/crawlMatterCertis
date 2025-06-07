@@ -5,6 +5,8 @@
  */
 
 import React from 'react';
+import { ManualCrawlingControlsDisplay } from './ManualCrawlingControlsDisplay';
+import { EnhancedMissingDataDisplay } from './EnhancedMissingDataDisplay';
 
 interface CrawlingControlsDisplayProps {
   status: string;
@@ -19,6 +21,28 @@ interface CrawlingControlsDisplayProps {
   isMissingAnalyzing?: boolean;
   onStartMissingProductCrawling?: () => void;
   onAnalyzeMissingProducts?: () => void;
+  // Manual crawling props
+  totalSitePages?: number;
+  isManualCrawling?: boolean;
+  onStartManualCrawling?: (ranges: Array<{
+    startPage: number;
+    endPage: number;
+    reason: string;
+    priority: number;
+    estimatedProducts: number;
+  }>) => void;
+  // Missing data analysis props
+  statusSummary?: {
+    dbProductCount?: number;
+    siteProductCount?: number;
+    diff?: number;
+    needCrawling?: boolean;
+  };
+  missingProductsInfo?: {
+    missingCount: number;
+    analysisResult?: any;
+  };
+  onStartTargetedCrawling?: (pages: number[]) => void;
 }
 
 export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = ({
@@ -33,55 +57,86 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
   isMissingProductCrawling = false,
   isMissingAnalyzing = false,
   onStartMissingProductCrawling,
-  onAnalyzeMissingProducts
+  onAnalyzeMissingProducts,
+  // Manual crawling props
+  totalSitePages,
+  isManualCrawling = false,
+  onStartManualCrawling,
+  // Missing data analysis props
+  statusSummary,
+  missingProductsInfo,
+  onStartTargetedCrawling
 }) => {
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Main Control Buttons */}
-      <div className="flex space-x-2 mb-4">
-        {/* Check Status Button */}
-        <button
-          onClick={onCheckStatus}
-          disabled={isStatusChecking || status === 'running'}
-          className={`px-4 py-2 rounded font-medium transition-colors ${
-            isStatusChecking || status === 'running'
-              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              : 'bg-blue-500 hover:bg-blue-600 text-white'
-          }`}
-        >
-          {isStatusChecking ? '확인 중...' : '상태 체크'}
-        </button>
-
-        {/* Start/Stop Buttons */}
-        {status === 'running' ? (
+      <div className="space-y-4">
+        <div className="flex space-x-2 mb-4">
+          {/* Check Status Button */}
           <button
-            onClick={onStopCrawling}
-            disabled={isStopping}
+            onClick={onCheckStatus}
+            disabled={isStatusChecking || status === 'running'}
             className={`px-4 py-2 rounded font-medium transition-colors ${
-              isStopping 
-                ? 'bg-gray-400 text-gray-200 cursor-not-allowed animate-pulse'
-                : 'bg-red-500 hover:bg-red-600 text-white'
-            }`}
-          >
-            {isStopping ? '중지 중...' : '중지'}
-          </button>
-        ) : (
-          <button
-            onClick={onStartCrawling}
-            disabled={status === 'running' || isStopping}
-            className={`px-4 py-2 rounded font-medium transition-colors ${
-              status === 'running' || isStopping
+              isStatusChecking || status === 'running'
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-green-500 hover:bg-green-600 text-white'
+                : 'bg-blue-500 hover:bg-blue-600 text-white'
             }`}
           >
-            시작
+            {isStatusChecking ? '확인 중...' : '상태 체크'}
           </button>
-        )}
+
+          {/* Start/Stop Buttons */}
+          {status === 'running' ? (
+            <button
+              onClick={onStopCrawling}
+              disabled={isStopping}
+              className={`px-4 py-2 rounded font-medium transition-colors ${
+                isStopping 
+                  ? 'bg-gray-400 text-gray-200 cursor-not-allowed animate-pulse'
+                  : 'bg-red-500 hover:bg-red-600 text-white'
+              }`}
+            >
+              {isStopping ? '중지 중...' : '중지'}
+            </button>
+          ) : (
+            <button
+              onClick={onStartCrawling}
+              disabled={status === 'running' || isStopping}
+              className={`px-4 py-2 rounded font-medium transition-colors ${
+                status === 'running' || isStopping
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+              }`}
+            >
+              시작
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Missing Product Collection Section */}
-      {(hasMissingProducts || onAnalyzeMissingProducts) && (
+      {/* Manual Page Range Crawling Section */}
+      {onStartManualCrawling && (
+        <ManualCrawlingControlsDisplay
+          status={status}
+          totalSitePages={totalSitePages}
+          isManualCrawling={isManualCrawling}
+          onStartManualCrawling={onStartManualCrawling}
+        />
+      )}
+
+      {/* Enhanced Missing Data Analysis Section */}
+      <EnhancedMissingDataDisplay
+        statusSummary={statusSummary}
+        missingProductsInfo={missingProductsInfo}
+        isMissingAnalyzing={isMissingAnalyzing}
+        isMissingProductCrawling={isMissingProductCrawling}
+        onAnalyzeMissingProducts={onAnalyzeMissingProducts}
+        onStartMissingProductCrawling={onStartMissingProductCrawling}
+        onStartTargetedCrawling={onStartTargetedCrawling}
+      />
+
+      {/* Legacy Missing Product Collection Section (for backwards compatibility) */}
+      {(hasMissingProducts || onAnalyzeMissingProducts) && !statusSummary && (
         <div className="border-t pt-4">
           <div className="flex items-center space-x-2 mb-2">
             <svg className="w-5 h-5 text-orange-500" fill="currentColor" viewBox="0 0 20 20">

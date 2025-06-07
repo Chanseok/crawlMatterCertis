@@ -834,43 +834,132 @@ app.on('ready', async () => {
     ipcMain.handle(IPC_CHANNELS.CRAWL_MISSING_PRODUCTS, async (_event, args) => {
         log.info('[IPC] crawlMissingProducts called with args:', args);
         try {
-            const { MissingPageCalculator } = await import('./services/MissingPageCalculator.js');
-            const { CrawlerEngine } = await import('./crawler/core/CrawlerEngine.js');
-            const { analysisResult } = args || {};
+            const { analysisResult, config: userConfig } = args || {};
             
             if (!analysisResult) {
                 throw new Error('Analysis result is required for missing product crawling');
             }
             
-            log.info('[IPC] Starting missing product crawling...');
+            log.info(`[IPC] Starting missing product collection for ${analysisResult.missingDetails?.length || 0} missing details and ${analysisResult.incompletePages?.length || 0} incomplete pages`);
             
-            // 1. 누락된 페이지를 크롤링 범위로 변환 - 올바른 메서드명 사용
-            const calculator = new MissingPageCalculator();
-            const rangeCalculationResult = await calculator.calculateCrawlingRanges();
+            // Get crawler configuration
+            const config = userConfig || configManager.getConfig();
             
-            log.info(`[IPC] Calculated ${rangeCalculationResult.pageRanges.length} crawling ranges for missing products`);
-            
-            // 2. 크롤러 설정 가져오기
-            const config = configManager.getConfig();
-            
-            // 3. CrawlerEngine을 사용하여 누락된 제품 페이지 크롤링
-            const crawlerEngine = new CrawlerEngine();
-            const success = await crawlerEngine.crawlMissingProductPages(rangeCalculationResult.pageRanges, config);
-            
-            log.info(`[IPC] Missing product crawling ${success ? 'completed successfully' : 'failed'}`);
-            
-            return {
-                success,
-                crawledRanges: rangeCalculationResult.pageRanges.length,
-                message: success 
-                    ? `Successfully crawled ${rangeCalculationResult.pageRanges.length} missing product ranges`
-                    : 'Missing product crawling failed'
+            let results = {
+                success: true,
+                missingDetailsCollected: 0,
+                pageRangesCrawled: 0,
+                message: ''
             };
+            
+            // Part 1: Collect missing product details (Stage 3 crawling for specific products)
+            if (analysisResult.missingDetails && analysisResult.missingDetails.length > 0) {
+                log.info(`[IPC] Collecting details for ${analysisResult.missingDetails.length} missing products`);
+                
+                const { ProductDetailCollector } = await import('./crawler/tasks/productDetail.js');
+                const { CrawlerState } = await import('./crawler/core/CrawlerState.js');
+                const { BrowserManager } = await import('./crawler/browser/BrowserManager.js');
+                
+                // Convert missing products to Product objects that ProductDetailCollector expects
+                const productsToCollect = analysisResult.missingDetails.map(missing => ({
+                    url: missing.url,
+                    manufacturer: missing.manufacturer || 'Unknown',
+                    model: missing.model || 'Unknown',
+                    productName: missing.productName || '',
+                    imageUrl: missing.imageUrl || '',
+                    categories: missing.categories || [],
+                    dbPageId: missing.dbPageId || 0,
+                    sitePageNumber: missing.sitePageNumber || 0
+                }));
+                
+                // Initialize crawler state and browser manager
+                const crawlerState = new CrawlerState();
+                const abortController = new AbortController();
+                const browserManager = new BrowserManager(config);
+                
+                // Create ProductDetailCollector instance
+                const detailCollector = new ProductDetailCollector(
+                    crawlerState,
+                    abortController,
+                    config,
+                    browserManager
+                );
+                
+                try {
+                    log.info(`[IPC] Starting detail collection for ${productsToCollect.length} products`);
+                    const collectedProducts = await detailCollector.collect(productsToCollect);
+                    
+                    results.missingDetailsCollected = collectedProducts.length;
+                    log.info(`[IPC] Successfully collected details for ${collectedProducts.length} products`);
+                    
+                    // Save collected products to database if auto-save is enabled
+                    if (config.autoAddToLocalDB && collectedProducts.length > 0) {
+                        const { saveProductsToDb } = await import('./database.js');
+                        const saveResult = await saveProductsToDb(collectedProducts);
+                        log.info(`[IPC] Saved to database: ${saveResult.added} new, ${saveResult.updated} updated`);
+                    }
+                    
+                } catch (detailError) {
+                    const errorMessage = detailError instanceof Error ? detailError.message : String(detailError);
+                    log.error('[IPC] Error collecting missing product details:', detailError);
+                    results.success = false;
+                    results.message += `Detail collection failed: ${errorMessage}. `;
+                } finally {
+                    // Cleanup resources
+                    if (browserManager) {
+                        await browserManager.close();
+                    }
+                }
+            }
+            
+            // Part 2: Crawl incomplete pages (if any)
+            if (analysisResult.incompletePages && analysisResult.incompletePages.length > 0) {
+                log.info(`[IPC] Processing ${analysisResult.incompletePages.length} incomplete pages`);
+                
+                const { MissingPageCalculator } = await import('./services/MissingPageCalculator.js');
+                const { CrawlerEngine } = await import('./crawler/core/CrawlerEngine.js');
+                
+                // Calculate crawling ranges for incomplete pages
+                const calculator = new MissingPageCalculator();
+                const rangeCalculationResult = await calculator.calculateCrawlingRanges();
+                
+                if (rangeCalculationResult.pageRanges.length > 0) {
+                    log.info(`[IPC] Calculated ${rangeCalculationResult.pageRanges.length} crawling ranges for incomplete pages`);
+                    
+                    const crawlerEngine = new CrawlerEngine();
+                    const pageSuccess = await crawlerEngine.crawlMissingProductPages(rangeCalculationResult.pageRanges, config);
+                    
+                    results.pageRangesCrawled = rangeCalculationResult.pageRanges.length;
+                    
+                    if (!pageSuccess) {
+                        results.success = false;
+                        results.message += 'Page range crawling failed. ';
+                    }
+                }
+            }
+            
+            // Construct final message
+            if (results.success) {
+                const parts: string[] = [];
+                if (results.missingDetailsCollected > 0) {
+                    parts.push(`${results.missingDetailsCollected} missing product details collected`);
+                }
+                if (results.pageRangesCrawled > 0) {
+                    parts.push(`${results.pageRangesCrawled} page ranges crawled`);
+                }
+                results.message = parts.length > 0 ? `Successfully completed: ${parts.join(', ')}` : 'No missing data to collect';
+            }
+            
+            log.info(`[IPC] Missing product collection completed: ${results.message}`);
+            
+            return results;
             
         } catch (error) {
             log.error('[IPC] Error crawling missing products:', error);
             return {
                 success: false,
+                missingDetailsCollected: 0,
+                pageRangesCrawled: 0,
                 error: {
                     message: error instanceof Error ? error.message : String(error),
                     code: 'MISSING_CRAWLING_FAILED'
