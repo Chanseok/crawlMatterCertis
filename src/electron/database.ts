@@ -1334,3 +1334,117 @@ export async function getTableComparisonSummary(): Promise<{
         });
     });
 }
+
+/**
+ * Update product_details records with NULL pageId by matching with products table
+ * @returns Number of updated records
+ */
+export async function updateProductDetailsPageIds(): Promise<{updatedCount: number, matchedCount: number, unmatchedUrls: string[]}> {
+    return new Promise((resolve, reject) => {
+        db.serialize(() => {
+            db.run('BEGIN TRANSACTION', (err) => {
+                if (err) {
+                    log.error('[DB] Failed to begin transaction for pageId update:', err);
+                    reject(err);
+                    return;
+                }
+
+                // First, get product_details records with NULL pageId
+                const selectQuery = `
+                    SELECT pd.url, pd.id as detailId
+                    FROM product_details pd
+                    WHERE pd.pageId IS NULL
+                    ORDER BY pd.url
+                `;
+
+                db.all(selectQuery, [], (err, nullPageIdRows: any[]) => {
+                    if (err) {
+                        log.error('[DB] Error fetching product_details with NULL pageId:', err);
+                        db.run('ROLLBACK', () => reject(err));
+                        return;
+                    }
+
+                    if (nullPageIdRows.length === 0) {
+                        log.info('[DB] No product_details records with NULL pageId found');
+                        db.run('COMMIT', () => resolve({updatedCount: 0, matchedCount: 0, unmatchedUrls: []}));
+                        return;
+                    }
+
+                    log.info(`[DB] Found ${nullPageIdRows.length} product_details records with NULL pageId`);
+
+                    // Update each record by matching with products table
+                    const updateQuery = `
+                        UPDATE product_details 
+                        SET pageId = (
+                            SELECT p.pageId 
+                            FROM products p 
+                            WHERE p.url = product_details.url 
+                            AND p.pageId IS NOT NULL
+                        ),
+                        indexInPage = (
+                            SELECT p.indexInPage 
+                            FROM products p 
+                            WHERE p.url = product_details.url 
+                            AND p.indexInPage IS NOT NULL
+                        )
+                        WHERE product_details.pageId IS NULL 
+                        AND EXISTS (
+                            SELECT 1 FROM products p 
+                            WHERE p.url = product_details.url 
+                            AND p.pageId IS NOT NULL 
+                            AND p.indexInPage IS NOT NULL
+                        )
+                    `;
+
+                    db.run(updateQuery, [], function(err) {
+                        if (err) {
+                            log.error('[DB] Error updating product_details pageId:', err);
+                            db.run('ROLLBACK', () => reject(err));
+                            return;
+                        }
+
+                        const updatedCount = this.changes;
+                        log.info(`[DB] Updated ${updatedCount} product_details records with pageId`);
+
+                        // Check which URLs couldn't be matched
+                        const unmatchedQuery = `
+                            SELECT pd.url
+                            FROM product_details pd
+                            WHERE pd.pageId IS NULL
+                            AND NOT EXISTS (
+                                SELECT 1 FROM products p 
+                                WHERE p.url = pd.url 
+                                AND p.pageId IS NOT NULL
+                            )
+                        `;
+
+                        db.all(unmatchedQuery, [], (err, unmatchedRows: any[]) => {
+                            if (err) {
+                                log.error('[DB] Error finding unmatched URLs:', err);
+                                db.run('ROLLBACK', () => reject(err));
+                                return;
+                            }
+
+                            const unmatchedUrls = unmatchedRows.map(row => row.url);
+                            log.info(`[DB] ${unmatchedUrls.length} URLs could not be matched`);
+
+                            db.run('COMMIT', (err) => {
+                                if (err) {
+                                    log.error('[DB] Failed to commit pageId update transaction:', err);
+                                    reject(err);
+                                    return;
+                                }
+
+                                resolve({
+                                    updatedCount,
+                                    matchedCount: updatedCount,
+                                    unmatchedUrls
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });
+}

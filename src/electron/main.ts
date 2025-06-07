@@ -82,7 +82,8 @@ const IPC_CHANNELS = {
     
     // Missing Product 관련 채널 추가
     ANALYZE_MISSING_PRODUCTS: 'analyzeMissingProducts',
-    CRAWL_MISSING_PRODUCTS: 'crawlMissingProducts'
+    CRAWL_MISSING_PRODUCTS: 'crawlMissingProducts',
+    CALCULATE_PAGE_RANGES: 'calculatePageRanges'
 };
 
 app.on('ready', async () => {
@@ -825,6 +826,41 @@ app.on('ready', async () => {
                 error: {
                     message: error instanceof Error ? error.message : String(error),
                     code: 'MISSING_ANALYSIS_FAILED'
+                }
+            };
+        }
+    });
+    
+    // Page Range Calculation 핸들러
+    ipcMain.handle(IPC_CHANNELS.CALCULATE_PAGE_RANGES, async (_event, incompletePageIds) => {
+        log.info('[IPC] calculatePageRanges called with page IDs:', incompletePageIds);
+        try {
+            const { MissingPageCalculator } = await import('./services/MissingPageCalculator.js');
+            const calculator = new MissingPageCalculator();
+            
+            // 페이지 범위 계산 (매개변수 없이 호출)
+            const result = await calculator.calculateCrawlingRanges();
+            
+            // 사용자 친화적인 텍스트로 변환
+            const formattedText = calculator.formatRangesForDisplay(result.pageRanges);
+            
+            log.info(`[IPC] Page ranges calculated: ${result.pageRanges.length} ranges, total incomplete pages: ${result.totalIncompletePages}`);
+            
+            return {
+                success: true,
+                data: {
+                    ...result,
+                    formattedText
+                }
+            };
+            
+        } catch (error) {
+            log.error('[IPC] Error calculating page ranges:', error);
+            return {
+                success: false,
+                error: {
+                    message: error instanceof Error ? error.message : String(error),
+                    code: 'PAGE_RANGE_CALCULATION_FAILED'
                 }
             };
         }

@@ -682,36 +682,79 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     estimatedProducts: number;
   }>) => {
     if (isManualCrawling || status === 'running') return;
-    
     setIsManualCrawling(true);
     try {
       console.log('[CrawlingDashboard] 🚀 Starting manual page range crawling...', ranges);
       
-      // Manual page range crawling을 위해 CrawlerEngine의 crawlMissingProductPages 사용
-      const result = await window.electron.crawlMissingProducts({
-        analysisResult: {
-          missingProductPages: ranges.map(range => ({
-            startPage: range.startPage,
-            endPage: range.endPage,
-            reason: range.reason,
-            priority: range.priority,
-            estimatedProducts: range.estimatedProducts
-          }))
-        },
-        config: configurationViewModel.config
+      // Convert site page ranges to pageId-based incompletePages structure
+      // Each site page corresponds to pageId = Math.floor((sitePage - 1) / 2)
+      const incompletePages: Array<{
+        pageId: number;
+        missingIndices: number[];
+        expectedCount: number;
+        actualCount: number;
+      }> = [];
+      
+      console.log('[CrawlingDashboard] 🔍 Processing ranges for manual crawling:', ranges.length);
+      
+      ranges.forEach(range => {
+        console.log('[CrawlingDashboard] 🔍 Processing range:', range);
+        for (let sitePage = range.startPage; sitePage <= range.endPage; sitePage++) {
+          const pageId = Math.floor((sitePage - 1) / 2);
+          
+          // Check if this pageId is already added
+          const existingPage = incompletePages.find(p => p.pageId === pageId);
+          if (!existingPage) {
+            // Add as incomplete page with all products missing
+            const newPage = {
+              pageId,
+              missingIndices: Array.from({ length: configurationViewModel.config.productsPerPage || 12 }, (_, i) => i),
+              expectedCount: configurationViewModel.config.productsPerPage || 12,
+              actualCount: 0
+            };
+            incompletePages.push(newPage);
+            console.log('[CrawlingDashboard] 🔍 Added pageId:', pageId, 'for sitePage:', sitePage);
+          }
+        }
       });
       
+      console.log('[CrawlingDashboard] 🔍 Generated incompletePages array:', incompletePages.length, 'pages');
+      
+      // Create proper analysis result structure for Stage 1-3 workflow
+      const analysisResult = {
+        missingDetails: [], // No specific missing details for manual crawling
+        incompletePages: incompletePages,
+        totalMissingDetails: 0,
+        totalIncompletePages: incompletePages.length,
+        summary: {
+          productsCount: 0,
+          productDetailsCount: 0,
+          difference: 0
+        }
+      };
+      
+      console.log('[CrawlingDashboard] 🔍 Before serialization - analysisResult.incompletePages.length:', analysisResult.incompletePages.length);
+      
+      // Ensure clean serializable objects
+      const cleanAnalysisResult = JSON.parse(JSON.stringify(analysisResult));
+      const cleanConfig = JSON.parse(JSON.stringify(toJS(configurationViewModel.config)));
+      
+      console.log('[CrawlingDashboard] 🔍 After serialization - cleanAnalysisResult.incompletePages.length:', cleanAnalysisResult.incompletePages.length);
+      console.log('[CrawlingDashboard] 📊 Manual crawling analysis result:', cleanAnalysisResult);
+      
+      const result = await window.electron.crawlMissingProducts({
+        analysisResult: cleanAnalysisResult,
+        config: cleanConfig
+      });
       if (result.success) {
         console.log('[CrawlingDashboard] ✅ Manual crawling completed successfully');
-        // 상태 체크를 다시 실행하여 최신 정보 업데이트
         await handleCheckStatus();
+        setMissingProductsInfo(null); // Reset analysis data
       } else {
         console.error('[CrawlingDashboard] ❌ Manual crawling failed:', result.error);
-        // TODO: Show error to user
       }
     } catch (error) {
       console.error('[CrawlingDashboard] ❌ Error during manual crawling:', error);
-      // TODO: Show error to user
     } finally {
       setIsManualCrawling(false);
     }
@@ -719,40 +762,69 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
 
   const handleStartTargetedCrawling = useCallback(async (pages: number[]) => {
     if (isManualCrawling || status === 'running') return;
-    
     setIsManualCrawling(true);
     try {
       console.log('[CrawlingDashboard] 🎯 Starting targeted page crawling...', pages);
       
-      // Convert page numbers to ranges for the crawler
-      const ranges = pages.map(page => ({
-        startPage: page,
-        endPage: page,
-        reason: 'Targeted crawling',
-        priority: 1,
-        estimatedProducts: configurationViewModel.config.productsPerPage || 12
-      }));
-      
-      const result = await window.electron.crawlMissingProducts({
-        analysisResult: {
-          missingProductPages: ranges
-        },
-        config: configurationViewModel.config
+      // Convert site page numbers to pageId-based incompletePages structure
+      // Each site page corresponds to pageId = Math.floor((sitePage - 1) / 2)
+      const pageIdSet = new Set<number>();
+      pages.forEach(sitePage => {
+        const pageId = Math.floor((sitePage - 1) / 2);
+        pageIdSet.add(pageId);
       });
       
+      console.log('[CrawlingDashboard] 🔍 Targeted crawling - site pages:', pages.length, 'unique pageIds:', pageIdSet.size);
+      
+      const incompletePages: Array<{
+        pageId: number;
+        missingIndices: number[];
+        expectedCount: number;
+        actualCount: number;
+      }> = Array.from(pageIdSet).map(pageId => ({
+        pageId,
+        missingIndices: Array.from({ length: configurationViewModel.config.productsPerPage || 12 }, (_, i) => i),
+        expectedCount: configurationViewModel.config.productsPerPage || 12,
+        actualCount: 0
+      }));
+      
+      console.log('[CrawlingDashboard] 🔍 Generated targeted incompletePages:', incompletePages.length, 'pages');
+      
+      // Create proper analysis result structure for Stage 1-3 workflow
+      const analysisResult = {
+        missingDetails: [], // No specific missing details for targeted crawling
+        incompletePages: incompletePages,
+        totalMissingDetails: 0,
+        totalIncompletePages: incompletePages.length,
+        summary: {
+          productsCount: 0,
+          productDetailsCount: 0,
+          difference: 0
+        }
+      };
+      
+      console.log('[CrawlingDashboard] 🔍 Before serialization - targeted analysisResult.incompletePages.length:', analysisResult.incompletePages.length);
+      
+      // Ensure clean serializable objects
+      const cleanAnalysisResult = JSON.parse(JSON.stringify(analysisResult));
+      const cleanConfig = JSON.parse(JSON.stringify(toJS(configurationViewModel.config)));
+      
+      console.log('[CrawlingDashboard] 🔍 After serialization - targeted cleanAnalysisResult.incompletePages.length:', cleanAnalysisResult.incompletePages.length);
+      console.log('[CrawlingDashboard] 📊 Targeted crawling analysis result:', cleanAnalysisResult);
+      
+      const result = await window.electron.crawlMissingProducts({
+        analysisResult: cleanAnalysisResult,
+        config: cleanConfig
+      });
       if (result.success) {
         console.log('[CrawlingDashboard] ✅ Targeted crawling completed successfully');
-        // 상태 체크를 다시 실행하여 최신 정보 업데이트
         await handleCheckStatus();
-        // 분석 결과 초기화 (재분석 필요)
         setMissingProductsInfo(null);
       } else {
         console.error('[CrawlingDashboard] ❌ Targeted crawling failed:', result.error);
-        // TODO: Show error to user
       }
     } catch (error) {
       console.error('[CrawlingDashboard] ❌ Error during targeted crawling:', error);
-      // TODO: Show error to user
     } finally {
       setIsManualCrawling(false);
     }

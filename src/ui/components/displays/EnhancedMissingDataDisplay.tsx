@@ -54,6 +54,9 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
 }) => {
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
+  const [pageRangeData, setPageRangeData] = useState<any>(null);
+  const [isCalculatingRanges, setIsCalculatingRanges] = useState(false);
+  const [showPageRanges, setShowPageRanges] = useState(false);
 
   // Determine if there are missing products
   const hasMissingProducts = useMemo(() => {
@@ -94,6 +97,50 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
       setSelectedPages(new Set()); // Clear selection after starting
     }
   }, [selectedPages, onStartTargetedCrawling]);
+
+  // 페이지 범위 계산 함수
+  const handleCalculatePageRanges = useCallback(async () => {
+    setIsCalculatingRanges(true);
+    try {
+      const result = await window.electron.calculatePageRanges();
+      if (result.success) {
+        setPageRangeData(result.data);
+        setShowPageRanges(true);
+      } else {
+        console.error('Failed to calculate page ranges:', result.error);
+      }
+    } catch (error) {
+      console.error('Error calculating page ranges:', error);
+    } finally {
+      setIsCalculatingRanges(false);
+    }
+  }, []);
+
+  // Manual Page Range Crawling 시작 함수
+  const handleStartManualPageRangeCrawling = useCallback(async () => {
+    if (!pageRangeData?.pageRanges) return;
+    
+    // 페이지 범위에서 모든 pageId를 추출
+    const pageIds: number[] = [];
+    pageRangeData.pageRanges.forEach((range: any) => {
+      for (let pageId = range.startPage; pageId <= range.endPage; pageId++) {
+        pageIds.push(pageId);
+      }
+    });
+    
+    // pageId를 사이트 페이지로 변환 (각 pageId는 2개의 사이트 페이지에 해당)
+    const sitePages: number[] = [];
+    pageIds.forEach(pageId => {
+      sitePages.push(pageId, pageId + 1);
+    });
+    
+    // 중복 제거 및 정렬
+    const uniqueSitePages = [...new Set(sitePages)].sort((a, b) => a - b);
+    
+    if (onStartTargetedCrawling) {
+      onStartTargetedCrawling(uniqueSitePages);
+    }
+  }, [pageRangeData, onStartTargetedCrawling]);
 
   // Priority color mapping
   const getPriorityColor = (priority: 'high' | 'medium' | 'low') => {
@@ -202,6 +249,90 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
             </button>
           )}
         </div>
+
+        {/* Calculate Page Ranges Button */}
+        {analysisData && (
+          <div className="mt-3 flex space-x-2">
+            <button
+              onClick={handleCalculatePageRanges}
+              disabled={isCalculatingRanges || isMissingProductCrawling}
+              className={`px-3 py-2 text-sm rounded font-medium transition-colors flex-1 ${
+                isCalculatingRanges || isMissingProductCrawling
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-500 hover:bg-blue-600 text-white'
+              }`}
+            >
+              {isCalculatingRanges ? (
+                <>
+                  <svg className="w-4 h-4 inline mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Calculating...
+                </>
+              ) : (
+                'Calculate Page Ranges'
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Page Ranges Display */}
+        {showPageRanges && pageRangeData && (
+          <div className="mt-4 border border-blue-200 dark:border-blue-600 rounded-lg p-4 bg-blue-50 dark:bg-blue-900/20">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                📊 Page Range Analysis
+              </h4>
+              <button
+                onClick={() => setShowPageRanges(false)}
+                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              {/* Summary */}
+              <div className="text-sm text-blue-600 dark:text-blue-400">
+                <div>Total Incomplete Pages: <span className="font-semibold">{pageRangeData.totalIncompletePages}</span></div>
+                <div>Site Pages to Crawl: <span className="font-semibold">{pageRangeData.totalIncompletePages * 2}</span></div>
+                <div>Continuous Ranges: <span className="font-semibold">{pageRangeData.continuousRanges?.length || 0}</span></div>
+                <div>Non-continuous Ranges: <span className="font-semibold">{pageRangeData.nonContinuousRanges?.length || 0}</span></div>
+              </div>
+
+              {/* Formatted Range Display */}
+              {pageRangeData.formattedText && (
+                <div className="bg-white dark:bg-gray-800 rounded p-3 border">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Suggested Crawling Ranges (Copy & Paste Ready):
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 font-mono bg-gray-50 dark:bg-gray-700 p-2 rounded border select-all">
+                    {pageRangeData.formattedText}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    💡 Click to select all, then Cmd+C to copy
+                  </div>
+                </div>
+              )}
+
+              {/* Manual Page Range Crawling Button */}
+              <div className="flex justify-end">
+                <button
+                  onClick={handleStartManualPageRangeCrawling}
+                  disabled={isMissingProductCrawling || !pageRangeData.pageRanges?.length}
+                  className={`px-4 py-2 text-sm rounded font-medium transition-colors ${
+                    isMissingProductCrawling || !pageRangeData.pageRanges?.length
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-green-500 hover:bg-green-600 text-white'
+                  }`}
+                  title={`Will crawl ${pageRangeData.totalIncompletePages * 2} site pages (each pageId = 2 site pages)`}
+                >
+                  🚀 Start Manual Page Range Crawling ({pageRangeData.totalIncompletePages * 2} site pages)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Detailed Analysis */}

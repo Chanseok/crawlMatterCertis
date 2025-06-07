@@ -180,17 +180,6 @@ export const ManualCrawlingControlsDisplay: React.FC<ManualCrawlingControlsDispl
           </button>
         </div>
       </div>
-
-      {/* Usage Examples */}
-      <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-3 bg-gray-50 dark:bg-gray-800">
-        <h4 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Input Examples</h4>
-        <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
-          <div><code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">1~12</code> - Pages 1 to 12</div>
-          <div><code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">34</code> - Single page 34</div>
-          <div><code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">1~12, 34, 72~85</code> - Combined ranges</div>
-          <div><code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">1-5, 10:15, 20~25</code> - Different delimiters</div>
-        </div>
-      </div>
     </div>
   );
 };

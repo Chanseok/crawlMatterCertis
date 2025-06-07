@@ -766,6 +766,7 @@ export interface IElectronAPI extends IPlatformAPI {
     // 누락 제품 수집 API
     readonly analyzeMissingProducts: () => Promise<any>;
     readonly crawlMissingProducts: (params: any) => Promise<any>;
+    readonly calculatePageRanges: () => Promise<any>;
     
     // 일반적인 invoke 메서드
     readonly invoke: (channel: string, ...args: any[]) => Promise<any>;

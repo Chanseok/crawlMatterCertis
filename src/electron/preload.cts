@@ -239,6 +239,7 @@ const electronAPI: IElectronAPI = {
     // 누락 제품 수집 API 추가
     analyzeMissingProducts: () => ipcRenderer.invoke('analyzeMissingProducts'),
     crawlMissingProducts: (params: any) => ipcRenderer.invoke('crawlMissingProducts', params),
+    calculatePageRanges: () => ipcRenderer.invoke('calculatePageRanges'),
     
     // 일반적인 invoke 메서드 (유연성을 위해)
     invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args)

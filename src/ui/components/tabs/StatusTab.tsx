@@ -106,17 +106,7 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
         />
       </ExpandableSection>
 
-      {/* Gap Detection & Collection */}
-      <ExpandableSection
-        title="Gap Detection & Collection"
-        isExpanded={isGapDetectionExpanded}
-        onToggle={() => setIsGapDetectionExpanded(!isGapDetectionExpanded)}
-      >
-        <GapDetectionSettings
-          isExpanded={isGapDetectionExpanded}
-          onToggle={() => setIsGapDetectionExpanded(!isGapDetectionExpanded)}
-        />
-      </ExpandableSection>
+
       
       {/* 통합된 제어 버튼 - 중복 제거 */}
       {/* Removed redundant bottom control buttons for clarity */}
