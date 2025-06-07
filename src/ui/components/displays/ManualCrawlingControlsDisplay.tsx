@@ -6,6 +6,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { PageRangeParser } from '../../../shared/utils/PageRangeParser';
+import { ExpandableSection } from '../ExpandableSection';
 
 interface ManualCrawlingControlsDisplayProps {
   status: string;
@@ -28,6 +29,7 @@ export const ManualCrawlingControlsDisplay: React.FC<ManualCrawlingControlsDispl
 }) => {
   const [pageRangeInput, setPageRangeInput] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Parse and validate page ranges in real-time
   const parseResult = useMemo(() => {
@@ -62,17 +64,14 @@ export const ManualCrawlingControlsDisplay: React.FC<ManualCrawlingControlsDispl
 
   return (
     <div className="space-y-4">
-      {/* Manual Page Range Input Section */}
-      <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-blue-50 dark:bg-blue-900/20">
-        <div className="flex items-center space-x-2 mb-3">
-          <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-          </svg>
-          <h3 className="text-sm font-medium text-blue-800 dark:text-blue-300">
-            Manual Page Range Crawling
-          </h3>
-        </div>
-
+      <ExpandableSection
+        title="Manual Page Range Crawling"
+        isExpanded={isExpanded}
+        onToggle={() => setIsExpanded(!isExpanded)}
+        headerBgColor="bg-blue-50 dark:bg-blue-900/20"
+        headerTextColor="text-blue-800 dark:text-blue-300"
+        additionalClasses="border-blue-200 dark:border-blue-600"
+      >
         <div className="space-y-3">
           {/* Input Field */}
           <div>
@@ -179,7 +178,7 @@ export const ManualCrawlingControlsDisplay: React.FC<ManualCrawlingControlsDispl
               : `Start Manual Crawling (${parseResult.totalPages} pages)`}
           </button>
         </div>
-      </div>
+      </ExpandableSection>
     </div>
   );
 };
