@@ -5,7 +5,7 @@ import CrawlingDashboard from '../CrawlingDashboard';
 import { ConcurrentTasksVisualizer } from '../../Charts';
 import StatusCheckAnimation from '../StatusCheckAnimation';
 import { CompactStatusDisplay } from '../CompactStatusDisplay';
-import { GapDetectionSettings } from '../GapDetectionSettings';
+
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 import { useStatusTabViewModel } from '../../providers/ViewModelProvider';
 
@@ -31,7 +31,7 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
   
   // Use useState here to create a proper state setter function that matches the expected type
   const [localCompareExpanded, setLocalCompareExpanded] = useState(compareExpandedInApp);
-  const [isGapDetectionExpanded, setIsGapDetectionExpanded] = useState(false);
+  
   
   // Update local state when prop changes
   useEffect(() => {

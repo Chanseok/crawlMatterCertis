@@ -955,12 +955,12 @@ app.on('ready', async () => {
                 const { MissingPageCalculator } = await import('./services/MissingPageCalculator.js');
                 const { CrawlerEngine } = await import('./crawler/core/CrawlerEngine.js');
                 
-                // Calculate crawling ranges for incomplete pages
+                // Use provided incompletePages data instead of recalculating from database
                 const calculator = new MissingPageCalculator();
-                const rangeCalculationResult = await calculator.calculateCrawlingRanges();
+                const rangeCalculationResult = calculator.convertIncompletePagesToRanges(analysisResult.incompletePages);
                 
                 if (rangeCalculationResult.pageRanges.length > 0) {
-                    log.info(`[IPC] Calculated ${rangeCalculationResult.pageRanges.length} crawling ranges for incomplete pages`);
+                    log.info(`[IPC] Converted ${rangeCalculationResult.pageRanges.length} crawling ranges from provided incomplete pages`);
                     
                     const crawlerEngine = new CrawlerEngine();
                     const pageSuccess = await crawlerEngine.crawlMissingProductPages(rangeCalculationResult.pageRanges, config);
@@ -971,6 +971,8 @@ app.on('ready', async () => {
                         results.success = false;
                         results.message += 'Page range crawling failed. ';
                     }
+                } else {
+                    log.info(`[IPC] No crawling ranges generated from ${analysisResult.incompletePages.length} incomplete pages`);
                 }
             }
             

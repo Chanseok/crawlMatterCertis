@@ -356,4 +356,76 @@ export class MissingPageCalculator {
       estimatedTimeText
     };
   }
+
+  /**
+   * Manual Crawling을 위해 incompletePages를 직접 CrawlingRange로 변환
+   * 이 메서드는 전달받은 incompletePages 데이터를 그대로 사용하며 데이터베이스를 재분석하지 않음
+   */
+  convertIncompletePagesToRanges(incompletePages: Array<{
+    pageId: number;
+    missingIndices: number[];
+    expectedCount: number;
+    actualCount: number;
+  }>): PageRangeCalculationResult {
+    logger.info(
+      `[MissingPageCalculator] Converting ${incompletePages.length} provided incomplete pages to crawling ranges`,
+      "MissingPageCalculator"
+    );
+
+    if (incompletePages.length === 0) {
+      return {
+        totalIncompletePages: 0,
+        pageRanges: [],
+        continuousRanges: [],
+        nonContinuousRanges: [],
+        priorityPages: [],
+        skippedPages: []
+      };
+    }
+
+    const pageIds = incompletePages.map(page => page.pageId);
+    
+    // 우선순위 분류 (제공된 데이터 기반)
+    const priorityPages: number[] = [];
+    const skippedPages: number[] = [];
+
+    incompletePages.forEach(page => {
+      const missingRatio = page.missingIndices.length / page.expectedCount;
+      
+      // 50% 이상 누락되거나 6개 이상 누락된 페이지는 우선순위
+      if (missingRatio >= 0.5 || page.missingIndices.length >= 6) {
+        priorityPages.push(page.pageId);
+      } 
+      // 1-2개만 누락된 페이지는 건너뛸 수 있음
+      else if (page.missingIndices.length <= 2) {
+        skippedPages.push(page.pageId);
+      } 
+      // 중간 정도 누락은 우선순위로 처리
+      else {
+        priorityPages.push(page.pageId);
+      }
+    });
+
+    // 연속 및 비연속 범위 계산
+    const { continuousRanges, nonContinuousRanges } = this.calculatePageRanges(pageIds);
+
+    // 전체 범위 통합
+    const pageRanges = [...continuousRanges, ...nonContinuousRanges];
+
+    const result: PageRangeCalculationResult = {
+      totalIncompletePages: incompletePages.length,
+      pageRanges,
+      continuousRanges,
+      nonContinuousRanges,
+      priorityPages: priorityPages.sort((a, b) => a - b),
+      skippedPages
+    };
+
+    logger.info(
+      `[MissingPageCalculator] Manual crawling ranges created: ${continuousRanges.length} continuous + ${nonContinuousRanges.length} non-continuous ranges`,
+      "MissingPageCalculator"
+    );
+
+    return result;
+  }
 }

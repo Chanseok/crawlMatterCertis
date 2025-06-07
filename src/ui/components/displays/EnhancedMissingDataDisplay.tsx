@@ -116,31 +116,7 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
     }
   }, []);
 
-  // Manual Page Range Crawling 시작 함수
-  const handleStartManualPageRangeCrawling = useCallback(async () => {
-    if (!pageRangeData?.pageRanges) return;
-    
-    // 페이지 범위에서 모든 pageId를 추출
-    const pageIds: number[] = [];
-    pageRangeData.pageRanges.forEach((range: any) => {
-      for (let pageId = range.startPage; pageId <= range.endPage; pageId++) {
-        pageIds.push(pageId);
-      }
-    });
-    
-    // pageId를 사이트 페이지로 변환 (각 pageId는 2개의 사이트 페이지에 해당)
-    const sitePages: number[] = [];
-    pageIds.forEach(pageId => {
-      sitePages.push(pageId, pageId + 1);
-    });
-    
-    // 중복 제거 및 정렬
-    const uniqueSitePages = [...new Set(sitePages)].sort((a, b) => a - b);
-    
-    if (onStartTargetedCrawling) {
-      onStartTargetedCrawling(uniqueSitePages);
-    }
-  }, [pageRangeData, onStartTargetedCrawling]);
+
 
   // Priority color mapping
   const getPriorityColor = (priority: 'high' | 'medium' | 'low') => {
@@ -315,21 +291,6 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
                 </div>
               )}
 
-              {/* Manual Page Range Crawling Button */}
-              <div className="flex justify-end">
-                <button
-                  onClick={handleStartManualPageRangeCrawling}
-                  disabled={isMissingProductCrawling || !pageRangeData.pageRanges?.length}
-                  className={`px-4 py-2 text-sm rounded font-medium transition-colors ${
-                    isMissingProductCrawling || !pageRangeData.pageRanges?.length
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-green-500 hover:bg-green-600 text-white'
-                  }`}
-                  title={`Will crawl ${pageRangeData.totalIncompletePages * 2} site pages (each pageId = 2 site pages)`}
-                >
-                  🚀 Start Manual Page Range Crawling ({pageRangeData.totalIncompletePages * 2} site pages)
-                </button>
-              </div>
             </div>
           </div>
         )}

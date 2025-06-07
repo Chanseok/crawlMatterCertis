@@ -24,7 +24,7 @@ export function AnalysisTab() {
     const loadData = async () => {
       try {
         setIsLoading(true);
-        const result = await window.electron.getProducts({ limit: 1000 });
+        const result = await window.electron.getProducts({ limit: 10000 });
         setProducts(toUIMatterProducts(result.products));
       } catch (error) {
         console.error('데이터 로드 실패:', error);
@@ -416,37 +416,35 @@ export function AnalysisTab() {
               <p className="mb-2 text-sm text-gray-700 dark:text-gray-300">총 {filteredProducts.length}개 제품</p>
               
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <table className="w-full max-w-5xl divide-y divide-gray-200 dark:divide-gray-700 text-sm table-fixed">
                   <thead className="bg-gray-50 dark:bg-gray-700">
                     <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">제조사</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">모델</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">디바이스 유형</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">인증 ID</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">인증 날짜</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">버전</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-24">인증날짜</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-24">디바이스유형</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">제조사</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-36">모델명</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-28">Transport Interface</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {filteredProducts.slice(0, 100).map((product, idx) => (
                       <tr key={product.id || idx} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
-                        <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.manufacturer || '-'}</td>
-                        <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.model || '-'}</td>
-                        <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">
+                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200">
+                          {product.certificationDate 
+                            ? new Date(product.certificationDate as string).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' })
+                            : '-'
+                          }
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200">
                           {product.deviceType ? (
                             <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
                               {product.deviceType}
                             </span>
                           ) : '-'}
                         </td>
-                        <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.certificateId || '-'}</td>
-                        <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">
-                          {product.certificationDate 
-                            ? new Date(product.certificationDate as string).toLocaleDateString() 
-                            : '-'
-                          }
-                        </td>
-                        <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200">{product.softwareVersion || '-'}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200 w-20 max-w-[5rem] truncate" title={product.manufacturer || '-'}>{product.manufacturer || '-'}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200 truncate" title={product.model || '-'}>{product.model || '-'}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200">{product.transportInterface || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
