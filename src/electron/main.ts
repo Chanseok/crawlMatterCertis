@@ -16,7 +16,8 @@ import {
     deleteProductsByPageRange,
     getMaxPageIdFromDb,
     fetchAndUpdateVendors,
-    getVendors
+    getVendors,
+    getBasicProducts
 } from './database.js';
 import { startCrawling, stopCrawling, checkCrawlingStatus } from './crawler/index.js';
 import { crawlerEvents } from './crawler/utils/progress.js';
@@ -268,7 +269,7 @@ app.on('ready', async () => {
             const userDownloadFolder = app.getPath('downloads');
             const currentDate = new Date();
             const dateStr = currentDate.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            const defaultFileName = `matter-products_${dateStr}.xlsx`;
+            const defaultFileName = `matter-localdb_${dateStr}.xlsx`;
             const defaultPath = path.join(userDownloadFolder, defaultFileName);
             
             // 설정에 저장된 경로 사용(있는 경우)
@@ -284,7 +285,7 @@ app.on('ready', async () => {
             
             // 저장 대화상자 표시
             const { canceled, filePath } = await dialog.showSaveDialog({
-                title: 'Excel로 내보내기',
+                title: 'LocalDB Excel로 내보내기',
                 defaultPath: initialPath,
                 filters: [{ name: 'Excel 파일', extensions: ['xlsx'] }]
             });
@@ -300,119 +301,214 @@ app.on('ready', async () => {
             // 이 경로를 설정에 저장하여 다음에 사용
             configManager.updateConfig({ lastExcelExportPath: filePath });
 
-            // 데이터베이스에서 모든 제품 가져오기
-            const { products } = await getProductsFromDb(1, 10000); // 대량의 제품을 가져오기 위해 높은 limit 설정
+            // 워크북 생성
+            const workbook = XLSX.utils.book_new();
             
-            if (!products || products.length === 0) {
-                throw new Error('내보낼 제품이 없습니다.');
+            // 1. Product Details 시트 생성
+            log.info('[Excel Export] Fetching product details data...');
+            const { products } = await getProductsFromDb(1, 10000);
+            
+            if (products && products.length > 0) {
+                console.log(`총 ${products.length}개의 제품 상세 데이터를 내보냅니다.`);
+                
+                // 모든 제품 데이터의 키 결합 (일부 제품에만 있는 필드도 포함하기 위해)
+                const allKeys = new Set<string>();
+                products.forEach(product => {
+                    Object.keys(product).forEach(key => allKeys.add(key));
+                });
+
+                // 정렬된 헤더 배열 생성 (중요 필드가 앞에 오도록)
+                const priorityFields = ['manufacturer', 'model', 'deviceType', 'certificateId', 'certificationDate', 'url', 'pageId', 'vid', 'pid'];
+                const productDetailsHeaders = Array.from(allKeys).sort((a, b) => {
+                    const aIndex = priorityFields.indexOf(a);
+                    const bIndex = priorityFields.indexOf(b);
+                    
+                    // 둘 다 우선 필드에 있으면 우선 필드 내 순서대로 정렬
+                    if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+                    // a만 우선 필드에 있으면 a가 먼저
+                    if (aIndex !== -1) return -1;
+                    // b만 우선 필드에 있으면 b가 먼저
+                    if (bIndex !== -1) return 1;
+                    // 둘 다 우선 필드가 아니면 알파벳 순서대로
+                    return a.localeCompare(b);
+                });
+                
+                // 엑셀용 배열 형식으로 제품 데이터 변환
+                const productDetailsData: any[][] = [];
+                
+                // 헤더 행 추가 (한글 번역 사용)
+                const headerMap: Record<string, string> = {
+                    'manufacturer': '제조사',
+                    'model': '모델명',
+                    'deviceType': '장치 유형',
+                    'certificateId': '인증 ID',
+                    'certificationDate': '인증 날짜',
+                    'url': 'URL',
+                    'pageId': '페이지',
+                    'indexInPage': '페이지 내 인덱스',
+                    'vid': 'VID',
+                    'pid': 'PID',
+                    'familySku': '제품군 SKU',
+                    'familyVariantSku': '제품 변형 SKU',
+                    'firmwareVersion': '펌웨어 버전',
+                    'familyId': '제품군 ID',
+                    'tisTrpTested': 'TIS/TRP 테스트',
+                    'specificationVersion': '규격 버전',
+                    'transportInterface': '전송 인터페이스',
+                    'primaryDeviceTypeId': '기본 장치 유형 ID',
+                    'softwareVersion': '소프트웨어 버전',
+                    'hardwareVersion': '하드웨어 버전',
+                    'isNewProduct': '신규 제품 여부'
+                };
+                
+                productDetailsData.push(productDetailsHeaders.map(header => headerMap[header] || header));
+                
+                // 데이터 행 추가 (타입 안전성을 고려한 방식)
+                products.forEach(product => {
+                    const row: any[] = [];
+                    
+                    productDetailsHeaders.forEach(header => {
+                        let value: any = '';
+                        
+                        // 타입 안전하게 처리
+                        if (header in product) {
+                            value = (product as any)[header];
+                            
+                            // 특수 처리
+                            if (header === 'certificationDate' && value) {
+                                value = new Date(value).toISOString().split('T')[0];
+                            } else if (header === 'pageId' && typeof value === 'number') {
+                                value = value + 1; // UI와 일관되게 페이지 번호 표시
+                            } else if (header === 'isNewProduct' && typeof value === 'boolean') {
+                                value = value ? '예' : '아니오';
+                            } else if (header === 'applicationCategories' && Array.isArray(value)) {
+                                value = value.join(', ');
+                            }
+                        }
+                        
+                        row.push(value);
+                    });
+                    
+                    productDetailsData.push(row);
+                });
+
+                const productDetailsWorksheet = XLSX.utils.aoa_to_sheet(productDetailsData);
+                
+                // 헤더에 볼드체 스타일 적용
+                const productDetailsRange = XLSX.utils.decode_range(productDetailsWorksheet['!ref'] || "A1");
+                productDetailsRange.e.r = 0; // 첫 행만
+                for (let col = productDetailsRange.s.c; col <= productDetailsRange.e.c; col++) {
+                    const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
+                    if (productDetailsWorksheet[cellRef]) {
+                        productDetailsWorksheet[cellRef].s = { font: { bold: true } };
+                    }
+                }
+                
+                // 열 너비 자동 조정
+                const productDetailsWscols = productDetailsHeaders.map(header => {
+                    const headerLength = (headerMap[header] || header).length;
+                    return { wch: Math.min(Math.max(headerLength * 1.5, 8), 30) };
+                });
+                productDetailsWorksheet['!cols'] = productDetailsWscols;
+                
+                XLSX.utils.book_append_sheet(workbook, productDetailsWorksheet, 'Product Details');
             }
 
-            console.log(`총 ${products.length}개의 제품 데이터 내보내기를 시작합니다.`);
+            // 2. Products 시트 생성 (기본 제품 정보)
+            log.info('[Excel Export] Fetching basic products data...');
+            try {
+                const basicProducts = await getBasicProducts();
 
-            // 모든 제품 데이터의 키 결합 (일부 제품에만 있는 필드도 포함하기 위해)
-            const allKeys = new Set<string>();
-            products.forEach(product => {
-                Object.keys(product).forEach(key => allKeys.add(key));
-            });
-
-            // 정렬된 헤더 배열 생성 (중요 필드가 앞에 오도록)
-            const priorityFields = ['manufacturer', 'model', 'deviceType', 'certificateId', 'certificationDate', 'url', 'pageId', 'vid', 'pid'];
-            const headers = Array.from(allKeys).sort((a, b) => {
-                const aIndex = priorityFields.indexOf(a);
-                const bIndex = priorityFields.indexOf(b);
-                
-                // 둘 다 우선 필드에 있으면 우선 필드 내 순서대로 정렬
-                if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-                // a만 우선 필드에 있으면 a가 먼저
-                if (aIndex !== -1) return -1;
-                // b만 우선 필드에 있으면 b가 먼저
-                if (bIndex !== -1) return 1;
-                // 둘 다 우선 필드가 아니면 알파벳 순서대로
-                return a.localeCompare(b);
-            });
-            
-            // 엑셀용 배열 형식으로 제품 데이터 변환
-            const worksheetData: any[][] = [];
-            
-            // 헤더 행 추가 (한글 번역 사용)
-            const headerMap: Record<string, string> = {
-                'manufacturer': '제조사',
-                'model': '모델명',
-                'deviceType': '장치 유형',
-                'certificateId': '인증 ID',
-                'certificationDate': '인증 날짜',
-                'url': 'URL',
-                'pageId': '페이지',
-                'indexInPage': '페이지 내 인덱스',
-                'vid': 'VID',
-                'pid': 'PID',
-                'familySku': '제품군 SKU',
-                'familyVariantSku': '제품 변형 SKU',
-                'firmwareVersion': '펌웨어 버전',
-                'familyId': '제품군 ID',
-                'tisTrpTested': 'TIS/TRP 테스트',
-                'specificationVersion': '규격 버전',
-                'transportInterface': '전송 인터페이스',
-                'primaryDeviceTypeId': '기본 장치 유형 ID',
-                'softwareVersion': '소프트웨어 버전',
-                'hardwareVersion': '하드웨어 버전',
-                'isNewProduct': '신규 제품 여부'
-            };
-            
-            worksheetData.push(headers.map(header => headerMap[header] || header));
-            
-            // 데이터 행 추가 (타입 안전성을 고려한 방식)
-            products.forEach(product => {
-                const row: any[] = [];
-                
-                headers.forEach(header => {
-                    let value: any = '';
+                if (basicProducts.length > 0) {
+                    console.log(`총 ${basicProducts.length}개의 기본 제품 데이터를 내보냅니다.`);
                     
-                    // 타입 안전하게 처리
-                    if (header in product) {
-                        value = (product as any)[header];
-                        
-                        // 특수 처리
-                        if (header === 'certificationDate' && value) {
-                            value = new Date(value).toISOString().split('T')[0];
-                        } else if (header === 'pageId' && typeof value === 'number') {
-                            value = value + 1; // UI와 일관되게 페이지 번호 표시
-                        } else if (header === 'isNewProduct' && typeof value === 'boolean') {
-                            value = value ? '예' : '아니오';
-                        } else if (header === 'applicationCategories' && Array.isArray(value)) {
-                            value = value.join(', ');
+                    const basicProductsData: any[][] = [];
+                    const basicProductsHeaders = ['URL', '제조사', '모델명', '인증 ID', '페이지', '페이지 내 인덱스'];
+                    basicProductsData.push(basicProductsHeaders);
+                    
+                    basicProducts.forEach(product => {
+                        basicProductsData.push([
+                            product.url || '',
+                            product.manufacturer || '',
+                            product.model || '',
+                            product.certificateId || '',
+                            (product.pageId || 0) + 1, // UI와 일관되게 페이지 번호 표시
+                            product.indexInPage || 0
+                        ]);
+                    });
+
+                    const basicProductsWorksheet = XLSX.utils.aoa_to_sheet(basicProductsData);
+                    
+                    // 헤더에 볼드체 스타일 적용
+                    const basicProductsRange = XLSX.utils.decode_range(basicProductsWorksheet['!ref'] || "A1");
+                    basicProductsRange.e.r = 0;
+                    for (let col = basicProductsRange.s.c; col <= basicProductsRange.e.c; col++) {
+                        const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
+                        if (basicProductsWorksheet[cellRef]) {
+                            basicProductsWorksheet[cellRef].s = { font: { bold: true } };
                         }
                     }
                     
-                    row.push(value);
-                });
-                
-                worksheetData.push(row);
-            });
-
-            // xlsx 패키지로 엑셀 파일 생성
-            const workbook = XLSX.utils.book_new();
-            const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-            
-            // 헤더에 볼드체 스타일 적용
-            const headerRange = XLSX.utils.decode_range(worksheet['!ref'] || "A1");
-            headerRange.e.r = 0; // 첫 행만
-            for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
-                const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
-                if (worksheet[cellRef]) {
-                    worksheet[cellRef].s = { font: { bold: true } };
+                    // 열 너비 조정
+                    basicProductsWorksheet['!cols'] = [
+                        { wch: 50 }, // URL
+                        { wch: 20 }, // 제조사
+                        { wch: 25 }, // 모델명
+                        { wch: 15 }, // 인증 ID
+                        { wch: 8 },  // 페이지
+                        { wch: 12 }  // 페이지 내 인덱스
+                    ];
+                    
+                    XLSX.utils.book_append_sheet(workbook, basicProductsWorksheet, 'Products');
                 }
+            } catch (error) {
+                log.warn('[Excel Export] Failed to fetch basic products:', error);
             }
-            
-            // 열 너비 자동 조정 (컨텐츠에 따라 조정)
-            const wscols = headers.map(header => {
-                const headerLength = (headerMap[header] || header).length;
-                // 헤더 길이를 기준으로 최소 너비 설정 (최소 8, 최대 30)
-                return { wch: Math.min(Math.max(headerLength * 1.5, 8), 30) };
-            });
-            worksheet['!cols'] = wscols;
-            
-            XLSX.utils.book_append_sheet(workbook, worksheet, '제품 데이터');
+
+            // 3. Vendors 시트 생성
+            log.info('[Excel Export] Fetching vendors data...');
+            try {
+                const vendors = await getVendors();
+                
+                if (vendors.length > 0) {
+                    console.log(`총 ${vendors.length}개의 벤더 데이터를 내보냅니다.`);
+                    
+                    const vendorsData: any[][] = [];
+                    const vendorsHeaders = ['벤더 ID', '벤더명', '회사 법적 명칭'];
+                    vendorsData.push(vendorsHeaders);
+                    
+                    vendors.forEach(vendor => {
+                        vendorsData.push([
+                            vendor.vendorId || '',
+                            vendor.vendorName || '',
+                            vendor.companyLegalName || ''
+                        ]);
+                    });
+
+                    const vendorsWorksheet = XLSX.utils.aoa_to_sheet(vendorsData);
+                    
+                    // 헤더에 볼드체 스타일 적용
+                    const vendorsRange = XLSX.utils.decode_range(vendorsWorksheet['!ref'] || "A1");
+                    vendorsRange.e.r = 0;
+                    for (let col = vendorsRange.s.c; col <= vendorsRange.e.c; col++) {
+                        const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
+                        if (vendorsWorksheet[cellRef]) {
+                            vendorsWorksheet[cellRef].s = { font: { bold: true } };
+                        }
+                    }
+                    
+                    // 열 너비 조정
+                    vendorsWorksheet['!cols'] = [
+                        { wch: 10 }, // 벤더 ID
+                        { wch: 25 }, // 벤더명
+                        { wch: 30 }  // 회사 법적 명칭
+                    ];
+                    
+                    XLSX.utils.book_append_sheet(workbook, vendorsWorksheet, 'Vendors');
+                }
+            } catch (error) {
+                log.warn('[Excel Export] Failed to fetch vendors:', error);
+            }
             
             try {
                 XLSX.writeFile(workbook, filePath);

@@ -1157,6 +1157,24 @@ export async function getVendors(): Promise<Vendor[]> {
 }
 
 /**
+ * Get basic products data from the products table for Excel export
+ * @returns Array of basic product data
+ */
+export async function getBasicProducts(): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+        db.all('SELECT * FROM products ORDER BY pageId, indexInPage', (err, rows) => {
+            if (err) {
+                log.error('[DB] Error getting basic products:', err);
+                reject(err);
+                return;
+            }
+            
+            resolve(rows || []);
+        });
+    });
+}
+
+/**
  * Get all existing product URLs from the database for validation purposes
  * Used in 1.5 stage validation to check for duplicates
  */
