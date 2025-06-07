@@ -4,9 +4,10 @@
  * Single Responsibility: Display control buttons (start/stop/check status)
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ManualCrawlingControlsDisplay } from './ManualCrawlingControlsDisplay';
 import { EnhancedMissingDataDisplay } from './EnhancedMissingDataDisplay';
+import { ExpandableSection } from '../ExpandableSection';
 
 interface CrawlingControlsDisplayProps {
   status: string;
@@ -67,6 +68,12 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
   missingProductsInfo,
   onStartTargetedCrawling
 }) => {
+  // Missing Data Analysis 섹션의 확장/축소 상태 관리
+  const [isMissingAnalysisExpanded, setIsMissingAnalysisExpanded] = useState(false);
+
+  const toggleMissingAnalysis = () => {
+    setIsMissingAnalysisExpanded(!isMissingAnalysisExpanded);
+  };
   return (
     <div className="space-y-6">
       {/* Main Control Buttons */}
@@ -76,10 +83,10 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
           <button
             onClick={onCheckStatus}
             disabled={isStatusChecking || status === 'running'}
-            className={`px-4 py-2 rounded font-medium transition-colors ${
+            className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-sm ${
               isStatusChecking || status === 'running'
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-blue-500 hover:bg-blue-600 text-white'
+                : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-blue-200 hover:shadow-blue-300'
             }`}
           >
             {isStatusChecking ? '확인 중...' : '상태 체크'}
@@ -90,10 +97,10 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
             <button
               onClick={onStopCrawling}
               disabled={isStopping}
-              className={`px-4 py-2 rounded font-medium transition-colors ${
+              className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-sm ${
                 isStopping 
                   ? 'bg-gray-400 text-gray-200 cursor-not-allowed animate-pulse'
-                  : 'bg-red-500 hover:bg-red-600 text-white'
+                  : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-red-200 hover:shadow-red-300'
               }`}
             >
               {isStopping ? '중지 중...' : '중지'}
@@ -102,10 +109,10 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
             <button
               onClick={onStartCrawling}
               disabled={status === 'running' || isStopping}
-              className={`px-4 py-2 rounded font-medium transition-colors ${
+              className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-sm ${
                 status === 'running' || isStopping
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-green-500 hover:bg-green-600 text-white'
+                  : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-green-200 hover:shadow-green-300'
               }`}
             >
               시작
@@ -125,15 +132,22 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
       )}
 
       {/* Enhanced Missing Data Analysis Section */}
-      <EnhancedMissingDataDisplay
-        statusSummary={statusSummary}
-        missingProductsInfo={missingProductsInfo}
-        isMissingAnalyzing={isMissingAnalyzing}
-        isMissingProductCrawling={isMissingProductCrawling}
-        onAnalyzeMissingProducts={onAnalyzeMissingProducts}
-        onStartMissingProductCrawling={onStartMissingProductCrawling}
-        onStartTargetedCrawling={onStartTargetedCrawling}
-      />
+      <ExpandableSection
+        title="⚠️ Missing Data Analysis"
+        isExpanded={isMissingAnalysisExpanded}
+        onToggle={toggleMissingAnalysis}
+        additionalClasses="border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20"
+      >
+        <EnhancedMissingDataDisplay
+          statusSummary={statusSummary}
+          missingProductsInfo={missingProductsInfo}
+          isMissingAnalyzing={isMissingAnalyzing}
+          isMissingProductCrawling={isMissingProductCrawling}
+          onAnalyzeMissingProducts={onAnalyzeMissingProducts}
+          onStartMissingProductCrawling={onStartMissingProductCrawling}
+          onStartTargetedCrawling={onStartTargetedCrawling}
+        />
+      </ExpandableSection>
 
       {/* Legacy Missing Product Collection Section (for backwards compatibility) */}
       {(hasMissingProducts || onAnalyzeMissingProducts) && !statusSummary && (
@@ -151,10 +165,10 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
               <button
                 onClick={onAnalyzeMissingProducts}
                 disabled={status === 'running' || isMissingProductCrawling || isMissingAnalyzing}
-                className={`px-3 py-2 text-sm rounded font-medium transition-colors ${
+                className={`px-3 py-2 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm ${
                   status === 'running' || isMissingProductCrawling || isMissingAnalyzing
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-orange-500 hover:bg-orange-600 text-white'
+                    : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-orange-200 hover:shadow-orange-300'
                 }`}
               >
                 {isMissingAnalyzing ? '분석 중...' : '누락 데이터 분석'}
@@ -166,10 +180,10 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
               <button
                 onClick={onStartMissingProductCrawling}
                 disabled={status === 'running' || isMissingProductCrawling}
-                className={`px-3 py-2 text-sm rounded font-medium transition-colors ${
+                className={`px-3 py-2 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm ${
                   status === 'running' || isMissingProductCrawling
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-purple-500 hover:bg-purple-600 text-white'
+                    : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-purple-200 hover:shadow-purple-300'
                 }`}
               >
                 {isMissingProductCrawling ? '누락 제품 수집 중...' : '누락 제품 수집 시작'}

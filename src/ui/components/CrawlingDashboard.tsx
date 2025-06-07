@@ -834,9 +834,6 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   return (
     <>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-4">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-800 dark:text-white">수집 상태</h2>
-        </div>
 
         {/* Error Display */}
         {error && (
@@ -1372,7 +1369,10 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
         title="사이트 로컬 비교"
         isExpanded={appCompareExpanded}
         onToggle={toggleCompareSection}
-        additionalClasses="site-local-compare-section"
+        additionalClasses="site-local-compare-section border-blue-200 dark:border-blue-800 shadow-sm"
+        headerBgColor="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/30 dark:to-purple-900/30"
+        contentBgColor="bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-950/10 dark:to-purple-950/10"
+        headerTextColor="text-blue-700 dark:text-blue-300 font-semibold"
         isLoading={isStatusChecking}
         loadingContent={
           <div>

@@ -135,21 +135,12 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
   return (
     <div className="space-y-4">
       {/* Missing Data Overview */}
-      <div className="border border-orange-200 dark:border-orange-700 rounded-lg p-4 bg-orange-50 dark:bg-orange-900/20">
+      <div className="p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            <svg className="w-5 h-5 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <h3 className="text-sm font-medium text-orange-800 dark:text-orange-300">
-              Missing Data Analysis
-            </h3>
-          </div>
-          
           {analysisData && (
             <button
               onClick={() => setShowDetailedAnalysis(!showDetailedAnalysis)}
-              className="text-xs text-orange-600 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-200 underline"
+              className="text-xs text-orange-600 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-200 underline ml-auto"
             >
               {showDetailedAnalysis ? 'Hide Details' : 'Show Details'}
             </button>
@@ -182,10 +173,10 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
             <button
               onClick={onAnalyzeMissingProducts}
               disabled={isMissingAnalyzing || isMissingProductCrawling}
-              className={`px-3 py-2 text-sm rounded font-medium transition-colors flex-1 ${
+              className={`px-3 py-2 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm flex-1 ${
                 isMissingAnalyzing || isMissingProductCrawling
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-orange-500 hover:bg-orange-600 text-white'
+                  : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-orange-200 hover:shadow-orange-300'
               }`}
             >
               {isMissingAnalyzing ? (
@@ -206,10 +197,10 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
             <button
               onClick={onStartMissingProductCrawling}
               disabled={isMissingProductCrawling || !analysisData}
-              className={`px-3 py-2 text-sm rounded font-medium transition-colors flex-1 ${
+              className={`px-3 py-2 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm flex-1 ${
                 isMissingProductCrawling || !analysisData
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-purple-500 hover:bg-purple-600 text-white'
+                  : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-purple-200 hover:shadow-purple-300'
               }`}
             >
               {isMissingProductCrawling ? (
@@ -232,10 +223,10 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
             <button
               onClick={handleCalculatePageRanges}
               disabled={isCalculatingRanges || isMissingProductCrawling}
-              className={`px-3 py-2 text-sm rounded font-medium transition-colors flex-1 ${
+              className={`px-3 py-2 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm flex-1 ${
                 isCalculatingRanges || isMissingProductCrawling
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-500 hover:bg-blue-600 text-white'
+                  : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white shadow-blue-200 hover:shadow-indigo-300'
               }`}
             >
               {isCalculatingRanges ? (
@@ -335,13 +326,13 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
             <div className="flex space-x-2">
               <button
                 onClick={handleSelectAll}
-                className="px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 rounded"
+                className="px-2 py-1 text-xs bg-gradient-to-r from-blue-100 to-blue-200 hover:from-blue-200 hover:to-blue-300 text-blue-800 rounded-lg font-medium transition-all duration-200"
               >
                 Select All
               </button>
               <button
                 onClick={handleClearSelection}
-                className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 rounded"
+                className="px-2 py-1 text-xs bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-800 rounded-lg font-medium transition-all duration-200"
               >
                 Clear
               </button>
@@ -350,7 +341,7 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
             {selectedPages.size > 0 && onStartTargetedCrawling && (
               <button
                 onClick={handleStartTargetedCrawling}
-                className="px-3 py-1 text-xs bg-green-500 hover:bg-green-600 text-white rounded font-medium"
+                className="px-3 py-1 text-xs bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg font-medium transition-all duration-200 shadow-sm"
               >
                 Crawl Selected ({selectedPages.size} pages)
               </button>

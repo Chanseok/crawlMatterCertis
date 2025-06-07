@@ -68,9 +68,10 @@ export const ManualCrawlingControlsDisplay: React.FC<ManualCrawlingControlsDispl
         title="Manual Page Range Crawling"
         isExpanded={isExpanded}
         onToggle={() => setIsExpanded(!isExpanded)}
-        headerBgColor="bg-blue-50 dark:bg-blue-900/20"
-        headerTextColor="text-blue-800 dark:text-blue-300"
-        additionalClasses="border-blue-200 dark:border-blue-600"
+        headerBgColor="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/30 dark:to-purple-900/30"
+        contentBgColor="bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-950/10 dark:to-purple-950/10"
+        headerTextColor="text-blue-700 dark:text-blue-300 font-semibold"
+        additionalClasses="border-blue-200 dark:border-blue-800 shadow-sm"
       >
         <div className="space-y-3">
           {/* Input Field */}
@@ -163,9 +164,9 @@ export const ManualCrawlingControlsDisplay: React.FC<ManualCrawlingControlsDispl
           <button
             onClick={handleStartManualCrawling}
             disabled={!canStartCrawling}
-            className={`w-full px-4 py-2 rounded font-medium transition-colors ${
+            className={`w-full px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-sm ${
               canStartCrawling
-                ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                ? 'bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-blue-200 hover:shadow-purple-300'
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
           >

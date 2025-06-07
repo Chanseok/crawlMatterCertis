@@ -60,14 +60,14 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
   };
 
   return (
-    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+    <div className="bg-gradient-to-r from-gray-50 to-blue-50 dark:from-gray-700 dark:to-gray-600 rounded-lg p-4 border border-gray-200 dark:border-gray-600 shadow-sm">
       {/* Main status row - compressed into single line */}
       <div className="flex items-center justify-between text-sm">
         {/* Left section: Status and progress */}
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
-            <span className="text-gray-500 dark:text-gray-400">상태:</span>
-            <span className={`font-medium ${getStatusColor(crawlingStatus)}`}>
+            <span className="text-gray-500 dark:text-gray-400 font-medium">상태:</span>
+            <span className={`font-semibold ${getStatusColor(crawlingStatus)}`}>
               {getStatusText(crawlingStatus)}
             </span>
           </div>
@@ -76,10 +76,10 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
             <>
               <div className="flex items-center space-x-2">
                 <span className="text-gray-500 dark:text-gray-400">단계:</span>
-                <span className={`font-medium ${
+                <span className={`font-semibold px-2 py-1 rounded-full text-xs ${
                   currentStage === 1 || currentStage === 3 
-                    ? 'text-purple-600 dark:text-purple-400' 
-                    : 'text-blue-600 dark:text-blue-400'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-800 dark:text-purple-200' 
+                    : 'bg-blue-100 text-blue-700 dark:bg-blue-800 dark:text-blue-200'
                 }`}>
                   {currentStage}/2
                 </span>
@@ -88,14 +88,14 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
               {currentStage === 1 && (
                 <div className="flex items-center space-x-2">
                   <span className="text-gray-500 dark:text-gray-400">페이지:</span>
-                  <span className="font-medium">{currentPage}/{totalPages}</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-200">{currentPage}/{totalPages}</span>
                 </div>
               )}
               
               {currentStage === 2 && (
                 <div className="flex items-center space-x-2">
                   <span className="text-gray-500 dark:text-gray-400">아이템:</span>
-                  <span className="font-medium">{processedItems}/{totalItems}</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-200">{processedItems}/{totalItems}</span>
                 </div>
               )}
             </>
@@ -107,7 +107,7 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
           {crawlingStatus === 'running' && (
             <div className="flex items-center space-x-2">
               <span className="text-gray-500 dark:text-gray-400">경과:</span>
-              <span className="font-mono text-sm">{formatTime(elapsedTime)}</span>
+              <span className="font-mono text-sm bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded">{formatTime(elapsedTime)}</span>
             </div>
           )}
         </div>
@@ -115,9 +115,9 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
 
       {/* Progress bar */}
       {crawlingStatus === 'running' && (
-        <div className="mt-2">
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="mt-3">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
               {Math.round(percentage)}%
             </span>
             {message && (
@@ -126,9 +126,9 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
               </span>
             )}
           </div>
-          <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+          <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
             <div 
-              className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+              className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300 ease-out"
               style={{ width: `${Math.min(percentage, 100)}%` }}
             />
           </div>
