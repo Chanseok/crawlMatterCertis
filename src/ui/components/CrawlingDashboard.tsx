@@ -149,6 +149,14 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   const [isSuccess, setIsSuccess] = useState(false);
   const [localTime, setLocalTime] = useState({ elapsedTime: 0, remainingTime: 0 });
   const [flipTimer, setFlipTimer] = useState(0);
+  
+  // === 누락 제품 수집 관련 상태 ===
+  const [isMissingAnalyzing, setIsMissingAnalyzing] = useState(false);
+  const [isMissingProductCrawling, setIsMissingProductCrawling] = useState(false);
+  const [missingProductsInfo, setMissingProductsInfo] = useState<{
+    missingCount: number;
+    analysisResult?: any;
+  } | null>(null);
   const [forceUpdateCounter, setForceUpdateCounter] = useState(0); // 강제 리렌더링용
   const [animatedDigits, setAnimatedDigits] = useState({
     currentPage: false,
@@ -560,17 +568,81 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
     };
   }, [viewModel]);
 
-  // === TEMPORARY DEBUG: Auto-trigger status check to test the functionality and see debug output ===
-  // useEffect(() => {
-  //   const autoTriggerStatusCheck = async () => {
-  //     console.log('[CrawlingDashboard] 🚀 Auto-triggering status check for debugging...');
-  //     await handleCheckStatus();
-  //   };
+  // === 누락 제품 수집 관련 함수들 ===
+  const handleAnalyzeMissingProducts = useCallback(async () => {
+    if (isMissingAnalyzing || status === 'running') return;
+    
+    setIsMissingAnalyzing(true);
+    try {
+      console.log('[CrawlingDashboard] 🔍 Starting missing product analysis...');
+      
+      // MissingDataAnalyzer 서비스 호출
+      const result = await window.electron.analyzeMissingProducts();
+      
+      if (result.success) {
+        setMissingProductsInfo({
+          missingCount: result.data.totalMissingDetails || 0,
+          analysisResult: result.data
+        });
+        console.log('[CrawlingDashboard] ✅ Missing product analysis completed:', result.data);
+      } else {
+        console.error('[CrawlingDashboard] ❌ Missing product analysis failed:', result.error);
+        // TODO: Show error to user
+      }
+    } catch (error) {
+      console.error('[CrawlingDashboard] ❌ Error analyzing missing products:', error);
+      // TODO: Show error to user
+    } finally {
+      setIsMissingAnalyzing(false);
+    }
+  }, [isMissingAnalyzing, status]);
 
-  //   // Auto-trigger after 2 seconds delay
-  //   const timer = setTimeout(autoTriggerStatusCheck, 2000);
-  //   return () => clearTimeout(timer);
-  // }, []); // Only run once on mount
+  const handleStartMissingProductCrawling = useCallback(async () => {
+    if (isMissingProductCrawling || status === 'running' || !missingProductsInfo?.analysisResult) return;
+    
+    setIsMissingProductCrawling(true);
+    try {
+      console.log('[CrawlingDashboard] 🚀 Starting missing product crawling...');
+      
+      const result = await window.electron.crawlMissingProducts({
+        analysisResult: missingProductsInfo.analysisResult,
+        config: configurationViewModel.config
+      });
+      
+      if (result.success) {
+        console.log('[CrawlingDashboard] ✅ Missing product crawling completed successfully');
+        // 상태 체크를 다시 실행하여 최신 정보 업데이트
+        await handleCheckStatus();
+        // 분석 결과 초기화 (재분석 필요)
+        setMissingProductsInfo(null);
+      } else {
+        console.error('[CrawlingDashboard] ❌ Missing product crawling failed:', result.error);
+        // TODO: Show error to user
+      }
+    } catch (error) {
+      console.error('[CrawlingDashboard] ❌ Error during missing product crawling:', error);
+      // TODO: Show error to user
+    } finally {
+      setIsMissingProductCrawling(false);
+    }
+  }, [isMissingProductCrawling, status, missingProductsInfo, configurationViewModel.config, handleCheckStatus]);
+
+  // === 누락 제품 감지 로직 ===
+  const hasMissingProducts = useMemo(() => {
+    if (!statusSummary) return false;
+    
+    // 사이트 제품 수가 DB 제품 수보다 많은 경우
+    if (statusSummary.diff && statusSummary.diff > 0) {
+      return true;
+    }
+    
+    // 분석 결과에 누락 제품이 있는 경우
+    if (missingProductsInfo && missingProductsInfo.missingCount > 0) {
+      return true;
+    }
+    
+    return false;
+  }, [statusSummary, missingProductsInfo]);
 
   // === RENDER ===
   return (
@@ -1226,6 +1298,12 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
           onStartCrawling={startCrawling}
           onStopCrawling={stopCrawling}
           isStopping={isStopping}
+          // 누락 제품 수집 관련 props
+          hasMissingProducts={hasMissingProducts}
+          isMissingProductCrawling={isMissingProductCrawling}
+          isMissingAnalyzing={isMissingAnalyzing}
+          onStartMissingProductCrawling={handleStartMissingProductCrawling}
+          onAnalyzeMissingProducts={handleAnalyzeMissingProducts}
         />
       </div>
 

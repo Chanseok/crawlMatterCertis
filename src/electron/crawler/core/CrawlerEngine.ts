@@ -15,7 +15,7 @@ import { CrawlerState } from './CrawlerState.js';
 import { ProductListCollector } from '../tasks/productList.js';
 import { ProductDetailCollector } from '../tasks/productDetail.js';
 import { ProductValidationCollector } from '../tasks/productValidation.js';
-import { CrawlerConfig } from '../../../../types.js';
+import { CrawlerConfig, CrawlingRange } from '../../../../types.js';
 import { saveProductsToFile, saveMatterProductsToFile } from '../utils/file.js';
 import { 
   deduplicateAndSortMatterProducts, 
@@ -1102,5 +1102,274 @@ export class CrawlerEngine {
       this.abortController.abort('cleanup');
     }
     console.log('[CrawlerEngine] Session finalized successfully');
+  }
+
+  /**
+   * 누락된 제품을 위한 비연속 페이지 범위 크롤링
+   * MissingPageCalculator에서 계산된 여러 범위를 처리
+   * @param ranges 크롤링할 페이지 범위 배열
+   * @param config 크롤러 설정
+   * @returns 크롤링 성공 여부
+   */
+  public async crawlMissingProductPages(ranges: CrawlingRange[], config: CrawlerConfig): Promise<boolean> {
+    if (this.isCrawling) {
+      console.log('[CrawlerEngine] Crawling is already in progress.');
+      return false;
+    }
+
+    console.log(`[CrawlerEngine] Starting missing product collection for ${ranges.length} ranges`);
+    
+    // 세션 설정 초기화
+    this.sessionConfig = config;
+    const sessionConfig = this.sessionConfig;
+    
+    // 로깅 시스템 초기화
+    logger.initializeFromConfig(sessionConfig);
+    logger.info('Missing product crawling session started', 'CrawlerEngine');
+    
+    // 배치 처리 설정
+    const batchSize = sessionConfig.batchSize || 30;
+    const batchDelayMs = sessionConfig.batchDelayMs || 2000;
+    const batchRetryLimit = sessionConfig.batchRetryLimit || 3;
+    
+    // 크롤링 상태 초기화
+    initializeCrawlingState();
+    this.state.reset();
+    this.isCrawling = true;
+    this.abortController = new AbortController();
+    this.browserManager = new BrowserManager(sessionConfig);
+
+    try {
+      console.log('[CrawlerEngine] Starting missing product pages crawling process...');
+      
+      // 초기 크롤링 상태 이벤트
+      initializeCrawlingProgress('누락된 제품 페이지 수집을 시작합니다...', CRAWLING_STAGE.PRODUCT_LIST);
+      
+      let allCollectedProducts: Product[] = [];
+      let totalRangesProcessed = 0;
+      
+      // 각 범위별로 처리
+      for (const range of ranges) {
+        if (this.abortController.signal.aborted) {
+          console.log('[CrawlerEngine] Missing product crawling aborted during range processing.');
+          break;
+        }
+        
+        totalRangesProcessed++;
+        const rangeId = `${range.startPage}-${range.endPage}`;
+        
+        console.log(`[CrawlerEngine] Processing range ${totalRangesProcessed}/${ranges.length}: Pages ${range.startPage} to ${range.endPage} (${range.reason})`);
+        
+        // 범위 내 페이지 수 계산
+        const totalPagesInRange = range.startPage - range.endPage + 1;
+        
+        // 범위가 배치 크기보다 큰 경우 배치 처리
+        if (totalPagesInRange > batchSize) {
+          console.log(`[CrawlerEngine] Range ${rangeId} has ${totalPagesInRange} pages, using batch processing`);
+          
+          let currentPage = range.startPage;
+          let batchNumber = 0;
+          const totalBatches = Math.ceil(totalPagesInRange / batchSize);
+          
+          while (currentPage >= range.endPage) {
+            if (this.abortController.signal.aborted) {
+              console.log('[CrawlerEngine] Missing product crawling aborted during batch processing.');
+              break;
+            }
+            
+            batchNumber++;
+            const batchEndPage = Math.max(range.endPage, currentPage - batchSize + 1);
+            const batchRange = {
+              startPage: currentPage,
+              endPage: batchEndPage
+            };
+            
+            console.log(`[CrawlerEngine] Processing batch ${batchNumber}/${totalBatches} for range ${rangeId}: ${batchRange.startPage} to ${batchRange.endPage}`);
+            
+            let batchSuccess = false;
+            let batchRetryCount = 0;
+            let batchProducts: Product[] = [];
+            
+            // 배치 재시도 로직
+            while (!batchSuccess && batchRetryCount <= batchRetryLimit) {
+              try {
+                if (batchRetryCount > 0) {
+                  console.log(`[CrawlerEngine] Retrying batch ${batchNumber} for range ${rangeId} (attempt ${batchRetryCount}/${batchRetryLimit})`);
+                  
+                  const retryDelay = Math.min(batchDelayMs * (1.5 ** batchRetryCount), 30000);
+                  console.log(`[CrawlerEngine] Waiting ${retryDelay}ms before retry...`);
+                  await new Promise(resolve => setTimeout(resolve, retryDelay));
+                }
+                
+                // 배치용 수집기 생성
+                const batchCollector = new ProductListCollector(
+                  this.state,
+                  this.abortController,
+                  sessionConfig,
+                  this.browserManager!
+                );
+                
+                // 진행 상황 콜백 설정
+                batchCollector.setProgressCallback((processedSuccessfully, totalPagesInStage, stage1PageStatuses, currentOverallRetryCountForStage, stage1StartTime, isStageComplete) => {
+                  updateProductListProgress(
+                    processedSuccessfully,
+                    totalPagesInStage,
+                    stage1StartTime,
+                    stage1PageStatuses,
+                    currentOverallRetryCountForStage,
+                    sessionConfig.productListRetryCount,
+                    isStageComplete
+                  );
+                });
+                
+                console.log(`[CrawlerEngine] Collecting batch ${batchNumber} range: ${batchRange.startPage} to ${batchRange.endPage} for missing products`);
+                batchProducts = await batchCollector.collectPageRange(batchRange);
+                
+                // 실패 확인
+                const failedPages = this.state.getFailedPages();
+                
+                if (failedPages.length === 0) {
+                  batchSuccess = true;
+                  console.log(`[CrawlerEngine] Batch ${batchNumber} for range ${rangeId} completed successfully${batchRetryCount > 0 ? ` after ${batchRetryCount} retries` : ''}`);
+                } else {
+                  console.warn(`[CrawlerEngine] Batch ${batchNumber} for range ${rangeId} attempt ${batchRetryCount + 1} failed with ${failedPages.length} failed pages.`);
+                  batchRetryCount++;
+                  
+                  if (batchRetryCount > batchRetryLimit) {
+                    console.error(`[CrawlerEngine] Batch ${batchNumber} for range ${rangeId} failed after ${batchRetryLimit} retries.`);
+                    // 실패해도 다음 배치로 계속 진행
+                    batchSuccess = true; // 루프를 빠져나가기 위해
+                  } else {
+                    // 실패한 페이지 초기화 (재시도를 위해)
+                    this.state.resetFailedPages();
+                  }
+                }
+                
+                // 수집기 리소스 정리
+                await batchCollector.cleanupResources();
+                
+              } catch (error) {
+                console.error(`[CrawlerEngine] Error processing batch ${batchNumber} for range ${rangeId}:`, error);
+                batchRetryCount++;
+                
+                if (batchRetryCount > batchRetryLimit) {
+                  console.error(`[CrawlerEngine] Batch ${batchNumber} for range ${rangeId} failed after ${batchRetryLimit} retries.`);
+                  batchSuccess = true; // 루프를 빠져나가기 위해
+                }
+              }
+            }
+            
+            // 배치 결과를 전체 결과에 추가
+            allCollectedProducts = allCollectedProducts.concat(batchProducts);
+            
+            // 다음 페이지로 이동
+            currentPage = batchEndPage - 1;
+            
+            // 배치 간 지연
+            if (currentPage >= range.endPage && batchDelayMs > 0) {
+              console.log(`[CrawlerEngine] Waiting ${batchDelayMs}ms before next batch...`);
+              await new Promise(resolve => setTimeout(resolve, batchDelayMs));
+            }
+          }
+        } else {
+          // 배치 크기보다 작은 범위는 직접 처리
+          console.log(`[CrawlerEngine] Range ${rangeId} has ${totalPagesInRange} pages, processing directly`);
+          
+          try {
+            const rangeCollector = new ProductListCollector(
+              this.state,
+              this.abortController,
+              sessionConfig,
+              this.browserManager!
+            );
+            
+            // 진행 상황 콜백 설정
+            rangeCollector.setProgressCallback((processedSuccessfully, totalPagesInStage, stage1PageStatuses, currentOverallRetryCountForStage, stage1StartTime, isStageComplete) => {
+              updateProductListProgress(
+                processedSuccessfully,
+                totalPagesInStage,
+                stage1StartTime,
+                stage1PageStatuses,
+                currentOverallRetryCountForStage,
+                sessionConfig.productListRetryCount,
+                isStageComplete
+              );
+            });
+            
+            const rangeProducts = await rangeCollector.collectPageRange({
+              startPage: range.startPage,
+              endPage: range.endPage
+            });
+            
+            allCollectedProducts = allCollectedProducts.concat(rangeProducts);
+            
+            // 수집기 리소스 정리
+            await rangeCollector.cleanupResources();
+            
+          } catch (error) {
+            console.error(`[CrawlerEngine] Error processing range ${rangeId}:`, error);
+            // 오류가 있어도 다음 범위로 계속 진행
+          }
+        }
+        
+        // 범위 간 지연 (마지막 범위가 아닌 경우)
+        if (totalRangesProcessed < ranges.length && batchDelayMs > 0) {
+          console.log(`[CrawlerEngine] Waiting ${batchDelayMs}ms before next range...`);
+          await new Promise(resolve => setTimeout(resolve, batchDelayMs));
+        }
+      }
+      
+      console.log(`[CrawlerEngine] Missing product page collection completed. Collected ${allCollectedProducts.length} products from ${totalRangesProcessed} ranges.`);
+      
+      if (allCollectedProducts.length === 0) {
+        console.log('[CrawlerEngine] No products found in missing page ranges.');
+        this.finalizeSession();
+        return true;
+      }
+      
+      // 2단계: 수집된 제품의 상세 정보 크롤링 (기존 로직 재사용)
+      this.state.setStage('productDetail:init', '2/3단계: 제품 상세 정보 수집 중...');
+      
+      const detailCollector = new ProductDetailCollector(
+        this.state,
+        this.abortController,
+        sessionConfig,
+        this.browserManager!
+      );
+      
+      const matterProducts = await detailCollector.collect(allCollectedProducts);
+      
+      console.log(`[CrawlerEngine] Missing product detail collection completed. Processed ${matterProducts.length} products.`);
+      
+      // 3단계: 데이터 저장 (자동 저장이 활성화된 경우)
+      if (sessionConfig.autoAddToLocalDB && matterProducts.length > 0) {
+        this.state.setStage('completed', '3/3단계: 로컬 DB 저장 중...');
+        
+        try {
+          const saveResult = await saveProductsToDb(matterProducts);
+          console.log(`[CrawlerEngine] Missing products saved to database: ${saveResult.added} new, ${saveResult.updated} updated`);
+          
+          this.handleDatabaseSaveResult(saveResult);
+        } catch (error) {
+          console.error('[CrawlerEngine] Failed to save missing products to database:', error);
+        }
+      }
+      
+      // 완료 처리
+      this.finalizeSession();
+      return true;
+      
+    } catch (error) {
+      console.error('[CrawlerEngine] Error during missing product crawling:', error);
+      this.handleCrawlingError(error);
+      return false;
+    } finally {
+      // 리소스 정리
+      if (this.browserManager) {
+        await this.browserManager.cleanupResources();
+        this.browserManager = null;
+      }
+      this.isCrawling = false;
+    }
   }
 }

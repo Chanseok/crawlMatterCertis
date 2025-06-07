@@ -78,7 +78,11 @@ const IPC_CHANNELS = {
     // Gap Detection 관련 채널 추가
     DETECT_GAPS: 'detectGaps',
     COLLECT_GAPS: 'collectGaps',
-    EXECUTE_GAP_BATCH_COLLECTION: 'executeGapBatchCollection'
+    EXECUTE_GAP_BATCH_COLLECTION: 'executeGapBatchCollection',
+    
+    // Missing Product 관련 채널 추가
+    ANALYZE_MISSING_PRODUCTS: 'analyzeMissingProducts',
+    CRAWL_MISSING_PRODUCTS: 'crawlMissingProducts'
 };
 
 app.on('ready', async () => {
@@ -790,6 +794,86 @@ app.on('ready', async () => {
                 error: {
                     message: error instanceof Error ? error.message : String(error),
                     code: 'GAP_BATCH_COLLECTION_FAILED'
+                }
+            };
+        }
+    });
+    
+    // Missing Product Analysis 핸들러
+    ipcMain.handle(IPC_CHANNELS.ANALYZE_MISSING_PRODUCTS, async (_event) => {
+        log.info('[IPC] analyzeMissingProducts called');
+        try {
+            const { MissingDataAnalyzer } = await import('./services/MissingDataAnalyzer.js');
+            
+            log.info('[IPC] Starting missing product analysis...');
+            
+            // 누락 데이터 분석 실행 - 올바른 메서드명 사용
+            const analyzer = new MissingDataAnalyzer();
+            const analysis = await analyzer.analyzeTableDifferences();
+            
+            log.info(`[IPC] Missing product analysis complete - Total missing details: ${analysis.totalMissingDetails}, Total incomplete pages: ${analysis.totalIncompletePages}`);
+            
+            return {
+                success: true,
+                data: analysis
+            };
+            
+        } catch (error) {
+            log.error('[IPC] Error analyzing missing products:', error);
+            return {
+                success: false,
+                error: {
+                    message: error instanceof Error ? error.message : String(error),
+                    code: 'MISSING_ANALYSIS_FAILED'
+                }
+            };
+        }
+    });
+    
+    // Missing Product Crawling 핸들러
+    ipcMain.handle(IPC_CHANNELS.CRAWL_MISSING_PRODUCTS, async (_event, args) => {
+        log.info('[IPC] crawlMissingProducts called with args:', args);
+        try {
+            const { MissingPageCalculator } = await import('./services/MissingPageCalculator.js');
+            const { CrawlerEngine } = await import('./crawler/core/CrawlerEngine.js');
+            const { analysisResult } = args || {};
+            
+            if (!analysisResult) {
+                throw new Error('Analysis result is required for missing product crawling');
+            }
+            
+            log.info('[IPC] Starting missing product crawling...');
+            
+            // 1. 누락된 페이지를 크롤링 범위로 변환 - 올바른 메서드명 사용
+            const calculator = new MissingPageCalculator();
+            const rangeCalculationResult = await calculator.calculateCrawlingRanges();
+            
+            log.info(`[IPC] Calculated ${rangeCalculationResult.pageRanges.length} crawling ranges for missing products`);
+            
+            // 2. 크롤러 설정 가져오기
+            const config = configManager.getConfig();
+            
+            // 3. CrawlerEngine을 사용하여 누락된 제품 페이지 크롤링
+            const crawlerEngine = new CrawlerEngine();
+            const success = await crawlerEngine.crawlMissingProductPages(rangeCalculationResult.pageRanges, config);
+            
+            log.info(`[IPC] Missing product crawling ${success ? 'completed successfully' : 'failed'}`);
+            
+            return {
+                success,
+                crawledRanges: rangeCalculationResult.pageRanges.length,
+                message: success 
+                    ? `Successfully crawled ${rangeCalculationResult.pageRanges.length} missing product ranges`
+                    : 'Missing product crawling failed'
+            };
+            
+        } catch (error) {
+            log.error('[IPC] Error crawling missing products:', error);
+            return {
+                success: false,
+                error: {
+                    message: error instanceof Error ? error.message : String(error),
+                    code: 'MISSING_CRAWLING_FAILED'
                 }
             };
         }

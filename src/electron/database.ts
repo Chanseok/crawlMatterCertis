@@ -1177,3 +1177,160 @@ export async function getExistingProductUrls(): Promise<Set<string>> {
         });
     });
 }
+
+/**
+ * Find products that exist in products table but not in product_details table
+ */
+export async function findMissingProductDetails(): Promise<Array<{url: string, pageId: number, indexInPage: number}>> {
+    return new Promise((resolve, reject) => {
+        const query = `
+            SELECT p.url, p.pageId, p.indexInPage
+            FROM products p
+            LEFT JOIN product_details pd ON p.url = pd.url
+            WHERE pd.url IS NULL
+            ORDER BY p.pageId DESC, p.indexInPage DESC
+        `;
+        
+        db.all(query, [], (err, rows: any[]) => {
+            if (err) {
+                log.error('[DB] Error finding missing product details:', err);
+                reject(err);
+                return;
+            }
+            
+            log.info(`[DB] Found ${rows.length} products missing details`);
+            resolve(rows.map(row => ({
+                url: row.url,
+                pageId: row.pageId,
+                indexInPage: row.indexInPage
+            })));
+        });
+    });
+}
+
+/**
+ * Find incomplete pages (pages that don't have all indices 0-11)
+ */
+export async function findIncompletePages(): Promise<Array<{pageId: number, missingIndices: number[], expectedCount: number, actualCount: number}>> {
+    return new Promise((resolve, reject) => {
+        // First, find pages with incomplete index coverage
+        const query = `
+            WITH page_stats AS (
+                SELECT 
+                    pageId,
+                    COUNT(*) as actualCount,
+                    MIN(indexInPage) as minIndex,
+                    MAX(indexInPage) as maxIndex
+                FROM products
+                WHERE pageId IS NOT NULL
+                GROUP BY pageId
+            )
+            SELECT 
+                pageId,
+                actualCount
+            FROM page_stats
+            WHERE actualCount < 12 OR minIndex != 0 OR maxIndex != 11
+            ORDER BY pageId DESC
+        `;
+        
+        db.all(query, [], (err, rows: any[]) => {
+            if (err) {
+                log.error('[DB] Error finding incomplete pages:', err);
+                reject(err);
+                return;
+            }
+            
+            if (rows.length === 0) {
+                resolve([]);
+                return;
+            }
+            
+            // For each incomplete page, find missing indices
+            const incompletePages: Array<{pageId: number, missingIndices: number[], expectedCount: number, actualCount: number}> = [];
+            let processedPages = 0;
+            
+            rows.forEach(row => {
+                const pageId = row.pageId;
+                const expectedIndices = Array.from({length: 12}, (_, i) => i);
+                
+                db.all(
+                    "SELECT indexInPage FROM products WHERE pageId = ? ORDER BY indexInPage",
+                    [pageId],
+                    (err, indexRows: any[]) => {
+                        if (err) {
+                            log.error(`[DB] Error getting indices for page ${pageId}:`, err);
+                            processedPages++;
+                            if (processedPages === rows.length) {
+                                resolve(incompletePages);
+                            }
+                            return;
+                        }
+                        
+                        const actualIndices = indexRows.map(r => r.indexInPage);
+                        const missingIndices = expectedIndices.filter(idx => !actualIndices.includes(idx));
+                        
+                        incompletePages.push({
+                            pageId,
+                            missingIndices,
+                            expectedCount: 12,
+                            actualCount: actualIndices.length
+                        });
+                        
+                        processedPages++;
+                        if (processedPages === rows.length) {
+                            log.info(`[DB] Found ${incompletePages.length} incomplete pages`);
+                            resolve(incompletePages);
+                        }
+                    }
+                );
+            });
+        });
+    });
+}
+
+/**
+ * Get database comparison summary (products vs product_details count)
+ */
+export async function getTableComparisonSummary(): Promise<{
+    productsCount: number;
+    productDetailsCount: number;
+    difference: number;
+}> {
+    return new Promise((resolve, reject) => {
+        let results: any = {};
+        let completedQueries = 0;
+        
+        const checkComplete = () => {
+            completedQueries++;
+            if (completedQueries === 2) {
+                const summary = {
+                    productsCount: results.productsCount || 0,
+                    productDetailsCount: results.productDetailsCount || 0,
+                    difference: (results.productsCount || 0) - (results.productDetailsCount || 0)
+                };
+                log.info(`[DB] Table comparison: products=${summary.productsCount}, product_details=${summary.productDetailsCount}, diff=${summary.difference}`);
+                resolve(summary);
+            }
+        };
+        
+        // Count products
+        db.get("SELECT COUNT(*) as count FROM products", (err, row: any) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            results.productsCount = row.count;
+            checkComplete();
+        });
+        
+        // Count product_details
+        db.get("SELECT COUNT(*) as count FROM product_details", (err, row: any) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            results.productDetailsCount = row.count;
+            checkComplete();
+        });
+    });
+}

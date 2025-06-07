@@ -762,6 +762,13 @@ export interface IElectronAPI extends IPlatformAPI {
     readonly detectGaps: (params: MethodParamsMapping['detectGaps']) => Promise<MethodReturnMapping['detectGaps']>;
     readonly collectGaps: (params: MethodParamsMapping['collectGaps']) => Promise<MethodReturnMapping['collectGaps']>;
     readonly executeGapBatchCollection: (params: MethodParamsMapping['executeGapBatchCollection']) => Promise<MethodReturnMapping['executeGapBatchCollection']>;
+    
+    // 누락 제품 수집 API
+    readonly analyzeMissingProducts: () => Promise<any>;
+    readonly crawlMissingProducts: (params: any) => Promise<any>;
+    
+    // 일반적인 invoke 메서드
+    readonly invoke: (channel: string, ...args: any[]) => Promise<any>;
 }
 
 /**
@@ -803,6 +810,69 @@ export type ConditionalCrawlingProps<T extends CrawlingStatus> =
   T extends 'running' ? { readonly onStop: () => void } :
   T extends 'stopping' ? { readonly showOverlay: true } :
   { readonly onStart?: () => void };
+
+/**
+ * =====================================================
+ * MISSING DATA ANALYSIS TYPES
+ * =====================================================
+ */
+
+/**
+ * 누락된 제품 정보
+ */
+export interface MissingProduct {
+    readonly url: string;
+    readonly pageId: number;
+    readonly indexInPage: number;
+}
+
+/**
+ * 불완전한 페이지 정보
+ */
+export interface IncompletePage {
+    readonly pageId: number;
+    readonly missingIndices: readonly number[];
+    readonly expectedCount: number;
+    readonly actualCount: number;
+}
+
+/**
+ * 누락 데이터 분석 결과
+ */
+export interface MissingDataAnalysis {
+    readonly missingDetails: readonly MissingProduct[];
+    readonly incompletePages: readonly IncompletePage[];
+    readonly totalMissingDetails: number;
+    readonly totalIncompletePages: number;
+    readonly summary: {
+        readonly productsCount: number;
+        readonly productDetailsCount: number;
+        readonly difference: number;
+    };
+}
+
+/**
+ * 크롤링 범위 정의 (비연속적 페이지 처리용)
+ */
+export interface CrawlingRange {
+    readonly startPage: number;
+    readonly endPage: number;
+    readonly reason: string;
+    readonly priority?: number;
+    readonly estimatedProducts?: number;
+}
+
+/**
+ * 누락 제품 수집 결과
+ */
+export interface MissingProductCollectionResult {
+    readonly collected: number;
+    readonly failed: number;
+    readonly skipped: number;
+    readonly collectedUrls: readonly string[];
+    readonly failedUrls: readonly string[];
+    readonly errors: readonly string[];
+}
 
 /**
  * =====================================================

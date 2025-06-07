@@ -234,7 +234,14 @@ const electronAPI: IElectronAPI = {
     // Gap Detection API 추가
     detectGaps: createMethodHandler('detectGaps'),
     collectGaps: createMethodHandler('collectGaps'),
-    executeGapBatchCollection: createMethodHandler('executeGapBatchCollection')
+    executeGapBatchCollection: createMethodHandler('executeGapBatchCollection'),
+    
+    // 누락 제품 수집 API 추가
+    analyzeMissingProducts: () => ipcRenderer.invoke('analyzeMissingProducts'),
+    crawlMissingProducts: (params: any) => ipcRenderer.invoke('crawlMissingProducts', params),
+    
+    // 일반적인 invoke 메서드 (유연성을 위해)
+    invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args)
 };
 
 // contextBridge를 통해 안전하게 API 노출
