@@ -246,7 +246,13 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
         </div>
 
         {/* Summary Statistics with Categorization */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <div className={`grid gap-3 mb-4 ${
+          analysisData && analysisData.totalIncompletePages > 0 
+            ? 'grid-cols-1 md:grid-cols-3' 
+            : statusSummary 
+              ? 'grid-cols-1 md:grid-cols-2' 
+              : 'grid-cols-1'
+        }`}>
           {/* Total Missing Products */}
           <div className="text-center p-3 bg-white dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-orange-600">
             <div className="text-lg font-bold text-orange-600 dark:text-orange-400">
@@ -276,14 +282,14 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
           )}
           
           {/* Incomplete Pages with Site Page Range */}
-          {analysisData && (
+          {analysisData && analysisData.totalIncompletePages > 0 && (
             <div className="text-center p-3 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-600">
               <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                {analysisData.totalIncompletePages || 0}
+                {analysisData.totalIncompletePages}
               </div>
               <div className="text-xs text-gray-600 dark:text-gray-400">Incomplete Pages</div>
               <div className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                ~{(analysisData.totalIncompletePages || 0) * 12} products affected
+                ~{analysisData.totalIncompletePages * 12} products affected
               </div>
             </div>
           )}

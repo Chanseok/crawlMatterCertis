@@ -1230,79 +1230,116 @@ export async function findMissingProductDetails(): Promise<Array<{url: string, p
  * Find incomplete pages (pages that don't have all indices 0-11)
  */
 export async function findIncompletePages(): Promise<Array<{pageId: number, missingIndices: number[], expectedCount: number, actualCount: number}>> {
-    return new Promise((resolve, reject) => {
-        // First, find pages with incomplete index coverage
-        const query = `
-            WITH page_stats AS (
+    return new Promise(async (resolve, reject) => {
+        try {
+            // First, get the total product count to determine if we have a last page with fewer products
+            const totalProductsQuery = `SELECT COUNT(*) as totalProducts FROM products WHERE pageId IS NOT NULL`;
+            const totalProductsResult = await new Promise<{totalProducts: number}>((resolveCount, rejectCount) => {
+                db.get(totalProductsQuery, [], (err, row: any) => {
+                    if (err) rejectCount(err);
+                    else resolveCount(row);
+                });
+            });
+            
+            const totalProducts = totalProductsResult.totalProducts;
+            const productsPerPage = 12;
+            const expectedLastPageProducts = totalProducts > 0 ? (totalProducts % productsPerPage) || productsPerPage : 12;
+            
+            log.info(`[DB] Total products: ${totalProducts}, Expected last page products: ${expectedLastPageProducts}`);
+            
+            // Find the highest pageId (which corresponds to the last page chronologically)
+            const maxPageIdQuery = `SELECT MAX(pageId) as maxPageId FROM products WHERE pageId IS NOT NULL`;
+            const maxPageIdResult = await new Promise<{maxPageId: number}>((resolveMax, rejectMax) => {
+                db.get(maxPageIdQuery, [], (err, row: any) => {
+                    if (err) rejectMax(err);
+                    else resolveMax(row);
+                });
+            });
+            
+            const maxPageId = maxPageIdResult.maxPageId;
+            
+            // Query to find pages with incomplete index coverage
+            const query = `
+                WITH page_stats AS (
+                    SELECT 
+                        pageId,
+                        COUNT(*) as actualCount,
+                        MIN(indexInPage) as minIndex,
+                        MAX(indexInPage) as maxIndex
+                    FROM products
+                    WHERE pageId IS NOT NULL
+                    GROUP BY pageId
+                )
                 SELECT 
                     pageId,
-                    COUNT(*) as actualCount,
-                    MIN(indexInPage) as minIndex,
-                    MAX(indexInPage) as maxIndex
-                FROM products
-                WHERE pageId IS NOT NULL
-                GROUP BY pageId
-            )
-            SELECT 
-                pageId,
-                actualCount
-            FROM page_stats
-            WHERE actualCount < 12 OR minIndex != 0 OR maxIndex != 11
-            ORDER BY pageId DESC
-        `;
-        
-        db.all(query, [], (err, rows: any[]) => {
-            if (err) {
-                log.error('[DB] Error finding incomplete pages:', err);
-                reject(err);
-                return;
-            }
+                    actualCount
+                FROM page_stats
+                WHERE 
+                    CASE 
+                        WHEN pageId = ? THEN actualCount < ? OR minIndex != 0 OR maxIndex != (? - 1)
+                        ELSE actualCount < 12 OR minIndex != 0 OR maxIndex != 11
+                    END
+                ORDER BY pageId DESC
+            `;
             
-            if (rows.length === 0) {
-                resolve([]);
-                return;
-            }
-            
-            // For each incomplete page, find missing indices
-            const incompletePages: Array<{pageId: number, missingIndices: number[], expectedCount: number, actualCount: number}> = [];
-            let processedPages = 0;
-            
-            rows.forEach(row => {
-                const pageId = row.pageId;
-                const expectedIndices = Array.from({length: 12}, (_, i) => i);
+            db.all(query, [maxPageId, expectedLastPageProducts, expectedLastPageProducts], (err, rows: any[]) => {
+                if (err) {
+                    log.error('[DB] Error finding incomplete pages:', err);
+                    reject(err);
+                    return;
+                }
                 
-                db.all(
-                    "SELECT indexInPage FROM products WHERE pageId = ? ORDER BY indexInPage",
-                    [pageId],
-                    (err, indexRows: any[]) => {
-                        if (err) {
-                            log.error(`[DB] Error getting indices for page ${pageId}:`, err);
+                if (rows.length === 0) {
+                    resolve([]);
+                    return;
+                }
+                
+                // For each incomplete page, find missing indices
+                const incompletePages: Array<{pageId: number, missingIndices: number[], expectedCount: number, actualCount: number}> = [];
+                let processedPages = 0;
+                
+                rows.forEach(row => {
+                    const pageId = row.pageId;
+                    const isLastPage = pageId === maxPageId;
+                    const expectedCount = isLastPage ? expectedLastPageProducts : 12;
+                    const expectedIndices = Array.from({length: expectedCount}, (_, i) => i);
+                    
+                    db.all(
+                        "SELECT indexInPage FROM products WHERE pageId = ? ORDER BY indexInPage",
+                        [pageId],
+                        (err, indexRows: any[]) => {
+                            if (err) {
+                                log.error(`[DB] Error getting indices for page ${pageId}:`, err);
+                                processedPages++;
+                                if (processedPages === rows.length) {
+                                    resolve(incompletePages);
+                                }
+                                return;
+                            }
+                            
+                            const actualIndices = indexRows.map(r => r.indexInPage);
+                            const missingIndices = expectedIndices.filter(idx => !actualIndices.includes(idx));
+                            
+                            incompletePages.push({
+                                pageId,
+                                missingIndices,
+                                expectedCount,
+                                actualCount: actualIndices.length
+                            });
+                            
                             processedPages++;
                             if (processedPages === rows.length) {
+                                log.info(`[DB] Found ${incompletePages.length} incomplete pages (total products: ${totalProducts}, expected last page: ${expectedLastPageProducts})`);
                                 resolve(incompletePages);
                             }
-                            return;
                         }
-                        
-                        const actualIndices = indexRows.map(r => r.indexInPage);
-                        const missingIndices = expectedIndices.filter(idx => !actualIndices.includes(idx));
-                        
-                        incompletePages.push({
-                            pageId,
-                            missingIndices,
-                            expectedCount: 12,
-                            actualCount: actualIndices.length
-                        });
-                        
-                        processedPages++;
-                        if (processedPages === rows.length) {
-                            log.info(`[DB] Found ${incompletePages.length} incomplete pages`);
-                            resolve(incompletePages);
-                        }
-                    }
-                );
+                    );
+                });
             });
-        });
+        } catch (error) {
+            log.error('[DB] Error in findIncompletePages:', error);
+            reject(error);
+        }
     });
 }
 
