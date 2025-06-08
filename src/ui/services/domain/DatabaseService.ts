@@ -222,8 +222,8 @@ export class DatabaseService extends BaseService {
   async deleteRecordsByPageRange(startPage: number, endPage: number): Promise<ServiceResult<{ deletedCount: number }>> {
     console.log(`[DatabaseService] deleteRecordsByPageRange called with startPage: ${startPage}, endPage: ${endPage}`);
     
-    // 기본 파라미터 검증
-    if (typeof startPage !== 'number' || typeof endPage !== 'number' || startPage <= 0 || endPage <= 0) {
+    // 기본 파라미터 검증 (0-based 인덱스이므로 >= 0이면 유효)
+    if (typeof startPage !== 'number' || typeof endPage !== 'number' || startPage < 0 || endPage < 0) {
       console.log(`[DatabaseService] Validation failed - startPage: ${startPage} (type: ${typeof startPage}), endPage: ${endPage} (type: ${typeof endPage})`);
       return this.createFailure(
         this.createError('INVALID_PARAMS', 'Invalid page range parameters')
