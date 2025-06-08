@@ -764,6 +764,25 @@ export class IPCService {
   }
 
   /**
+   * Excel에서 데이터 가져오기
+   */
+  public async importFromExcel(): Promise<any> {
+    if (!this.isElectronAvailable) {
+      throw new Error('Electron not available');
+    }
+
+    try {
+      console.log('[IPCService] Calling Excel import...');
+      const result = await window.electron.importFromExcel();
+      console.log('[IPCService] Excel import result:', result);
+      return result;
+    } catch (error) {
+      console.error('[IPCService] Failed to import from Excel:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 벤더 정보 가져와서 업데이트
    */
   public async fetchAndUpdateVendors(): Promise<any> {

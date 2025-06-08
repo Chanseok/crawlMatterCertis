@@ -604,6 +604,7 @@ export interface MethodParamsMapping {
     readonly 'startCrawling': { readonly mode: AppMode; readonly config?: CrawlerConfig };
     readonly 'stopCrawling': void;
     readonly 'exportToExcel': { readonly path?: string };
+    readonly 'importFromExcel': void;
     readonly 'getProducts': { readonly search?: string; readonly page?: number; readonly limit?: number };
     readonly 'getProductById': string;
     readonly 'searchProducts': { readonly query: string; readonly page?: number; readonly limit?: number };
@@ -632,6 +633,7 @@ export interface MethodReturnMapping {
     readonly 'startCrawling': { readonly success: boolean };
     readonly 'stopCrawling': { readonly success: boolean };
     readonly 'exportToExcel': { readonly success: boolean; readonly path?: string };
+    readonly 'importFromExcel': { readonly success: boolean; readonly importedCount: number; readonly errors: ReadonlyArray<string>; readonly message: string };
     readonly 'getProducts': { readonly products: ReadonlyArray<MatterProduct>; readonly total: number; readonly maxPageId?: number };
     readonly 'getProductById': MatterProduct | null;
     readonly 'searchProducts': { readonly products: ReadonlyArray<MatterProduct>; readonly total: number };
@@ -745,6 +747,7 @@ export interface IElectronAPI extends IPlatformAPI {
     readonly startCrawling: (params: MethodParamsMapping['startCrawling']) => Promise<MethodReturnMapping['startCrawling']>;
     readonly stopCrawling: () => Promise<MethodReturnMapping['stopCrawling']>;
     readonly exportToExcel: (params: MethodParamsMapping['exportToExcel']) => Promise<MethodReturnMapping['exportToExcel']>;
+    readonly importFromExcel: () => Promise<MethodReturnMapping['importFromExcel']>;
     readonly getProducts: (params: MethodParamsMapping['getProducts']) => Promise<MethodReturnMapping['getProducts']>;
     readonly getProductById: (id: MethodParamsMapping['getProductById']) => Promise<MethodReturnMapping['getProductById']>;
     readonly getDatabaseSummary: () => Promise<MethodReturnMapping['getDatabaseSummary']>;

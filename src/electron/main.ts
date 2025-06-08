@@ -55,6 +55,7 @@ const IPC_CHANNELS = {
     START_CRAWLING: 'startCrawling',
     STOP_CRAWLING: 'stopCrawling',
     EXPORT_TO_EXCEL: 'exportToExcel',
+    IMPORT_FROM_EXCEL: 'importFromExcel',
     CHECK_CRAWLING_STATUS: 'checkCrawlingStatus',
     
     // 설정 관련 채널 추가
@@ -521,6 +522,225 @@ app.on('ready', async () => {
         } catch (error) {
             log.error('[IPC] Error exporting to Excel:', error);
             return { success: false, error: String(error) };
+        }
+    });
+
+    ipcMain.handle(IPC_CHANNELS.IMPORT_FROM_EXCEL, async (_event, args) => {
+        log.info('[IPC] importFromExcel called with args:', args);
+        try {
+            // 파일 선택 대화상자 표시
+            const { canceled, filePaths } = await dialog.showOpenDialog({
+                title: 'Excel 파일 가져오기',
+                defaultPath: app.getPath('downloads'),
+                filters: [{ name: 'Excel 파일', extensions: ['xlsx', 'xls'] }],
+                properties: ['openFile']
+            });
+
+            if (canceled || !filePaths || filePaths.length === 0) {
+                return { success: false, message: '사용자가 가져오기를 취소했습니다.' };
+            }
+
+            const filePath = filePaths[0];
+            
+            if (!fs.existsSync(filePath)) {
+                throw new Error('선택된 파일이 존재하지 않습니다.');
+            }
+
+            log.info(`[Excel Import] Reading file: ${filePath}`);
+            
+            // 엑셀 파일 읽기
+            const workbook = XLSX.readFile(filePath);
+            const sheetNames = workbook.SheetNames;
+            
+            log.info(`[Excel Import] Found sheets: ${sheetNames.join(', ')}`);
+            
+            let importedCount = 0;
+            let errors: string[] = [];
+
+            // Product Details 시트 처리 (우선순위)
+            if (sheetNames.includes('Product Details')) {
+                try {
+                    const worksheet = workbook.Sheets['Product Details'];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    
+                    if (jsonData.length > 1) { // 헤더 제외하고 데이터가 있는지 확인
+                        const headers = jsonData[0] as string[];
+                        const rows = jsonData.slice(1) as any[][];
+                        
+                        // 헤더 매핑 (한글 -> 영문)
+                        const headerMap: Record<string, string> = {
+                            '제조사': 'manufacturer',
+                            '모델명': 'model',
+                            '장치 유형': 'deviceType',
+                            '인증 ID': 'certificateId',
+                            '인증 날짜': 'certificationDate',
+                            'URL': 'url',
+                            '페이지': 'pageId',
+                            '페이지 내 인덱스': 'indexInPage',
+                            'VID': 'vid',
+                            'PID': 'pid',
+                            '제품군 SKU': 'familySku',
+                            '제품 변형 SKU': 'familyVariantSku',
+                            '펌웨어 버전': 'firmwareVersion',
+                            '제품군 ID': 'familyId',
+                            'TIS/TRP 테스트': 'tisTrpTested',
+                            '규격 버전': 'specificationVersion',
+                            '전송 인터페이스': 'transportInterface',
+                            '기본 장치 유형 ID': 'primaryDeviceTypeId',
+                            '소프트웨어 버전': 'softwareVersion',
+                            '하드웨어 버전': 'hardwareVersion',
+                            '신규 제품 여부': 'isNewProduct'
+                        };
+                        
+                        // 제품 데이터 변환
+                        const products = rows.map((row, rowIndex) => {
+                            const product: any = {};
+                            
+                            headers.forEach((header, colIndex) => {
+                                const englishKey = headerMap[header] || header;
+                                let value = row[colIndex];
+                                
+                                // 데이터 타입 변환
+                                if (englishKey === 'pageId' && typeof value === 'number') {
+                                    value = value - 1; // UI에서는 1부터 시작하지만 DB에서는 0부터 시작
+                                } else if (englishKey === 'certificationDate' && value) {
+                                    // 날짜 형식 정규화
+                                    if (typeof value === 'string') {
+                                        const date = new Date(value);
+                                        if (!isNaN(date.getTime())) {
+                                            value = date.toISOString();
+                                        }
+                                    }
+                                } else if (englishKey === 'isNewProduct') {
+                                    value = value === '예' || value === true;
+                                } else if (englishKey === 'applicationCategories' && typeof value === 'string') {
+                                    value = value.split(',').map(s => s.trim()).filter(s => s);
+                                }
+                                
+                                if (value !== undefined && value !== null && value !== '') {
+                                    product[englishKey] = value;
+                                }
+                            });
+                            
+                            // 필수 필드 검증
+                            if (!product.url || !product.manufacturer || !product.model) {
+                                errors.push(`Row ${rowIndex + 2}: 필수 필드 누락 (URL, 제조사, 모델명)`);
+                                return null;
+                            }
+                            
+                            // ID 및 타임스탬프 추가
+                            product.id = product.id || crypto.randomUUID();
+                            product.createdAt = new Date().toISOString();
+                            product.updatedAt = new Date().toISOString();
+                            
+                            return product;
+                        }).filter(p => p !== null);
+                        
+                        // 데이터베이스에 저장
+                        if (products.length > 0) {
+                            log.info(`[Excel Import] Saving ${products.length} products to database`);
+                            const { saveProductsToDb } = await import('./database.js');
+                            const saveResult = await saveProductsToDb(products);
+                            
+                            importedCount += saveResult.added + saveResult.updated;
+                            log.info(`[Excel Import] Successfully saved ${products.length} products - Added: ${saveResult.added}, Updated: ${saveResult.updated}`);
+                        }
+                    }
+                } catch (sheetError) {
+                    log.error('[Excel Import] Error processing Product Details sheet:', sheetError);
+                    errors.push(`Product Details 시트 처리 중 오류: ${String(sheetError)}`);
+                }
+            }
+            // Products 시트 처리 (fallback)
+            else if (sheetNames.includes('Products')) {
+                try {
+                    const worksheet = workbook.Sheets['Products'];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    
+                    if (jsonData.length > 1) { // 헤더 제외하고 데이터가 있는지 확인
+                        const headers = jsonData[0] as string[];
+                        const rows = jsonData.slice(1) as any[][];
+                        
+                        const headerMap: Record<string, string> = {
+                            'URL': 'url',
+                            '제조사': 'manufacturer',
+                            '모델명': 'model',
+                            '인증 ID': 'certificateId',
+                            '페이지': 'pageId',
+                            '페이지 내 인덱스': 'indexInPage'
+                        };
+                        
+                        const products = rows.map((row, rowIndex) => {
+                            const product: any = {};
+                            
+                            headers.forEach((header, colIndex) => {
+                                const englishKey = headerMap[header] || header;
+                                let value = row[colIndex];
+                                
+                                if (englishKey === 'pageId' && typeof value === 'number') {
+                                    value = value - 1; // UI에서는 1부터 시작하지만 DB에서는 0부터 시작
+                                }
+                                
+                                if (value !== undefined && value !== null && value !== '') {
+                                    product[englishKey] = value;
+                                }
+                            });
+                            
+                            if (!product.url || !product.manufacturer || !product.model) {
+                                errors.push(`Row ${rowIndex + 2}: 필수 필드 누락 (URL, 제조사, 모델명)`);
+                                return null;
+                            }
+                            
+                            product.id = product.id || crypto.randomUUID();
+                            product.createdAt = new Date().toISOString();
+                            product.updatedAt = new Date().toISOString();
+                            
+                            return product;
+                        }).filter(p => p !== null);
+                        
+                        if (products.length > 0) {
+                            log.info(`[Excel Import] Saving ${products.length} basic products to database`);
+                            const { saveBasicProductsToDb } = await import('./database.js');
+                            const savedCount = await saveBasicProductsToDb(products);
+                            
+                            importedCount += savedCount;
+                            log.info(`[Excel Import] Successfully saved ${savedCount} basic products`);
+                        }
+                    }
+                } catch (sheetError) {
+                    log.error('[Excel Import] Error processing Products sheet:', sheetError);
+                    errors.push(`Products 시트 처리 중 오류: ${String(sheetError)}`);
+                }
+            } else {
+                errors.push('Product Details 또는 Products 시트를 찾을 수 없습니다.');
+            }
+
+            // 결과 반환
+            const result = {
+                success: importedCount > 0,
+                importedCount,
+                errors,
+                message: importedCount > 0 
+                    ? `${importedCount}개의 제품을 성공적으로 가져왔습니다.`
+                    : '가져온 제품이 없습니다.'
+            };
+            
+            if (errors.length > 0) {
+                result.message += ` (${errors.length}개의 오류 발생)`;
+                log.warn('[Excel Import] Errors occurred:', errors);
+            }
+            
+            log.info(`[Excel Import] Import completed: ${JSON.stringify(result)}`);
+            return result;
+            
+        } catch (error) {
+            log.error('[IPC] Error importing from Excel:', error);
+            return { 
+                success: false, 
+                error: String(error), 
+                importedCount: 0,
+                errors: [String(error)]
+            };
         }
     });
 

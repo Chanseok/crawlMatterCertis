@@ -202,6 +202,39 @@ export const LocalDBTab: React.FC = observer(() => {
     }
   }, [exportToExcel]);
 
+  // 엑셀 가져오기 핸들러
+  const handleImportFromExcel = useCallback(async () => {
+    try {
+      console.log('LocalDBTab: Starting Excel import');
+      
+      // IPC 서비스 통해 엑셀 가져오기 호출
+      const ipcService = (await import('../services/IPCService')).default;
+      const result = await ipcService.importFromExcel();
+      
+      if (result.success) {
+        console.log(`LocalDBTab: Excel import completed successfully - imported ${result.importedCount} products`);
+        
+        // 데이터 재로드
+        await loadProducts();
+        await loadSummary();
+        
+        // 성공 메시지 표시 (옵션)
+        alert(`엑셀 가져오기 성공!\n${result.importedCount}개의 제품을 가져왔습니다.`);
+      } else {
+        console.error('LocalDBTab: Excel import failed:', result.error);
+        alert(`엑셀 가져오기 실패: ${result.error || '알 수 없는 오류'}`);
+      }
+      
+      if (result.errors && result.errors.length > 0) {
+        console.warn('LocalDBTab: Import warnings:', result.errors);
+        alert(`가져오기 중 경고사항:\n${result.errors.join('\n')}`);
+      }
+    } catch (error) {
+      console.error('LocalDBTab: Excel import failed:', error);
+      alert(`엑셀 가져오기 중 오류가 발생했습니다: ${String(error)}`);
+    }
+  }, [loadProducts, loadSummary]);
+
   // 최대 페이지 ID 계산 - UI 페이지네이션과 일치
   const maxPageId = useMemo(() => {
     return totalPages > 0 ? totalPages - 1 : 0; // 0-based index로 UI와 일치
@@ -378,6 +411,12 @@ export const LocalDBTab: React.FC = observer(() => {
                     className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded transition-colors duration-200"
                   >
                   엑셀 내보내기
+                  </button>
+                  <button
+                    onClick={handleImportFromExcel}
+                    className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors duration-200"
+                  >
+                  엑셀 가져오기
                   </button>
                 </div>
               </div>

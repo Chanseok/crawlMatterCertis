@@ -204,6 +204,7 @@ const electronAPI: IElectronAPI = {
     startCrawling: createMethodHandler('startCrawling'),
     stopCrawling: createMethodHandler('stopCrawling'),
     exportToExcel: createMethodHandler('exportToExcel'),
+    importFromExcel: createMethodHandler('importFromExcel'),
     getProducts: createMethodHandler('getProducts'),
     getProductById: createMethodHandler('getProductById'),
     searchProducts: createMethodHandler('searchProducts'),
