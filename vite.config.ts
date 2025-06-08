@@ -19,7 +19,37 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id: string) {
-          // node_modules에 있는 모든 라이브러리를 'vendor' 청크로 분리
+          // React 관련 라이브러리를 별도 청크로 분리
+          if (id.includes('react') || id.includes('react-dom')) {
+            return 'react-vendor';
+          }
+          
+          // 차트 라이브러리를 별도 청크로 분리
+          if (id.includes('recharts') || id.includes('d3-')) {
+            return 'charts';
+          }
+          
+          // MobX 상태관리 라이브러리를 별도 청크로 분리
+          if (id.includes('mobx')) {
+            return 'state-management';
+          }
+          
+          // 크롤링 관련 대형 라이브러리들을 별도 청크로 분리
+          if (id.includes('playwright') || id.includes('cheerio') || id.includes('axios')) {
+            return 'crawler-libs';
+          }
+          
+          // Excel/Office 관련 라이브러리를 별도 청크로 분리
+          if (id.includes('exceljs') || id.includes('xlsx')) {
+            return 'office-libs';
+          }
+          
+          // 기타 유틸리티 라이브러리들
+          if (id.includes('date-fns') || id.includes('nanoid') || id.includes('zod')) {
+            return 'utils';
+          }
+          
+          // 나머지 node_modules를 vendor 청크로 분리
           if (id.includes('node_modules')) {
             return 'vendor';
           }

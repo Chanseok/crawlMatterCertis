@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useDatabaseStore } from '../hooks';
+import { IPCService } from '../services/IPCService';
 import type { MatterProduct } from '../../../types';
 import { format } from 'date-fns';
 
@@ -208,7 +209,7 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
       console.log('LocalDBTab: Starting Excel import');
       
       // IPC 서비스 통해 엑셀 가져오기 호출
-      const ipcService = (await import('../services/IPCService')).default;
+      const ipcService = IPCService.getInstance();
       const result = await ipcService.importFromExcel();
       
       if (result.success) {
