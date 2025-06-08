@@ -619,7 +619,6 @@ export interface MethodParamsMapping {
     readonly 'saveProductsToDB': ReadonlyArray<MatterProduct>;
     readonly 'fetchAndUpdateVendors': void;
     readonly 'getVendors': void;
-    readonly 'testBatchUI': { readonly batchCount?: number; readonly delayMs?: number };
     readonly 'getConfigPath': void;
     readonly 'detectGaps': { readonly config?: CrawlerConfig };
     readonly 'collectGaps': { readonly gapResult: GapDetectionResult; readonly options?: GapCollectionOptions };
@@ -663,11 +662,6 @@ export interface MethodReturnMapping {
     readonly 'getVendors': {
         readonly success: boolean;
         readonly vendors: ReadonlyArray<Vendor>;
-        readonly error?: string;
-    };
-    readonly 'testBatchUI': {
-        readonly success: boolean;
-        readonly message?: string;
         readonly error?: string;
     };
     readonly 'getConfigPath': {
@@ -761,7 +755,6 @@ export interface IElectronAPI extends IPlatformAPI {
     readonly deleteRecordsByPageRange: (params: MethodParamsMapping['deleteRecordsByPageRange']) => Promise<MethodReturnMapping['deleteRecordsByPageRange']>;
     readonly fetchAndUpdateVendors: () => Promise<MethodReturnMapping['fetchAndUpdateVendors']>;
     readonly getVendors: () => Promise<MethodReturnMapping['getVendors']>;
-    readonly testBatchUI: (params: MethodParamsMapping['testBatchUI']) => Promise<MethodReturnMapping['testBatchUI']>;
     readonly detectGaps: (params: MethodParamsMapping['detectGaps']) => Promise<MethodReturnMapping['detectGaps']>;
     readonly collectGaps: (params: MethodParamsMapping['collectGaps']) => Promise<MethodReturnMapping['collectGaps']>;
     readonly executeGapBatchCollection: (params: MethodParamsMapping['executeGapBatchCollection']) => Promise<MethodReturnMapping['executeGapBatchCollection']>;

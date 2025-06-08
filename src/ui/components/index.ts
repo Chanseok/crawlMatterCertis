@@ -1,8 +1,6 @@
 // Main components exports
 export { default as DomainStoreDemo } from './DomainStoreDemo';
 export { BatchProcessingSettings } from './BatchProcessingSettings';
-export { BatchUITestButton } from './BatchUITestButton';
-export { BatchUITestSection } from './BatchUITestSection';
 export { CrawlingCompleteView } from './CrawlingCompleteView';
 export { default as CrawlingDashboard } from './CrawlingDashboard';
 export { CrawlingSettings } from './CrawlingSettings';

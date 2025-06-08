@@ -228,10 +228,6 @@ const electronAPI: IElectronAPI = {
     fetchAndUpdateVendors: createMethodHandler('fetchAndUpdateVendors'),
     getVendors: createMethodHandler('getVendors'),
     
-    // 배치 UI 테스트 API 추가
-    testBatchUI: (args: { batchCount?: number; delayMs?: number }) => 
-        ipcRenderer.invoke('testBatchUI', args),
-    
     // Gap Detection API 추가
     detectGaps: createMethodHandler('detectGaps'),
     collectGaps: createMethodHandler('collectGaps'),

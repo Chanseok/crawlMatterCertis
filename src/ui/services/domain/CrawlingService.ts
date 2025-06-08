@@ -293,19 +293,6 @@ export class CrawlingService extends BaseService {
   }
 
   /**
-   * 배치 처리 테스트 실행
-   */
-  async testBatchProcessing(): Promise<ServiceResult<boolean>> {
-    return this.executeOperation(async () => {
-      if (!this.isIPCAvailable()) {
-        throw new Error('IPC not available');
-      }
-
-      return await this.ipcService.testBatchUI();
-    }, 'testBatchProcessing');
-  }
-
-  /**
    * 설정 유효성 검사
    */
   private validateConfig(config: Partial<CrawlerConfig>): void {

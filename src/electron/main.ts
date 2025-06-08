@@ -27,10 +27,6 @@ import { ProgressManager } from './progress/ProgressManager.js';
 import type { AppMode, CrawlingProgress } from '../../types.js';
 import type { FailedPageReport, CrawlingResultReport } from './crawler/utils/types.js';
 import { configManager } from './ConfigManager.js';
-// 배치 UI 테스트용 모듈 추가
-import { simulateBatchProcessing } from './crawler/test/batch-ui-test.js';
-// 배치 UI 테스트 기능 추가
-import { setupBatchUITestHandlers } from './test/batch-ui-test-integrator.js';
 
 // 로컬에서 필요한 타입 정의
 interface CrawlingTaskStatus {
@@ -73,9 +69,6 @@ const IPC_CHANNELS = {
     // Vendor 관련 채널 추가
     FETCH_AND_UPDATE_VENDORS: 'fetchAndUpdateVendors',
     GET_VENDORS: 'getVendors',
-    
-    // 배치 처리 UI 테스트 채널 추가
-    TEST_BATCH_UI: 'testBatchUI',
     
     // Gap Detection 관련 채널 추가
     DETECT_GAPS: 'detectGaps',
@@ -120,10 +113,6 @@ app.on('ready', async () => {
     try {
         await initializeDatabase();
         log.info('Database initialized successfully.');
-        
-        // 배치 UI 테스트 핸들러 설정
-        setupBatchUITestHandlers();
-        log.info('Batch UI test handlers initialized.');
     } catch (error) {
         log.error('Failed to initialize database:', error);
         app.quit();
@@ -944,29 +933,6 @@ app.on('ready', async () => {
         }
     });
     
-    // 배치 처리 UI 테스트 핸들러
-    ipcMain.handle(IPC_CHANNELS.TEST_BATCH_UI, async (_event, args) => {
-        log.info('[IPC] testBatchUI called with args:', args);
-        try {
-            const { batchCount = 5, delayMs = 2000 } = args || {};
-            
-            // 배치 처리 UI 테스트 시작 (비동기 실행)
-            simulateBatchProcessing(batchCount, delayMs)
-                .catch(err => log.error('[IPC] Error during batch UI test:', err));
-                
-            return {
-                success: true,
-                message: `배치 처리 UI 테스트가 시작되었습니다. (${batchCount}개 배치, ${delayMs}ms 지연)`
-            };
-        } catch (error) {
-            log.error('[IPC] Error starting batch UI test:', error);
-            return {
-                success: false,
-                error: String(error)
-            };
-        }
-    });
-    
     // Gap Detection 핸들러
     ipcMain.handle(IPC_CHANNELS.DETECT_GAPS, async (_event, args) => {
         log.info('[IPC] detectGaps called with args:', args);
@@ -1430,3 +1396,4 @@ app.on('activate', () => {
         // Re-create the main window on macOS when app icon is clicked and no windows are open
     }
 });
+

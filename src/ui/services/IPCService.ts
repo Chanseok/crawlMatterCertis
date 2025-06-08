@@ -584,22 +584,6 @@ export class IPCService {
   }
 
   /**
-   * 배치 UI 테스트 시작
-   */
-  public async testBatchUI(args?: any): Promise<any> {
-    if (!this.isElectronAvailable) {
-      throw new Error('Electron not available');
-    }
-
-    try {
-      return await window.electron.testBatchUI(args);
-    } catch (error) {
-      console.error('[IPCService] Failed to start batch UI test:', error);
-      throw error;
-    }
-  }
-
-  /**
    * 제품 목록 조회
    */
   public async getProducts(args?: { page?: number; limit?: number }): Promise<any> {
