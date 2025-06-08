@@ -5,7 +5,7 @@ import { VendorService } from './domain/VendorService';
 import { ExportService } from './domain/ExportService';
 import { ConfigurationService } from './domain/ConfigurationService';
 import { CrawlingWorkflowService } from './composite/CrawlingWorkflowService';
-import { IPCService } from './IPCService';
+import { IPCService } from './infrastructure/IPCService';
 import { isDevelopment } from '../utils/environment';
 import { Logger } from '../../shared/utils/Logger';
 

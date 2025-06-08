@@ -5,7 +5,7 @@
  * 공통 기능과 표준화된 에러 처리, 로깅을 제공
  */
 
-import { IPCService } from '../core/IPCService';
+import { IPCService } from '../infrastructure/IPCService';
 import { ResilienceManager } from '../resilience/ResilienceManager';
 import { Logger } from '../../../shared/utils/Logger';
 
@@ -111,7 +111,7 @@ export abstract class BaseService {
    * IPC 연결 상태 확인
    */
   protected isIPCAvailable(): boolean {
-    return this.ipcService.isAvailable();
+    return this.ipcService.isAvailable;
   }
 
   /**

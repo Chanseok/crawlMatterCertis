@@ -13,8 +13,8 @@ export { ConfigurationService } from './domain/ConfigurationService';
 // Composite services
 export { CrawlingWorkflowService } from './composite/CrawlingWorkflowService';
 
-// Core services
-export { IPCService } from './IPCService';
+// Infrastructure services (Clean Code Architecture)
+export { IPCService, ipcService } from './infrastructure/IPCService';
 
 // Service factory
 export { ServiceFactory, serviceFactory } from './ServiceFactory';
