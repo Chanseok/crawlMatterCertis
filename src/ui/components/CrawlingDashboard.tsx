@@ -367,6 +367,98 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     forceUpdateCounter
   ]);
 
+  // === 누락 제품 수집 관련 함수들 ===
+  const handleAnalyzeMissingProducts = useCallback(async () => {
+    if (isMissingAnalyzing || status === 'running') {
+      dashboardLogger.debug('Skipping missing product analysis: already analyzing or crawling in progress', {
+        isMissingAnalyzing,
+        status
+      });
+      return;
+    }
+    
+    setIsMissingAnalyzing(true);
+    try {
+      dashboardLogger.info('Starting missing product analysis');
+      
+      // MissingDataAnalyzer 서비스 호출
+      const result = await window.electron.analyzeMissingProducts();
+      
+      if (result.success) {
+        const analysisResult = {
+          missingCount: result.data.totalMissingDetails || 0,
+          analysisResult: result.data
+        };
+        
+        setMissingProductsInfo(analysisResult);
+        dashboardLogger.info('Missing product analysis completed', {
+          totalMissingDetails: result.data.totalMissingDetails,
+          totalIncompletePages: result.data.totalIncompletePages,
+          missingCount: analysisResult.missingCount
+        });
+      } else {
+        dashboardLogger.error('Missing product analysis failed', result.error);
+        // Error is now properly displayed to user via domain store error state
+      }
+    } catch (error) {
+      dashboardLogger.error('Error analyzing missing products', error);
+      // Error handling is managed by the domain store and displayed in UI
+    } finally {
+      setIsMissingAnalyzing(false);
+    }
+  }, [isMissingAnalyzing, status]);
+
+  // === Enhanced Auto-refresh callback for missing data analysis ===
+  const handleAutoRefreshMissingData = useCallback(() => {
+    dashboardLogger.info('Auto-refreshing missing data analysis', {
+      currentStatus: status,
+      hasMissingProductsInfo: !!missingProductsInfo,
+      statusSummary: statusSummary ? 'present' : 'null'
+    });
+    
+    // Reset missing data info to trigger re-analysis with updated data
+    setMissingProductsInfo(null);
+    
+    // Enhanced auto-analysis trigger with multiple retry attempts
+    const triggerAnalysisWithRetry = (attempt = 1, maxAttempts = 3) => {
+      const delay = attempt * 1000; // 1s, 2s, 3s delays
+      
+      setTimeout(() => {
+        // Check if we have status data and not currently analyzing
+        if (statusSummary && !isMissingAnalyzing) {
+          dashboardLogger.info(`Triggering automatic missing data re-analysis (attempt ${attempt}/${maxAttempts})`);
+          try {
+            handleAnalyzeMissingProducts();
+            dashboardLogger.info(`Missing data re-analysis triggered successfully (attempt ${attempt})`);
+          } catch (error) {
+            dashboardLogger.error(`Failed to trigger missing data re-analysis (attempt ${attempt})`, error);
+            
+            // Retry if not at max attempts
+            if (attempt < maxAttempts) {
+              dashboardLogger.info(`Retrying missing data re-analysis (attempt ${attempt + 1})`);
+              triggerAnalysisWithRetry(attempt + 1, maxAttempts);
+            } else {
+              dashboardLogger.error('All missing data re-analysis attempts failed');
+            }
+          }
+        } else {
+          dashboardLogger.warn(`Skipping missing data re-analysis (attempt ${attempt})`, {
+            hasStatusSummary: !!statusSummary,
+            isMissingAnalyzing
+          });
+          
+          // Retry if conditions aren't met yet and we haven't exceeded attempts
+          if (attempt < maxAttempts) {
+            triggerAnalysisWithRetry(attempt + 1, maxAttempts);
+          }
+        }
+      }, delay);
+    };
+    
+    // Start the retry process
+    triggerAnalysisWithRetry();
+  }, [statusSummary, missingProductsInfo, status, handleAnalyzeMissingProducts, isMissingAnalyzing]);
+
   const handleCheckStatus = useCallback(async () => {
     try {
       dashboardLogger.info('Status check started');
@@ -379,10 +471,17 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       await checkStatus();
       dashboardLogger.info('Status check completed');
       
-      // 🔧 NEW: Auto-refresh missing data analysis after status check
+      // 🔧 ENHANCED: Auto-refresh missing data analysis after status check
       dashboardLogger.info('Status check completed, auto-refreshing missing data analysis');
+      
       // Reset missing data analysis to trigger re-analysis with updated status
       setMissingProductsInfo(null);
+      
+      // Trigger auto-refresh with delay to ensure status data is updated
+      setTimeout(() => {
+        dashboardLogger.info('Triggering handleAutoRefreshMissingData after status check');
+        handleAutoRefreshMissingData();
+      }, 800); // Delay to ensure status data propagation
       
     } catch (error) {
       dashboardLogger.error('Status check failed', error);
@@ -392,7 +491,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         statusTabViewModel.setStatusChecking(false);
       }, 1500);
     }
-  }, [checkStatus, setAppCompareExpanded, statusTabViewModel]);
+  }, [checkStatus, setAppCompareExpanded, statusTabViewModel, handleAutoRefreshMissingData]);
 
   // === UI STATE METHODS (Using ViewModel) ===
   const getStageBadge = useCallback(() => {
@@ -421,7 +520,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
 
 
 
-  // === EFFECTS (Lifecycle Management) ===
+    // === EFFECTS (Lifecycle Management) ===
   
   // Timer effect for elapsed/remaining time
   useEffect(() => {
@@ -498,9 +597,38 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     statusSummary?.siteProductCount
   ]);
 
-  // Completion status handling with automatic status refresh
+  // Enhanced completion status handling with robust auto-refresh
+  const lastProcessedCompletion = useRef<string | null>(null);
+  const completionProcessedRef = useRef<boolean>(false);
+  
   useEffect(() => {
-    if (status === 'completed' && viewModel.currentStage === 2) {
+    // Enhanced completion detection - check multiple conditions
+    const isReallyCompleted = status === 'completed' || 
+                             (status === 'idle' && viewModel.currentStage === 2 && progress.percentage >= 100);
+    
+    // Create a unique completion ID without timestamp to prevent duplicate processing
+    const completionId = `${status}-${viewModel.currentStage}-${Math.floor(progress.percentage)}`;
+    
+    dashboardLogger.debug('Completion check', {
+      status,
+      currentStage: viewModel.currentStage,
+      percentage: progress.percentage,
+      isReallyCompleted,
+      completionId,
+      lastProcessedCompletion: lastProcessedCompletion.current,
+      completionProcessed: completionProcessedRef.current
+    });
+
+    if (isReallyCompleted && !completionProcessedRef.current) {
+      // Prevent duplicate processing of the same completion event
+      if (lastProcessedCompletion.current === completionId) {
+        dashboardLogger.debug('Completion already processed, skipping duplicate');
+        return;
+      }
+      
+      lastProcessedCompletion.current = completionId;
+      completionProcessedRef.current = true;
+      
       const totalItems = progress.totalItems || statusSummary?.siteProductCount || (targetPageCount * (config.productsPerPage || 12));
       const processedItems = progress.processedItems || 0;
       const isCompleteSuccess = processedItems >= totalItems;
@@ -508,8 +636,13 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       setIsSuccess(isCompleteSuccess);
       setShowCompletion(true);
 
-      // 🔧 NEW: Auto status update after crawling completion
-      dashboardLogger.info('Crawling completed, triggering automatic status update for site comparison');
+      // 🔧 ENHANCED: Auto status update after crawling completion
+      dashboardLogger.info('Crawling completed, triggering automatic status update for site comparison and missing data analysis', {
+        completionId,
+        isCompleteSuccess,
+        processedItems,
+        totalItems
+      });
       
       // Trigger automatic status check to refresh site-local comparison section
       statusTabViewModel.performAutoStatusCheck()
@@ -517,9 +650,33 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
           dashboardLogger.info('Auto status check completed after crawling completion');
           // Ensure the site comparison section is expanded to show updated data
           setAppCompareExpanded(true);
+          
+          // 🔧 ENHANCED: Auto-refresh missing data analysis after crawling completion
+          dashboardLogger.info('Triggering missing data analysis auto-refresh after crawling completion');
+          
+          // Add a delay to ensure all status data is fully updated before refreshing missing data
+          setTimeout(() => {
+            try {
+              handleAutoRefreshMissingData();
+              dashboardLogger.info('Missing data auto-refresh triggered successfully after crawling completion');
+            } catch (error) {
+              dashboardLogger.error('Error during missing data auto-refresh', error);
+            }
+          }, 1500); // Increased delay to ensure data consistency
         })
         .catch((error) => {
           dashboardLogger.error('Auto status check failed after crawling completion', error);
+          
+          // Even if status check fails, still try to refresh missing data analysis
+          dashboardLogger.info('Attempting missing data auto-refresh despite status check failure');
+          setTimeout(() => {
+            try {
+              handleAutoRefreshMissingData();
+              dashboardLogger.info('Fallback missing data auto-refresh completed');
+            } catch (refreshError) {
+              dashboardLogger.error('Error during fallback missing data auto-refresh', refreshError);
+            }
+          }, 2500); // Longer delay when status check fails
         });
 
       if (completionTimerRef.current) {
@@ -533,6 +690,11 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       }, isCompleteSuccess ? 10000 : 5000);
     } else {
       setShowCompletion(false);
+      // Reset completion tracking when not completed
+      if (status === 'running' || status === 'initializing') {
+        lastProcessedCompletion.current = null;
+        completionProcessedRef.current = false;
+      }
     }
 
     return () => {
@@ -541,7 +703,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         completionTimerRef.current = null;
       }
     };
-  }, [status, viewModel.currentStage, progress.processedItems, progress.totalItems, targetPageCount, config.productsPerPage, statusSummary?.siteProductCount, statusTabViewModel, setAppCompareExpanded]);
+  }, [status, viewModel.currentStage, progress.processedItems, progress.totalItems, progress.percentage, targetPageCount, config.productsPerPage, statusSummary?.siteProductCount, statusTabViewModel, setAppCompareExpanded]);
 
   // Animation effect for digit changes
   useEffect(() => {
@@ -615,35 +777,6 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     };
   }, [viewModel]);
 
-  // === 누락 제품 수집 관련 함수들 ===
-  const handleAnalyzeMissingProducts = useCallback(async () => {
-    if (isMissingAnalyzing || status === 'running') return;
-    
-    setIsMissingAnalyzing(true);
-    try {
-      dashboardLogger.info('Starting missing product analysis');
-      
-      // MissingDataAnalyzer 서비스 호출
-      const result = await window.electron.analyzeMissingProducts();
-      
-      if (result.success) {
-        setMissingProductsInfo({
-          missingCount: result.data.totalMissingDetails || 0,
-          analysisResult: result.data
-        });
-        dashboardLogger.info('Missing product analysis completed', result.data);
-      } else {
-        dashboardLogger.error('Missing product analysis failed', result.error);
-        // Error is now properly displayed to user via domain store error state
-      }
-    } catch (error) {
-      dashboardLogger.error('Error analyzing missing products', error);
-      // Error handling is managed by the domain store and displayed in UI
-    } finally {
-      setIsMissingAnalyzing(false);
-    }
-  }, [isMissingAnalyzing, status]);
-
   const handleStartMissingProductCrawling = useCallback(async () => {
     if (isMissingProductCrawling || status === 'running' || !missingProductsInfo?.analysisResult) return;
     
@@ -709,11 +842,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     }
   }, [isMissingProductCrawling, status, missingProductsInfo, configurationViewModel.config, handleCheckStatus]);
 
-  // === Auto-refresh callback for missing data analysis ===
-  const handleAutoRefreshMissingData = useCallback(() => {
-    dashboardLogger.info('Auto-refreshing missing data analysis');
-    setMissingProductsInfo(null); // Reset to trigger re-analysis
-  }, []);
+
 
   // === Manual Crawling 관련 함수들 ===
   const handleStartManualCrawling = useCallback(async (ranges: Array<{

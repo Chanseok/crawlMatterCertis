@@ -79,21 +79,75 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
   // Hook into crawling store for auto-refresh functionality
   const { status } = useCrawlingStore();
   const prevStatusRef = React.useRef(status);
+  const lastProcessedTransition = React.useRef<string | null>(null);
 
-  // Auto-refresh when crawling completes
+  // Enhanced auto-refresh when crawling completes
   useEffect(() => {
     const wasRunning = prevStatusRef.current === 'running';
     const isNowCompleted = status === 'completed';
+    const isNowIdle = status === 'idle' && prevStatusRef.current === 'running'; // Also detect running -> idle transition
     
-    if (wasRunning && isNowCompleted && onAutoRefresh) {
+    // Create a unique transition ID to prevent duplicate processing
+    const transitionId = `${prevStatusRef.current}->${status}`;
+    
+    console.log('[EnhancedMissingDataDisplay] Status change detected:', {
+      previousStatus: prevStatusRef.current,
+      currentStatus: status,
+      wasRunning,
+      isNowCompleted,
+      isNowIdle,
+      transitionId,
+      lastProcessedTransition: lastProcessedTransition.current,
+      hasAutoRefreshCallback: !!onAutoRefresh
+    });
+    
+    // Enhanced completion detection - trigger on both 'completed' and 'running -> idle' transitions
+    if (wasRunning && (isNowCompleted || isNowIdle) && onAutoRefresh) {
+      // Prevent duplicate processing of the same transition
+      if (lastProcessedTransition.current === transitionId) {
+        console.log('[EnhancedMissingDataDisplay] Transition already processed, skipping duplicate');
+        prevStatusRef.current = status; // Update ref here to prevent re-processing
+        return;
+      }
+      
+      lastProcessedTransition.current = transitionId;
+      
       console.log('[EnhancedMissingDataDisplay] Crawling completed, triggering auto-refresh for missing data analysis');
-      // Add a small delay to ensure all data is updated
-      setTimeout(() => {
-        onAutoRefresh();
-      }, 1000);
+      
+      // Enhanced auto-refresh with multiple delayed attempts to ensure success
+      const triggerAutoRefresh = (attemptNumber = 1, maxAttempts = 3) => {
+        const delay = attemptNumber * 1500; // 1.5s, 3s, 4.5s delays
+        
+        setTimeout(() => {
+          try {
+            console.log(`[EnhancedMissingDataDisplay] Auto-refresh attempt ${attemptNumber}/${maxAttempts}`);
+            onAutoRefresh();
+            console.log(`[EnhancedMissingDataDisplay] Auto-refresh attempt ${attemptNumber} completed successfully`);
+          } catch (error) {
+            console.error(`[EnhancedMissingDataDisplay] Auto-refresh attempt ${attemptNumber} failed:`, error);
+            
+            // Try again if we haven't reached max attempts
+            if (attemptNumber < maxAttempts) {
+              console.log(`[EnhancedMissingDataDisplay] Retrying auto-refresh (attempt ${attemptNumber + 1})`);
+              triggerAutoRefresh(attemptNumber + 1, maxAttempts);
+            } else {
+              console.error('[EnhancedMissingDataDisplay] All auto-refresh attempts failed');
+            }
+          }
+        }, delay);
+      };
+      
+      // Start the auto-refresh process
+      triggerAutoRefresh();
     }
     
+    // Update previous status reference
     prevStatusRef.current = status;
+    
+    // Reset transition tracking when status changes to running or initializing
+    if (status === 'running' || status === 'initializing') {
+      lastProcessedTransition.current = null;
+    }
   }, [status, onAutoRefresh]);
 
   // Determine if there are missing products
