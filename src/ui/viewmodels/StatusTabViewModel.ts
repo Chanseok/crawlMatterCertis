@@ -157,11 +157,13 @@ export class StatusTabViewModel {
       isStatusChecking: this.isStatusChecking,
       showAnimation: this.showAnimation
     });
+    
     if (!autoStatusCheck) {
       // 디버깅 로그 추가
       console.debug('[StatusTabViewModel] 자동 상태 체크 비활성화 상태, performAutoStatusCheck 중단');
       return;
     }
+    
     if (
       !this.hasAutoChecked &&
       !this.isRunning &&
@@ -170,12 +172,19 @@ export class StatusTabViewModel {
     ) {
       console.debug('[StatusTabViewModel] 조건 만족: 자동 상태 체크 실행');
       this.setHasAutoChecked(true);
-      // 1. 상태 체크 먼저 트리거
-      this.checkStatus();
-      // 2. 애니메이션 실행
-      setTimeout(() => {
-        this.setShowAnimation(true);
-      }, 200); // 약간의 딜레이로 UI가 자연스럽게 보이도록
+      
+      // 애니메이션과 상태 체크를 동시에 시작하여 동기화 보장
+      this.setShowAnimation(true);
+      this.setStatusChecking(true);
+      
+      try {
+        // 오버레이 애니메이션이 진행되는 동안 백그라운드에서 상태 체크 준비
+        await this.crawlingService.checkCrawlingStatus();
+        console.debug('[StatusTabViewModel] Background status check completed during animation');
+      } catch (error) {
+        console.error('[StatusTabViewModel] Background status check failed:', error);
+      }
+      // isStatusChecking은 onAnimationComplete에서 false로 설정됨
     } else {
       console.debug('[StatusTabViewModel] 조건 불충분: 자동 상태 체크 미실행', {
         hasAutoChecked: this.hasAutoChecked,
@@ -189,7 +198,17 @@ export class StatusTabViewModel {
   // Animation completion handler
   @action
   onAnimationComplete(): void {
+    // 오버레이 애니메이션 완료 후 상태 체크를 수행하고 애니메이션을 종료
+    console.debug('[StatusTabViewModel] Overlay animation completed, starting status check...');
     this.checkStatus().then(() => {
+      // 상태 체크 완료 후 애니메이션을 종료하여 사이트 로컬 비교 영역이 표시되도록 함
+      console.debug('[StatusTabViewModel] Status check completed, hiding overlay animation...');
+      setTimeout(() => {
+        this.setShowAnimation(false);
+      }, 500); // 약간의 딜레이로 자연스러운 전환
+    }).catch((error) => {
+      console.error('[StatusTabViewModel] Status check failed after animation completion:', error);
+      // 오류가 발생해도 애니메이션은 종료
       setTimeout(() => {
         this.setShowAnimation(false);
       }, 500);

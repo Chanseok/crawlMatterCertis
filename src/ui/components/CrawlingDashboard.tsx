@@ -24,6 +24,7 @@ import { useTaskStore } from '../hooks/useTaskStore';
 
 // ViewModel for Complex UI Logic (Secondary Helper)
 import { CrawlingDashboardViewModel } from '../viewmodels/CrawlingDashboardViewModel';
+import { StatusTabViewModel } from '../viewmodels/StatusTabViewModel';
 
 // Configuration and Page Range Utilities
 import { useConfigurationViewModel } from '../providers/ViewModelProvider';
@@ -156,6 +157,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
 
   // === SECONDARY: ViewModel for Complex UI Logic (Helper) ===
   const viewModel = useMemo(() => new CrawlingDashboardViewModel(), []);
+  const statusTabViewModel = useMemo(() => new StatusTabViewModel(), []);
   
   // === LOCAL UI STATE (Component-specific only) ===
   const [isStatusChecking, setIsStatusChecking] = useState(false);
@@ -370,14 +372,20 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       setIsStatusChecking(true);
       setAppCompareExpanded(true);
       
+      // StatusTabViewModel과 동기화하여 애니메이션 시작
+      statusTabViewModel.setStatusChecking(true);
+      
       await checkStatus();
       dashboardLogger.info('Status check completed');
     } catch (error) {
       dashboardLogger.error('Status check failed', error);
     } finally {
-      setTimeout(() => setIsStatusChecking(false), 1500);
+      setTimeout(() => {
+        setIsStatusChecking(false);
+        statusTabViewModel.setStatusChecking(false);
+      }, 1500);
     }
-  }, [checkStatus, setAppCompareExpanded]);
+  }, [checkStatus, setAppCompareExpanded, statusTabViewModel]);
 
   // === UI STATE METHODS (Using ViewModel) ===
   const getStageBadge = useCallback(() => {
@@ -590,6 +598,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
   useEffect(() => {
     return () => {
       viewModel.cleanup();
+      statusTabViewModel.dispose();
       if (completionTimerRef.current) {
         clearTimeout(completionTimerRef.current);
         completionTimerRef.current = null;
@@ -1402,7 +1411,15 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         loadingContent={
           <div>
             <p>상태 확인 중...</p>
-            <StatusCheckLoadingAnimation />
+            <StatusCheckLoadingAnimation 
+              isActive={statusTabViewModel.statusChecking}
+              onAnimationStart={() => {
+                dashboardLogger.debug('Site-local comparison animation started');
+              }}
+              onAnimationEnd={() => {
+                dashboardLogger.debug('Site-local comparison animation ended');
+              }}
+            />
           </div>
         }
       >

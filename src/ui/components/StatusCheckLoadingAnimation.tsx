@@ -1,11 +1,22 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './StatusCheckLoadingAnimation.css';
 
-const StatusCheckLoadingAnimation: React.FC = React.memo(() => {
+interface StatusCheckLoadingAnimationProps {
+  isActive?: boolean; // 외부에서 애니메이션 활성화 제어
+  onAnimationStart?: () => void; // 애니메이션 시작 시 콜백
+  onAnimationEnd?: () => void; // 애니메이션 종료 시 콜백
+}
+
+const StatusCheckLoadingAnimation: React.FC<StatusCheckLoadingAnimationProps> = React.memo(({ 
+  isActive = true,
+  onAnimationStart,
+  onAnimationEnd
+}) => {
   const [currentStep, setCurrentStep] = useState(0);
   const airplaneRef = useRef<HTMLDivElement>(null);
   const airplaneElementRef = useRef<HTMLDivElement>(null);
   const animationStartedRef = useRef(false);
+  const animationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Memoized status messages to prevent recreation on every render
   const statusMessages = useMemo(() => ({
@@ -27,16 +38,36 @@ const StatusCheckLoadingAnimation: React.FC = React.memo(() => {
   const getDotClass = useCallback((step: number, currentStep: number) => 
     `dot ${currentStep >= step ? 'active' : ''}`, []);
 
-  // 첫 렌더링 시에만 비행기 애니메이션 실행
+  // isActive가 변경될 때 애니메이션 제어
   useEffect(() => {
+    if (!isActive) {
+      // 애니메이션 중지
+      if (animationIntervalRef.current) {
+        clearInterval(animationIntervalRef.current);
+        animationIntervalRef.current = null;
+      }
+      setCurrentStep(0);
+      animationStartedRef.current = false;
+      
+      if (airplaneRef.current) {
+        airplaneRef.current.style.display = 'none';
+        airplaneRef.current.classList.remove('fly-animation');
+      }
+      
+      onAnimationEnd?.();
+      return;
+    }
+
+    // 이미 시작된 경우 중복 실행 방지
     if (animationStartedRef.current) return;
     
     // 애니메이션 시작 상태로 표시
     animationStartedRef.current = true;
+    onAnimationStart?.();
     
     // 처음 비행기 애니메이션 시작
     setTimeout(() => {
-      if (airplaneRef.current) {
+      if (airplaneRef.current && isActive) {
         // 비행기 컨테이너를 보이게 설정
         airplaneRef.current.style.display = 'block';
         
@@ -49,17 +80,26 @@ const StatusCheckLoadingAnimation: React.FC = React.memo(() => {
       
       // 비행기 애니메이션 끝난 후 다음 단계로 이동
       setTimeout(() => {
+        if (!isActive) return;
+        
         setCurrentStep(1);
         
         // 이후 단계 순환
-        const interval = setInterval(() => {
+        animationIntervalRef.current = setInterval(() => {
+          if (!isActive) return;
           setCurrentStep(prev => (prev === 1) ? 2 : 1);
         }, 3000);
-        
-        return () => clearInterval(interval);
       }, 3000);  // 비행기 애니메이션 시간
     }, 100);
-  }, []);
+    
+    // 클린업 함수
+    return () => {
+      if (animationIntervalRef.current) {
+        clearInterval(animationIntervalRef.current);
+        animationIntervalRef.current = null;
+      }
+    };
+  }, [isActive, onAnimationStart, onAnimationEnd]);
 
   return (
     <div className="status-check-loading-container">
