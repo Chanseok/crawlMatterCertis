@@ -140,6 +140,10 @@ export function AnalysisTab() {
   // 제품 유형 필터 확장 상태
   const [isDeviceTypeFilterExpanded, setIsDeviceTypeFilterExpanded] = useState(false);
   
+  // 상호작용 분석 확장 상태
+  const [expandedManufacturers, setExpandedManufacturers] = useState<Set<string>>(new Set());
+  const [expandedDeviceTypes, setExpandedDeviceTypes] = useState<Set<string>>(new Set());
+  
   // 날짜 범위 필터 상태
   const [dateRangeStart, setDateRangeStart] = useState<Date | null>(null);
   const [dateRangeEnd, setDateRangeEnd] = useState<Date | null>(null);
@@ -393,6 +397,7 @@ export function AnalysisTab() {
             activeTab === 0 ? 'border-blue-200 dark:border-blue-600' :
             activeTab === 1 ? 'border-emerald-200 dark:border-emerald-600' :
             activeTab === 2 ? 'border-purple-200 dark:border-purple-600' :
+            activeTab === 3 ? 'border-rose-200 dark:border-rose-600' :
             'border-orange-200 dark:border-orange-600'
           }`}>
             <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">총 제품 수</div>
@@ -400,6 +405,7 @@ export function AnalysisTab() {
               activeTab === 0 ? 'text-blue-700 dark:text-blue-300' :
               activeTab === 1 ? 'text-emerald-700 dark:text-emerald-300' :
               activeTab === 2 ? 'text-purple-700 dark:text-purple-300' :
+              activeTab === 3 ? 'text-rose-700 dark:text-rose-300' :
               'text-orange-700 dark:text-orange-300'
             }`}>{statistics.totalProducts.toLocaleString()}</div>
           </div>
@@ -408,6 +414,7 @@ export function AnalysisTab() {
             activeTab === 0 ? 'border-blue-200 dark:border-blue-600' :
             activeTab === 1 ? 'border-emerald-200 dark:border-emerald-600' :
             activeTab === 2 ? 'border-purple-200 dark:border-purple-600' :
+            activeTab === 3 ? 'border-rose-200 dark:border-rose-600' :
             'border-orange-200 dark:border-orange-600'
           }`}>
             <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">제조사 수</div>
@@ -415,6 +422,7 @@ export function AnalysisTab() {
               activeTab === 0 ? 'text-blue-700 dark:text-blue-300' :
               activeTab === 1 ? 'text-emerald-700 dark:text-emerald-300' :
               activeTab === 2 ? 'text-purple-700 dark:text-purple-300' :
+              activeTab === 3 ? 'text-rose-700 dark:text-rose-300' :
               'text-orange-700 dark:text-orange-300'
             }`}>{statistics.uniqueManufacturers.toLocaleString()}</div>
           </div>
@@ -423,6 +431,7 @@ export function AnalysisTab() {
             activeTab === 0 ? 'border-blue-200 dark:border-blue-600' :
             activeTab === 1 ? 'border-emerald-200 dark:border-emerald-600' :
             activeTab === 2 ? 'border-purple-200 dark:border-purple-600' :
+            activeTab === 3 ? 'border-rose-200 dark:border-rose-600' :
             'border-orange-200 dark:border-orange-600'
           }`}>
             <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">디바이스 유형 수</div>
@@ -430,6 +439,7 @@ export function AnalysisTab() {
               activeTab === 0 ? 'text-blue-700 dark:text-blue-300' :
               activeTab === 1 ? 'text-emerald-700 dark:text-emerald-300' :
               activeTab === 2 ? 'text-purple-700 dark:text-purple-300' :
+              activeTab === 3 ? 'text-rose-700 dark:text-rose-300' :
               'text-orange-700 dark:text-orange-300'
             }`}>{statistics.uniqueDeviceTypes.toLocaleString()}</div>
           </div>
@@ -445,7 +455,8 @@ export function AnalysisTab() {
                 { id: 0, label: '제품 현황', icon: '📊', theme: { bg: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-700 dark:text-blue-300', border: 'border-blue-200 dark:border-blue-600', accent: 'from-blue-500 to-indigo-500' } },
                 { id: 1, label: '제조사 분석', icon: '🏭', theme: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-200 dark:border-emerald-600', accent: 'from-emerald-500 to-teal-500' } },
                 { id: 2, label: '디바이스 유형 분석', icon: '📱', theme: { bg: 'bg-purple-50 dark:bg-purple-900/20', text: 'text-purple-700 dark:text-purple-300', border: 'border-purple-200 dark:border-purple-600', accent: 'from-purple-500 to-violet-500' } },
-                { id: 3, label: '데이터 테이블', icon: '📋', theme: { bg: 'bg-orange-50 dark:bg-orange-900/20', text: 'text-orange-700 dark:text-orange-300', border: 'border-orange-200 dark:border-orange-600', accent: 'from-orange-500 to-amber-500' } }
+                { id: 3, label: '상호작용 분석', icon: '🔄', theme: { bg: 'bg-rose-50 dark:bg-rose-900/20', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-200 dark:border-rose-600', accent: 'from-rose-500 to-pink-500' } },
+                { id: 4, label: '데이터 테이블', icon: '📋', theme: { bg: 'bg-orange-50 dark:bg-orange-900/20', text: 'text-orange-700 dark:text-orange-300', border: 'border-orange-200 dark:border-orange-600', accent: 'from-orange-500 to-amber-500' } }
               ].map((tab, index) => (
                 <button
                   key={tab.id}
@@ -484,6 +495,7 @@ export function AnalysisTab() {
           ${activeTab === 0 ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-600' :
             activeTab === 1 ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-600' :
             activeTab === 2 ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-600' :
+            activeTab === 3 ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-600' :
             'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-600'
           }
         `}>
@@ -493,6 +505,7 @@ export function AnalysisTab() {
               activeTab === 0 ? 'bg-blue-50 dark:bg-blue-900/20' :
               activeTab === 1 ? 'bg-emerald-50 dark:bg-emerald-900/20' :
               activeTab === 2 ? 'bg-purple-50 dark:bg-purple-900/20' :
+              activeTab === 3 ? 'bg-rose-50 dark:bg-rose-900/20' :
               'bg-orange-50 dark:bg-orange-900/20'
             }`}
             style={{
@@ -765,8 +778,369 @@ export function AnalysisTab() {
             </div>
           )}
           
-          {/* 데이터 테이블 */}
+          {/* 상호작용 분석 */}
           {activeTab === 3 && (
+            <div>
+              <p className="mb-4 text-gray-700 dark:text-gray-300">
+                이 탭에서는 Transport Interface와 디바이스 유형 간의 관계, 제조사와 디바이스 유형 간의 상호작용을 분석할 수 있습니다.
+                상단의 날짜 범위 필터를 사용하여 특정 기간에 인증받은 제품들만 분석할 수 있습니다.
+              </p>
+              
+              {/* Transport Interface와 디바이스 유형 분석 */}
+              {statistics && (
+                <div className="p-4 rounded-lg shadow-md bg-white dark:bg-gray-800 mb-4 border border-rose-200 dark:border-rose-600">
+                  <h3 className="text-lg font-medium mb-4 text-gray-800 dark:text-gray-200">Transport Interface별 디바이스 유형 분포</h3>
+                  
+                  {(() => {
+                    // Transport Interface별로 디바이스 유형 데이터를 그룹화
+                    const transportDeviceData: Record<string, Record<string, number>> = {};
+                    dateFilteredProducts.forEach(product => {
+                      const transport = product.transportInterface || 'Unknown';
+                      const deviceType = product.deviceType || 'Unknown';
+                      
+                      if (!transportDeviceData[transport]) {
+                        transportDeviceData[transport] = {};
+                      }
+                      transportDeviceData[transport][deviceType] = (transportDeviceData[transport][deviceType] || 0) + 1;
+                    });
+                    
+                    // 상위 Transport Interface만 표시 (제품 수가 많은 순)
+                    const topTransports = Object.entries(transportDeviceData)
+                      .map(([transport, devices]) => ({
+                        transport,
+                        total: Object.values(devices).reduce((sum, count) => sum + count, 0),
+                        devices
+                      }))
+                      .sort((a, b) => b.total - a.total)
+                      .slice(0, 6);
+                    
+                    return (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                          <thead className="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Transport Interface</th>
+                              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">주요 디바이스 유형</th>
+                              <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">총 제품 수</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {topTransports.map((item, index) => {
+                              const topDeviceTypes = Object.entries(item.devices)
+                                .sort((a, b) => b[1] - a[1])
+                                .slice(0, 3);
+                              
+                              return (
+                                <tr key={item.transport} className={index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-800 dark:text-gray-200 font-medium">
+                                    {item.transport}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-gray-800 dark:text-gray-200">
+                                    <div className="flex flex-wrap gap-1">
+                                      {topDeviceTypes.map(([deviceType, count]) => (
+                                        <span
+                                          key={deviceType}
+                                          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-300"
+                                        >
+                                          {deviceType} ({count})
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-800 dark:text-gray-200 font-semibold">
+                                    {item.total}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+              
+              {/* 제조사별 디바이스 유형 분석 */}
+              {statistics && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                  {/* 제조사 선택 시 디바이스 유형 분석 */}
+                  <div className="p-4 rounded-lg shadow-md bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-600">
+                    <h3 className="text-lg font-medium mb-4 text-gray-800 dark:text-gray-200">제조사별 디바이스 유형</h3>
+                    
+                    {(() => {
+                      // 제조사별 디바이스 유형 분석
+                      const manufacturerDeviceData: Record<string, Record<string, number>> = {};
+                      dateFilteredProducts.forEach(product => {
+                        const manufacturer = product.manufacturer || 'Unknown';
+                        const deviceType = product.deviceType || 'Unknown';
+                        
+                        if (!manufacturerDeviceData[manufacturer]) {
+                          manufacturerDeviceData[manufacturer] = {};
+                        }
+                        manufacturerDeviceData[manufacturer][deviceType] = (manufacturerDeviceData[manufacturer][deviceType] || 0) + 1;
+                      });
+                      
+                      // 상위 제조사만 표시 (제품 수가 많은 순)
+                      const topManufacturers = Object.entries(manufacturerDeviceData)
+                        .map(([manufacturer, devices]) => ({
+                          manufacturer,
+                          total: Object.values(devices).reduce((sum, count) => sum + count, 0),
+                          deviceTypes: Object.keys(devices).length,
+                          topDevice: Object.entries(devices).sort((a, b) => b[1] - a[1])[0]
+                        }))
+                        .sort((a, b) => b.total - a.total)
+                        .slice(0, 8);
+                      
+                      return (
+                        <div className="space-y-2">
+                          {topManufacturers.map((item) => {
+                            const isExpanded = expandedManufacturers.has(item.manufacturer);
+                            const allDeviceTypes = Object.entries(manufacturerDeviceData[item.manufacturer] || {})
+                              .sort((a, b) => b[1] - a[1]);
+                            
+                            return (
+                              <div key={item.manufacturer} className="bg-gray-50 dark:bg-gray-700 rounded-lg overflow-hidden">
+                                <button
+                                  onClick={() => {
+                                    const newExpanded = new Set(expandedManufacturers);
+                                    if (isExpanded) {
+                                      newExpanded.delete(item.manufacturer);
+                                    } else {
+                                      newExpanded.add(item.manufacturer);
+                                    }
+                                    setExpandedManufacturers(newExpanded);
+                                  }}
+                                  className="w-full flex justify-between items-center p-3 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                                >
+                                  <div className="flex-1 min-w-0 text-left">
+                                    <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                                      {item.manufacturer}
+                                    </div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                                      {item.deviceTypes}개 유형, 주력: {item.topDevice?.[0]} ({item.topDevice?.[1]}개)
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <div className="text-sm font-semibold text-rose-600 dark:text-rose-400">
+                                      {item.total}개
+                                    </div>
+                                    <svg
+                                      className={`w-4 h-4 text-gray-500 transition-transform ${
+                                        isExpanded ? 'rotate-180' : ''
+                                      }`}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </div>
+                                </button>
+                                
+                                {isExpanded && (
+                                  <div className="border-t border-gray-200 dark:border-gray-600 px-3 pb-3">
+                                    <div className="pt-3">
+                                      <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                                        전체 디바이스 유형별 제품 수:
+                                      </div>
+                                      <div className="space-y-1">
+                                        {allDeviceTypes.map(([deviceType, count]) => (
+                                          <div key={deviceType} className="flex justify-between items-center py-1">
+                                            <span className="text-xs text-teal-700 dark:text-teal-300 font-medium">
+                                              {deviceType}
+                                            </span>
+                                            <div className="flex items-center space-x-2">
+                                              <span className="text-xs text-teal-600 dark:text-teal-400">
+                                                {count}개
+                                              </span>
+                                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                ({((count / item.total) * 100).toFixed(1)}%)
+                                              </span>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  
+                  {/* 디바이스 유형별 제조사 랭킹 */}
+                  <div className="p-4 rounded-lg shadow-md bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-600">
+                    <h3 className="text-lg font-medium mb-4 text-gray-800 dark:text-gray-200">디바이스 유형별 제조사 랭킹</h3>
+                    
+                    {(() => {
+                      // 디바이스 유형별 제조사 분석
+                      const deviceManufacturerData: Record<string, Record<string, number>> = {};
+                      dateFilteredProducts.forEach(product => {
+                        const deviceType = product.deviceType || 'Unknown';
+                        const manufacturer = product.manufacturer || 'Unknown';
+                        
+                        if (!deviceManufacturerData[deviceType]) {
+                          deviceManufacturerData[deviceType] = {};
+                        }
+                        deviceManufacturerData[deviceType][manufacturer] = (deviceManufacturerData[deviceType][manufacturer] || 0) + 1;
+                      });
+                      
+                      // 상위 디바이스 유형만 표시 (제품 수가 많은 순)
+                      const topDeviceTypes = Object.entries(deviceManufacturerData)
+                        .map(([deviceType, manufacturers]) => ({
+                          deviceType,
+                          total: Object.values(manufacturers).reduce((sum, count) => sum + count, 0),
+                          manufacturerCount: Object.keys(manufacturers).length,
+                          topManufacturer: Object.entries(manufacturers).sort((a, b) => b[1] - a[1])[0]
+                        }))
+                        .sort((a, b) => b.total - a.total)
+                        .slice(0, 8);
+                      
+                      return (
+                        <div className="space-y-2">
+                          {topDeviceTypes.map((item) => {
+                            const isExpanded = expandedDeviceTypes.has(item.deviceType);
+                            const allManufacturers = Object.entries(deviceManufacturerData[item.deviceType])
+                              .sort((a, b) => b[1] - a[1]);
+                            
+                            return (
+                              <div key={item.deviceType}>
+                                <button
+                                  onClick={() => {
+                                    const newExpanded = new Set(expandedDeviceTypes);
+                                    if (isExpanded) {
+                                      newExpanded.delete(item.deviceType);
+                                    } else {
+                                      newExpanded.add(item.deviceType);
+                                    }
+                                    setExpandedDeviceTypes(newExpanded);
+                                  }}
+                                  className="w-full flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                                >
+                                  <div className="flex-1 min-w-0 text-left">
+                                    <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                                      {item.deviceType} {isExpanded ? '🔽' : '▶️'}
+                                    </div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                                      {item.manufacturerCount}개 제조사, 선두: {item.topManufacturer?.[0]} ({item.topManufacturer?.[1]}개)
+                                    </div>
+                                  </div>
+                                  <div className="text-sm font-semibold text-rose-600 dark:text-rose-400">
+                                    {item.total}개
+                                  </div>
+                                </button>
+                                
+                                {isExpanded && (
+                                  <div className="mt-2 p-3 bg-white dark:bg-gray-800 border-l-4 border-teal-500 dark:border-teal-400 rounded">
+                                    <h4 className="text-sm font-medium text-teal-700 dark:text-teal-300 mb-2">
+                                      {item.deviceType} 제조사 전체 랭킹
+                                    </h4>
+                                    <div className="space-y-1">
+                                      {allManufacturers.map(([manufacturer, count], index) => {
+                                        const percentage = ((count / item.total) * 100).toFixed(1);
+                                        return (
+                                          <div key={manufacturer} className="flex justify-between items-center text-xs">
+                                            <span className="flex items-center">
+                                              <span className="w-6 text-teal-600 dark:text-teal-400 font-medium">
+                                                #{index + 1}
+                                              </span>
+                                              <span className="text-gray-700 dark:text-gray-300">
+                                                {manufacturer}
+                                              </span>
+                                            </span>
+                                            <span className="text-teal-600 dark:text-teal-400 font-medium">
+                                              {count}개 ({percentage}%)
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+              
+              {/* Transport Interface 상세 분석 */}
+              {statistics && (
+                <div className="p-4 rounded-lg shadow-md bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-600">
+                  <h3 className="text-lg font-medium mb-4 text-gray-800 dark:text-gray-200">Transport Interface 상세 분석</h3>
+                  
+                  {(() => {
+                    // Transport Interface 통계
+                    const transportStats: Record<string, number> = {};
+                    dateFilteredProducts.forEach(product => {
+                      const transport = product.transportInterface || 'Unknown';
+                      transportStats[transport] = (transportStats[transport] || 0) + 1;
+                    });
+                    
+                    const sortedTransports = Object.entries(transportStats)
+                      .sort((a, b) => b[1] - a[1]);
+                    
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={sortedTransports.slice(0, 8).map(([name, value]) => ({ name, value }))}
+                                cx="50%"
+                                cy="50%"
+                                labelLine={false}
+                                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                                outerRadius={80}
+                                fill="#8884d8"
+                                dataKey="value"
+                              >
+                                {sortedTransports.slice(0, 8).map((_, index) => (
+                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                              <Legend />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div>
+                          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs">
+                            <thead className="bg-gray-50 dark:bg-gray-700">
+                              <tr>
+                                <th scope="col" className="px-2 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Transport Interface</th>
+                                <th scope="col" className="px-2 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">제품 수</th>
+                                <th scope="col" className="px-2 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">비율</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                              {sortedTransports.map(([transport, count], index) => (
+                                <tr key={transport} className={index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
+                                  <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200">{transport}</td>
+                                  <td className="px-2 py-1 whitespace-nowrap text-xs text-right text-gray-800 dark:text-gray-200">{count}</td>
+                                  <td className="px-2 py-1 whitespace-nowrap text-xs text-right text-gray-800 dark:text-gray-200">{((count / dateFilteredProducts.length) * 100).toFixed(1)}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* 데이터 테이블 */}
+          {activeTab === 4 && (
             <div className="mb-4">
               <div className="flex flex-col md:flex-row gap-4 mb-4">
                 <select
@@ -835,15 +1209,15 @@ export function AnalysisTab() {
                 )}
               </div>
               
-              <div className="overflow-x-auto max-w-lg mx-auto">
+              <div className="overflow-x-auto max-w-5xl mx-auto">
                 <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs table-fixed">
                   <thead className="bg-gray-50 dark:bg-gray-700">
                     <tr>
                       <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-16">인증날짜</th>
-                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-16">디바이스유형</th>
-                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-12">제조사</th>
-                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-24">모델명</th>
-                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-18">Transport Interface</th>
+                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-32">디바이스유형</th>
+                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-16">제조사</th>
+                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-40">모델명</th>
+                      <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-24">Transport Interface</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -862,8 +1236,10 @@ export function AnalysisTab() {
                             </span>
                           ) : '-'}
                         </td>
-                        <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200 w-12 max-w-[3rem] truncate" title={product.manufacturer || '-'}>{product.manufacturer || '-'}</td>
-                        <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200 truncate" title={product.model || '-'}>{product.model || '-'}</td>
+                        <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200 w-16 max-w-[4rem] truncate" title={product.manufacturer || '-'}>{product.manufacturer || '-'}</td>
+                        <td className="px-1 py-2 text-xs text-gray-800 dark:text-gray-200 w-40 max-w-[10rem]" title={product.model || '-'}>
+                          <div className="break-words">{product.model || '-'}</div>
+                        </td>
                         <td className="px-1 py-2 whitespace-nowrap text-xs text-gray-800 dark:text-gray-200 truncate" title={product.transportInterface || '-'}>{product.transportInterface || '-'}</td>
                       </tr>
                     ))}
@@ -945,15 +1321,11 @@ export function AnalysisTab() {
       <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 rounded-md">
         <h3 className="text-sm font-medium mb-2">향후 기능 업데이트 예정</h3>
         <p className="text-xs">
-          향후 업데이트에서는 다음과 같은 추가 분석 기능이 제공될 예정입니다:
+          향후 업데이트에서는 어떤 내용이 추가 되어야 할 지 요청해 주세요
         </p>
         <ul className="pl-5 mt-2 text-xs list-disc">
-          <li className="mb-1">전송 인터페이스별 분석 (transportInterface 필드 활용)</li>
-          <li className="mb-1">제품 버전 트렌드 (softwareVersion, hardwareVersion 필드 활용)</li>
-          <li className="mb-1">제품군별 분석 (familyId, familySku 필드 활용)</li>
-          <li className="mb-1">VID/PID 조합 분석 (제조사별 제품 라인업 시각화)</li>
-          <li className="mb-1">Matter 규격 버전 채택 트렌드 (specificationVersion 필드 활용)</li>
-          <li>어플리케이션 카테고리 기반 제품 간 호환성 분석 (applicationCategories 필드 활용)</li>
+          <li className="mb-1"> ... </li>
+
         </ul>
       </div>
     </>

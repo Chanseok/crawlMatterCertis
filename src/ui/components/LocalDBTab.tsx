@@ -371,13 +371,13 @@ export const LocalDBTab: React.FC = observer(() => {
                     onClick={openDeleteModal}
                     className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 text-white rounded transition-colors duration-200"
                   >
-                    삭제
+                  레코드 삭제
                   </button>
                   <button
                     onClick={handleExportToExcel}
                     className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded transition-colors duration-200"
                   >
-                    엑셀
+                  엑셀 내보내기
                   </button>
                 </div>
               </div>
