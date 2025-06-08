@@ -8,7 +8,7 @@ interface StoppingOverlayProps {
  * 크롤링 중지 중일 때 표시되는 오버레이 컴포넌트
  * 사용자에게 중지 과정이 진행 중임을 알려주는 시각적 피드백 제공
  */
-export const StoppingOverlay: React.FC<StoppingOverlayProps> = ({ isVisible }) => {
+export const StoppingOverlay: React.FC<StoppingOverlayProps> = React.memo(({ isVisible }) => {
   // 디버깅을 위한 로그와 useEffect
   useEffect(() => {
     console.log('[StoppingOverlay] isVisible changed to:', isVisible);
@@ -68,6 +68,8 @@ export const StoppingOverlay: React.FC<StoppingOverlayProps> = ({ isVisible }) =
       </div>
     </div>
   );
-};
+});
+
+StoppingOverlay.displayName = 'StoppingOverlay';
 
 export default StoppingOverlay;

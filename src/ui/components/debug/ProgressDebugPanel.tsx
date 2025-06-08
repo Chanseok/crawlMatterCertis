@@ -6,16 +6,14 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
+import { isDevelopment } from '../../utils/environment';
 
 export const ProgressDebugPanel: React.FC = observer(() => {
   const crawlingData = useCrawlingStore();
   const [isExpanded, setIsExpanded] = useState(false);
   
-  // 개발 환경에서만 표시 (간단한 환경 체크)
-  const isDev = typeof window !== 'undefined' && 
-               (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-  
-  if (!isDev) {
+  // 개발 환경에서만 표시
+  if (!isDevelopment()) {
     return null;
   }
   

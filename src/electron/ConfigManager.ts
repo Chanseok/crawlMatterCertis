@@ -3,6 +3,7 @@ import path from 'path';
 import { electronResourcePaths } from './resourceManager.js';
 import type { CrawlerConfig, MutableCrawlerConfig } from '../../types.js';
 import { ConfigurationValidator } from '../shared/domain/ConfigurationValue.js';
+import { configManagerLogger } from './utils/logger.js';
 
 // 기본 설정 값 (Consolidated DEFAULT_CONFIG)
 const DEFAULT_CONFIG: MutableCrawlerConfig = {
@@ -52,8 +53,12 @@ export class ConfigManager {
 
   constructor() {
     this.configPath = path.join(electronResourcePaths.dataPath, 'crawler-config.json');
-    console.log(`[ConfigManager] 설정 파일 경로: ${this.configPath}`);
-    console.log(`[ConfigManager] 데이터 경로: ${electronResourcePaths.dataPath}`);
+    configManagerLogger.info('Initializing ConfigManager', {
+      data: {
+        configPath: this.configPath,
+        dataPath: electronResourcePaths.dataPath
+      }
+    });
     this.config = this.loadConfig();
   }
 
@@ -62,20 +67,20 @@ export class ConfigManager {
    */
   private loadConfig(): MutableCrawlerConfig {
     try {
-      console.log(`[ConfigManager] 설정 파일 로드 시도: ${this.configPath}`);
+      configManagerLogger.debug('Attempting to load config file', { data: { path: this.configPath } });
       
       if (fs.existsSync(this.configPath)) {
         const configData = fs.readFileSync(this.configPath, 'utf-8');
         const loadedConfig = JSON.parse(configData);
-        console.log(`[ConfigManager] 설정 파일 로드 완료`);
+        configManagerLogger.info('Config file loaded successfully');
         
         // 기본값과 병합하여 빠진 설정이 있으면 기본값으로 채움
         return { ...DEFAULT_CONFIG, ...loadedConfig };
       } else {
-        console.log(`[ConfigManager] 설정 파일이 존재하지 않음. 기본값 사용.`);
+        configManagerLogger.info('Config file does not exist, using default values');
       }
     } catch (error) {
-      console.error(`[ConfigManager] 설정 파일 로드 중 오류 발생:`, error);
+      configManagerLogger.error('Error loading config file', { data: { error } });
     }
 
     // 설정 파일이 없거나 로드에 실패하면 기본값 반환
@@ -87,43 +92,53 @@ export class ConfigManager {
    */
   private saveConfig(): void {
     try {
-      console.log(`[ConfigManager] 설정 저장 시도: ${this.configPath}`);
-      console.log(`[ConfigManager] 저장할 설정 내용:`, JSON.stringify(this.config, null, 2));
+      configManagerLogger.debug('Attempting to save config', { 
+        data: { 
+          path: this.configPath,
+          config: this.config
+        } 
+      });
       
       // 데이터 디렉토리가 없으면 생성
       const configDir = path.dirname(this.configPath);
       if (!fs.existsSync(configDir)) {
-        console.log(`[ConfigManager] 디렉토리 생성: ${configDir}`);
+        configManagerLogger.info('Creating config directory', { data: { dir: configDir } });
         fs.mkdirSync(configDir, { recursive: true });
       }
       
       // 설정 데이터를 JSON 문자열로 변환
       const configData = JSON.stringify(this.config, null, 2);
-      console.log(`[ConfigManager] 저장할 설정 크기: ${configData.length} bytes`);
+      configManagerLogger.debug('Config data prepared for saving', { data: { size: configData.length } });
       
       // 파일 쓰기 전 파일 접근 권한 확인
       try {
         fs.accessSync(path.dirname(this.configPath), fs.constants.W_OK);
-        console.log(`[ConfigManager] 디렉토리 쓰기 권한 확인 완료: ${path.dirname(this.configPath)}`);
+        configManagerLogger.debug('Directory write permissions verified', { 
+          data: { dir: path.dirname(this.configPath) } 
+        });
       } catch (accessErr) {
-        console.error(`[ConfigManager] 디렉토리 쓰기 권한 부족:`, accessErr);
+        configManagerLogger.error('Directory write permission denied', { data: { error: accessErr } });
       }
       
       // 파일 쓰기
       fs.writeFileSync(this.configPath, configData);
-      console.log(`[ConfigManager] writeFileSync 호출 완료`);
+      configManagerLogger.debug('writeFileSync completed');
       
       // 저장 후 파일 존재 여부 확인
       if (fs.existsSync(this.configPath)) {
         const stats = fs.statSync(this.configPath);
-        console.log(`[ConfigManager] 설정 저장 완료. 파일 크기: ${stats.size} bytes`);
+        configManagerLogger.info('Config saved successfully', { data: { fileSize: stats.size } });
       } else {
-        console.error(`[ConfigManager] 설정 파일 저장 후 파일이 존재하지 않음: ${this.configPath}`);
+        configManagerLogger.error('Config file does not exist after save', { data: { path: this.configPath } });
       }
     } catch (error) {
-      console.error(`[ConfigManager] 설정 파일 저장 중 오류 발생:`, error);
-      console.error(`[ConfigManager] 설정 경로: ${this.configPath}`);
-      console.error(`[ConfigManager] 현재 작업 디렉토리: ${process.cwd()}`);
+      configManagerLogger.error('Error saving config file', {
+        data: {
+          error,
+          configPath: this.configPath,
+          cwd: process.cwd()
+        }
+      });
       throw error; // 오류를 다시 던져서 상위에서 처리할 수 있도록 함
     }
   }
@@ -165,20 +180,29 @@ export class ConfigManager {
    * readonly 제약을 안전하게 처리하는 타입 안전 구현
    */
   updateConfig(partialConfig: Partial<CrawlerConfig>): CrawlerConfig {
-    console.log(`\n🔧 [ConfigManager] 설정 업데이트 요청 시작`);
-    console.log(`📋 [ConfigManager] 업데이트할 필드:`, Object.keys(partialConfig));
-    console.log(`📂 [ConfigManager] 현재 설정:`, JSON.stringify(this.config, null, 2));
-    console.log(`📝 [ConfigManager] 들어온 설정:`, JSON.stringify(partialConfig, null, 2));
+    configManagerLogger.info('Config update request started', {
+      data: {
+        fieldsToUpdate: Object.keys(partialConfig),
+        currentConfig: this.config,
+        incomingConfig: partialConfig
+      }
+    });
     
     // 호출 스택 추적을 위한 에러 객체 생성
     const callStack = new Error().stack;
-    console.log(`📞 [ConfigManager] 호출 스택:`, callStack);
+    configManagerLogger.debug('Call stack trace', { data: { callStack } });
     
     // 특별히 중요한 필드들의 값 변화 추적
     const criticalFields = ['pageRangeLimit', 'productListRetryCount', 'productDetailRetryCount'];
     for (const field of criticalFields) {
       if (field in partialConfig) {
-        console.log(`🎯 [ConfigManager] 중요 필드 ${field}: ${this.config[field as keyof CrawlerConfig]} → ${partialConfig[field as keyof CrawlerConfig]}`);
+        configManagerLogger.debug(`Critical field change detected: ${field}`, {
+          data: {
+            field,
+            from: this.config[field as keyof CrawlerConfig],
+            to: partialConfig[field as keyof CrawlerConfig]
+          }
+        });
       }
     }
     

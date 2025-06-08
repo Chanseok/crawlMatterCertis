@@ -37,7 +37,7 @@ export const StatusCheckAnimation: React.FC<StatusCheckAnimationProps> = ({
           onAnimationComplete();
         }
       }, delay);
-      timeouts.push(timeout);
+      timeouts.push(timeout as unknown as number);
     });
     
     // 컴포넌트 언마운트시 타이머 정리

@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { app, BrowserWindow } from 'electron';
 import { ipcWebContentsSend } from './util.js';
+import { resourceLogger } from './utils/logger.js';
 
 const POLLING_INTERVAL = 500; // .5 second
 
@@ -16,12 +17,12 @@ export const electronResourcePaths = {
     get dataPath() {
         if (app && app.isReady()) {
             const userDataPath = app.getPath('userData');
-            console.log(`[resourceManager] Electron app ready, userData path: ${userDataPath}`);
+            resourceLogger.info('Electron app ready, using userData path', { data: { userDataPath } });
             return path.join(userDataPath, 'data');
         } else {
             // 개발 모드이거나 앱이 아직 준비되지 않은 경우
             const devDataPath = path.join(process.cwd(), 'data');
-            console.log(`[resourceManager] Electron app not ready, using dev path: ${devDataPath}`);
+            resourceLogger.info('Electron app not ready, using dev path', { data: { devDataPath } });
             return devDataPath;
         }
     },

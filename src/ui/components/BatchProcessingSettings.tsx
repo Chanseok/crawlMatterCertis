@@ -19,7 +19,7 @@ interface BatchProcessingSettingsProps {
  * 배치 처리 설정 컴포넌트
  * 대량의 페이지를 효율적으로 처리하기 위한 설정을 제공합니다.
  */
-export const BatchProcessingSettings: React.FC<BatchProcessingSettingsProps> = ({
+export const BatchProcessingSettings: React.FC<BatchProcessingSettingsProps> = React.memo(({
   enableBatchProcessing,
   setEnableBatchProcessing,
   batchSize,
@@ -177,4 +177,6 @@ export const BatchProcessingSettings: React.FC<BatchProcessingSettingsProps> = (
       </div>
     </ExpandableSection>
   );
-};
+});
+
+BatchProcessingSettings.displayName = 'BatchProcessingSettings';

@@ -5,7 +5,7 @@ import type { MatterProduct } from '../../../types';
 import { format } from 'date-fns';
 
 // 최적화된 LocalDBTab 컴포넌트 - 전체 조회 방식
-export const LocalDBTab: React.FC = observer(() => {
+export const LocalDBTab: React.FC = React.memo(observer(() => {
   // Domain Store Hooks
   const {
     products,
@@ -618,4 +618,6 @@ export const LocalDBTab: React.FC = observer(() => {
       )}
     </>
   );
-});
+}));
+
+LocalDBTab.displayName = 'LocalDBTab';

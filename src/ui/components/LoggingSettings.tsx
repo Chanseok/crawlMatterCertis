@@ -1,4 +1,5 @@
 import { observer } from 'mobx-react-lite';
+import React from 'react';
 import { useConfigurationViewModel } from '../providers/ViewModelProvider';
 import { LogLevel } from '../../shared/utils/Logger';
 import { ExpandableSection } from './ExpandableSection';
@@ -181,5 +182,8 @@ function LoggingSettingsComponent({ isExpanded, onToggle, disabled = false }: Lo
 }
 
 // Wrap with MobX observer for reactive state updates
-export const LoggingSettings = observer(LoggingSettingsComponent);
+export const LoggingSettings = React.memo(observer(LoggingSettingsComponent));
+
+LoggingSettings.displayName = 'LoggingSettings';
+
 export default LoggingSettings;

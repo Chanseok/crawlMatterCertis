@@ -15,7 +15,7 @@ interface TaskProgressIndicatorProps {
  * - 타임아웃 9초 전부터는 카운트다운 표시 (3D 플립 효과)
  * - 기본 상태는 로켓 이모지 표시
  */
-export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = observer(({
+export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = React.memo(observer(({
   pageNumber,
   statusEmoji = '🚀'
 }) => {
@@ -197,6 +197,8 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = obser
       )}
     </div>
   );
-});
+}));
+
+TaskProgressIndicator.displayName = 'TaskProgressIndicator';
 
 export default TaskProgressIndicator;

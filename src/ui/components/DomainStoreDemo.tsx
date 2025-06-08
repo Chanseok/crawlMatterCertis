@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
+import { isDevelopment } from '../utils/environment';
 import { 
   useDatabaseStore, 
   useLogStore, 
@@ -7,19 +8,38 @@ import {
   useUIStore, 
   useCrawlingStore 
 } from '../hooks';
-import {
-  SearchSection,
-  ProductsTable,
-  CrawlingStatus,
-  TasksOverview,
-  LogsViewer
-} from './demo';
+
+// Conditional imports for demo components
+let SearchSection: any = null;
+let ProductsTable: any = null;
+let CrawlingStatus: any = null;
+let TasksOverview: any = null;
+let LogsViewer: any = null;
+
+if (isDevelopment()) {
+  try {
+    const demoComponents = require('./demo');
+    SearchSection = demoComponents.SearchSection;
+    ProductsTable = demoComponents.ProductsTable;
+    CrawlingStatus = demoComponents.CrawlingStatus;
+    TasksOverview = demoComponents.TasksOverview;
+    LogsViewer = demoComponents.LogsViewer;
+  } catch (error) {
+    console.warn('[DomainStoreDemo] Demo components not available:', error);
+  }
+}
 
 /**
- * Demo component showcasing the use of all domain store hooks
- * This component demonstrates how to use the domain store hooks in a React component
+ * Demo component showcasing the use of all domain store hooks - Development Only
+ * This component demonstrates how to use the domain store hooks in a React component.
+ * Only available in development mode.
  */
 export const DomainStoreDemo: React.FC = observer(() => {
+  // Only render in development mode
+  if (!isDevelopment()) {
+    return null;
+  }
+
   // Use the hooks to access domain store state and actions
   const { 
     products, 

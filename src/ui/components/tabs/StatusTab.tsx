@@ -14,7 +14,7 @@ interface StatusTabProps {
   productsLength: number;
 }
 
-export const StatusTab: React.FC<StatusTabProps> = observer(({ 
+export const StatusTab: React.FC<StatusTabProps> = React.memo(observer(({ 
   compareExpandedInApp,
   setCompareExpandedInApp,
   crawlingStatus,
@@ -107,4 +107,6 @@ export const StatusTab: React.FC<StatusTabProps> = observer(({
       </div>
     </div>
   );
-});
+}));
+
+StatusTab.displayName = 'StatusTab';

@@ -4,6 +4,8 @@
  * 16진수 ID 관련 유틸리티 함수들
  */
 
+import { hexUtilsLogger } from './logger.js';
+
 /**
  * 16진수 ID 문자열(0xXXXX 형식)을 정수로 변환
  */
@@ -23,7 +25,7 @@ export function hexIdToInteger(hexValue: string | null | undefined): number | nu
     const intValue = parseInt(cleanHex, 16);
     return isNaN(intValue) ? null : intValue;
   } catch (e) {
-    console.error(`16진수 변환 실패: ${hexValue}`, e);
+    hexUtilsLogger.error('Failed to convert hex to integer', { data: { hexValue, error: e } });
     return null;
   }
 }
@@ -61,7 +63,7 @@ export function jsonArrayToHexIdList(jsonArray: string | null | undefined): stri
       
     return hexIds.length > 0 ? hexIds.join(', ') : null;
   } catch (e) {
-    console.error(`JSON 배열 파싱 실패: ${jsonArray}`, e);
+    hexUtilsLogger.error('Failed to parse JSON array', { data: { jsonArray, error: e } });
     return null;
   }
 }

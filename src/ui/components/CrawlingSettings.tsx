@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import React from 'react';
 import { observer } from 'mobx-react-lite';
 import { useConfigurationViewModel, useCrawlingWorkflowViewModel } from '../providers/ViewModelProvider';
 import { BatchProcessingSettings } from './BatchProcessingSettings';
@@ -396,7 +397,9 @@ function CrawlingSettingsComponent() {
 }
 
 // Wrap with MobX observer for reactive state updates
-const CrawlingSettings = observer(CrawlingSettingsComponent);
+const CrawlingSettings = React.memo(observer(CrawlingSettingsComponent));
+
+CrawlingSettings.displayName = 'CrawlingSettings';
 
 export { CrawlingSettings };
 export default CrawlingSettings;

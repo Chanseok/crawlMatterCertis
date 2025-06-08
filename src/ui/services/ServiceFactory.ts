@@ -5,8 +5,8 @@ import { VendorService } from './domain/VendorService';
 import { ExportService } from './domain/ExportService';
 import { ConfigurationService } from './domain/ConfigurationService';
 import { CrawlingWorkflowService } from './composite/CrawlingWorkflowService';
-import { DevToolsService } from './development/DevToolsService';
 import { IPCService } from './IPCService';
+import { isDevelopment } from '../utils/environment';
 
 /**
  * Service Factory for centralized service management and dependency injection
@@ -25,7 +25,7 @@ export class ServiceFactory {
   private exportService?: ExportService;
   private configurationService?: ConfigurationService;
   private crawlingWorkflowService?: CrawlingWorkflowService;
-  private devToolsService?: DevToolsService;
+  private devToolsService?: any; // Type is any to handle null in production
   private ipcService?: IPCService;
 
   private constructor() {
@@ -113,13 +113,15 @@ export class ServiceFactory {
   }
 
   /**
-   * Get the DevTools Service instance
+   * Get the DevTools Service instance - only available in development
    */
-  public getDevToolsService(): DevToolsService {
-    if (!this.devToolsService) {
-      this.devToolsService = DevToolsService.getInstance();
+  public getDevToolsService(): any {
+    if (!isDevelopment()) {
+      return null;
     }
-    return this.devToolsService;
+
+    // DevToolsService is not available in browser context, return null
+    return null;
   }
 
   /**

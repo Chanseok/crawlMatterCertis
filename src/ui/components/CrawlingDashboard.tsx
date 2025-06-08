@@ -1,6 +1,4 @@
-console.log('[DASHBOARD] 🚀 CrawlingDashboard.tsx module loaded');
-
-import { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
 import { observer } from 'mobx-react-lite';
 import { toJS } from 'mobx';
 import type { CrawlingStatusSummary, MissingDataAnalysis } from '../../../types';
@@ -30,6 +28,9 @@ import { CrawlingDashboardViewModel } from '../viewmodels/CrawlingDashboardViewM
 // Configuration and Page Range Utilities
 import { useConfigurationViewModel } from '../providers/ViewModelProvider';
 
+// Centralized Logging
+import { dashboardLogger } from '../utils/logger';
+
 import { format } from 'date-fns';
 
 interface CrawlingDashboardProps {
@@ -47,7 +48,7 @@ interface CrawlingDashboardProps {
  * 
  * This maintains Domain Store architecture while adding Clean Code patterns
  */
-function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: CrawlingDashboardProps) {
+const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpanded, setAppCompareExpanded }) => {
   // === PRIMARY: Domain Store Hooks (Main State Management) ===
   const { 
     status,
@@ -67,35 +68,38 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
 
   // === Auto-recalculate page range when component mounts or config changes ===
   useEffect(() => {
-    console.log('[CrawlingDashboard] 🔄 Component mounted or config changed, checking page range calculation...');
-    console.log('[CrawlingDashboard] 🔍 Current state:', {
-      hasPageRangeCalculation: !!configurationViewModel.lastPageRangeCalculation,
-      hasStatusSummary: !!statusSummary,
-      statusSummaryKeys: statusSummary ? Object.keys(statusSummary) : null,
-      configPageRangeLimit: configurationViewModel.config?.pageRangeLimit,
-      configProductsPerPage: configurationViewModel.config?.productsPerPage,
-      siteTotalPages: statusSummary?.siteTotalPages,
-      siteProductCount: statusSummary?.siteProductCount,
-      lastPageRangeCalculation: configurationViewModel.lastPageRangeCalculation
+    dashboardLogger.debug('Component mounted or config changed, checking page range calculation...', {
+      data: {
+        hasPageRangeCalculation: !!configurationViewModel.lastPageRangeCalculation,
+        hasStatusSummary: !!statusSummary,
+        statusSummaryKeys: statusSummary ? Object.keys(statusSummary) : null,
+        configPageRangeLimit: configurationViewModel.config?.pageRangeLimit,
+        configProductsPerPage: configurationViewModel.config?.productsPerPage,
+        siteTotalPages: statusSummary?.siteTotalPages,
+        siteProductCount: statusSummary?.siteProductCount,
+        lastPageRangeCalculation: configurationViewModel.lastPageRangeCalculation
+      }
     });
     
     // statusSummary가 있고 페이지 정보가 있으면 항상 재계산 (설정 변경 시 반영)
     const shouldRecalculate = statusSummary && (statusSummary.siteTotalPages || statusSummary.totalPages);
     
-    console.log('[CrawlingDashboard] 🔍 Should recalculate:', shouldRecalculate);
+    dashboardLogger.debug('Should recalculate check result', { data: { shouldRecalculate } });
     
     if (shouldRecalculate) {
-      console.log('[CrawlingDashboard] 🔄 Triggering page range recalculation...');
+      dashboardLogger.info('Triggering page range recalculation...');
       // 비동기로 재계산하고 강제 리렌더링
       setTimeout(() => {
         configurationViewModel.recalculatePageRangeManually();
         setForceUpdateCounter(prev => prev + 1);
       }, 0);
     } else {
-      console.log('[CrawlingDashboard] 🔄 Skipping recalculation:', {
-        shouldRecalculate,
-        hasStatusSummary: !!statusSummary,
-        hasTotalPages: !!(statusSummary?.siteTotalPages || statusSummary?.totalPages)
+      dashboardLogger.debug('Skipping recalculation', {
+        data: {
+          shouldRecalculate,
+          hasStatusSummary: !!statusSummary,
+          hasTotalPages: !!(statusSummary?.siteTotalPages || statusSummary?.totalPages)
+        }
       });
     }
   }, [configurationViewModel, statusSummary?.siteTotalPages, statusSummary?.siteProductCount, configurationViewModel.config]);
@@ -103,10 +107,10 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   // === Watch for config changes specifically to trigger page range recalculation ===
   useEffect(() => {
     const pageRangeLimit = configurationViewModel.config?.pageRangeLimit;
-    console.log('[CrawlingDashboard] 🔧 pageRangeLimit changed:', pageRangeLimit);
+    dashboardLogger.debug('pageRangeLimit changed', { data: { pageRangeLimit } });
     
     if (pageRangeLimit && statusSummary && (statusSummary.siteTotalPages || statusSummary.totalPages)) {
-      console.log('[CrawlingDashboard] 🔄 Config change triggered page range recalculation');
+      dashboardLogger.info('Config change triggered page range recalculation');
       // 설정 변경 시 즉시 재계산 및 강제 리렌더링
       setTimeout(() => {
         configurationViewModel.recalculatePageRangeManually();
@@ -118,7 +122,9 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
   // === Force re-render when lastPageRangeCalculation changes ===
   const [, forceRender] = useState({});
   useEffect(() => {
-    console.log('[CrawlingDashboard] 🔄 Page range calculation updated:', configurationViewModel.lastPageRangeCalculation);
+    dashboardLogger.debug('Page range calculation updated', { 
+      data: { lastPageRangeCalculation: configurationViewModel.lastPageRangeCalculation } 
+    });
     // 강제 리렌더링 트리거
     forceRender({});
     setForceUpdateCounter(prev => prev + 1);
@@ -126,17 +132,21 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
 
   // === DEBUG: Log statusSummary changes ===
   useEffect(() => {
-    console.log('[CrawlingDashboard] 🔍 statusSummary changed:', statusSummary);
-    console.log('[CrawlingDashboard] 🔍 statusSummary keys:', statusSummary ? Object.keys(statusSummary) : 'null/undefined');
-    console.log('[CrawlingDashboard] 🔍 dbProductCount:', statusSummary?.dbProductCount);
-    console.log('[CrawlingDashboard] 🔍 siteProductCount:', statusSummary?.siteProductCount);
-    console.log('[CrawlingDashboard] 🔍 diff:', statusSummary?.diff);
-    console.log('[CrawlingDashboard] 🔍 needCrawling:', statusSummary?.needCrawling);
+    dashboardLogger.debug('statusSummary changed', {
+      data: {
+        statusSummary,
+        keys: statusSummary ? Object.keys(statusSummary) : 'null/undefined',
+        dbProductCount: statusSummary?.dbProductCount,
+        siteProductCount: statusSummary?.siteProductCount,
+        diff: statusSummary?.diff,
+        needCrawling: statusSummary?.needCrawling
+      }
+    });
   }, [statusSummary]);
   
   // === DEBUG: Log isStopping state changes ===
   useEffect(() => {
-    console.log('[CrawlingDashboard] 🛑 isStopping changed:', isStopping);
+    dashboardLogger.debug('isStopping state changed', { data: { isStopping } });
   }, [isStopping]);
   
   const { concurrentTasks } = useTaskStore();
@@ -228,19 +238,21 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
       status !== prevProgress.current?.status ||
       viewModel.currentStage !== prevProgress.current?.currentStage
     ) {
-      console.log('[CrawlingDashboard] 🔍 Progress Data Debug:', {
-        status,
-        currentStage: viewModel.currentStage,
-        currentStep: viewModel.currentStep,
-        currentPage: progress.currentPage,
-        totalPages: progress.totalPages,
-        processedItems: progress.processedItems,
-        totalItems: progress.totalItems,
-        percentage: progress.percentage,
-        calculatedPercentage,
-        targetPageCount,
-        concurrentTasksLength: concurrentTasks?.length || 0,
-        message: progress.message
+      dashboardLogger.debug('Progress Data Debug', {
+        data: {
+          status,
+          currentStage: viewModel.currentStage,
+          currentStep: viewModel.currentStep,
+          currentPage: progress.currentPage,
+          totalPages: progress.totalPages,
+          processedItems: progress.processedItems,
+          totalItems: progress.totalItems,
+          percentage: progress.percentage,
+          calculatedPercentage,
+          targetPageCount,
+          concurrentTasksLength: concurrentTasks?.length || 0,
+          message: progress.message
+        }
       });
       
       // 중요 값들 업데이트 (다음 비교를 위해)
@@ -291,13 +303,16 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
 
   // 크롤링 범위 표시 계산 - MobX 반응성을 위한 개선
   const crawlingRangeDisplay = useMemo(() => {
-    console.log('[CrawlingDashboard] 🔄 crawlingRangeDisplay useMemo 재계산 중...');
-    console.log('[CrawlingDashboard] 🔍 Current lastPageRangeCalculation:', configurationViewModel.lastPageRangeCalculation);
-    console.log('[CrawlingDashboard] 🔍 Current statusSummary.crawlingRange:', statusSummary?.crawlingRange);
+    dashboardLogger.debug('crawlingRangeDisplay useMemo recalculating...', {
+      data: {
+        lastPageRangeCalculation: configurationViewModel.lastPageRangeCalculation,
+        crawlingRange: statusSummary?.crawlingRange
+      }
+    });
     
     const hasRange = statusSummary?.crawlingRange || configurationViewModel.lastPageRangeCalculation;
     if (!hasRange) {
-      console.log('[CrawlingDashboard] ❌ No range data available');
+      dashboardLogger.debug('No range data available');
       return null;
     }
     
@@ -1505,7 +1520,9 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
       <StoppingOverlay isVisible={isStopping} />
     </>
   );
-}
+};
+
+CrawlingDashboard.displayName = 'CrawlingDashboard';
 
 // MobX observer for automatic Domain Store reactivity
-export default observer(CrawlingDashboard);
+export default React.memo(observer(CrawlingDashboard));

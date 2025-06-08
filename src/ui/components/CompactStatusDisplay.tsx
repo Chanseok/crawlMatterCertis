@@ -5,7 +5,7 @@
  * This component replaces the 2-row status display with a more space-efficient 1-row layout
  */
 
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
 
 interface CompactStatusDisplayProps {
@@ -31,14 +31,16 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
   elapsedTime,
   message
 }) => {
-  const formatTime = (ms?: number): string => {
+  // Memoized time formatting function to prevent recreation
+  const formatTime = useCallback((ms?: number): string => {
     if (!ms || ms <= 0) return '--:--';
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  };
+  }, []);
 
-  const getStatusColor = (status: string): string => {
+  // Memoized status color function to prevent recreation
+  const getStatusColor = useCallback((status: string): string => {
     switch (status) {
       case 'running': return 'text-blue-600 dark:text-blue-400';
       case 'completed': return 'text-green-600 dark:text-green-400';
@@ -46,9 +48,10 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
       case 'paused': return 'text-yellow-600 dark:text-yellow-400';
       default: return 'text-gray-600 dark:text-gray-400';
     }
-  };
+  }, []);
 
-  const getStatusText = (status: string): string => {
+  // Memoized status text function to prevent recreation
+  const getStatusText = useCallback((status: string): string => {
     switch (status) {
       case 'running': return '진행중';
       case 'completed': return '완료';
@@ -57,7 +60,23 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
       case 'idle': return '대기중';
       default: return status;
     }
-  };
+  }, []);
+
+  // Memoized computed values for performance
+  const statusColorClass = useMemo(() => getStatusColor(crawlingStatus), [getStatusColor, crawlingStatus]);
+  const statusTextDisplay = useMemo(() => getStatusText(crawlingStatus), [getStatusText, crawlingStatus]);
+  const formattedTime = useMemo(() => formatTime(elapsedTime), [formatTime, elapsedTime]);
+  const roundedPercentage = useMemo(() => Math.round(percentage), [percentage]);
+  const progressWidth = useMemo(() => Math.min(percentage, 100), [percentage]);
+  
+  // Memoized stage badge styling
+  const stageBadgeClass = useMemo(() => 
+    currentStage === 1 || currentStage === 3 
+      ? 'bg-purple-100 text-purple-700 dark:bg-purple-800 dark:text-purple-200' 
+      : 'bg-blue-100 text-blue-700 dark:bg-blue-800 dark:text-blue-200',
+    [currentStage]);
+
+  const isRunning = crawlingStatus === 'running';
 
   return (
     <div className="bg-gradient-to-r from-gray-50 to-blue-50 dark:from-gray-700 dark:to-gray-600 rounded-lg p-4 border border-gray-200 dark:border-gray-600 shadow-sm">
@@ -67,20 +86,16 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <span className="text-gray-500 dark:text-gray-400 font-medium">상태:</span>
-            <span className={`font-semibold ${getStatusColor(crawlingStatus)}`}>
-              {getStatusText(crawlingStatus)}
+            <span className={`font-semibold ${statusColorClass}`}>
+              {statusTextDisplay}
             </span>
           </div>
           
-          {crawlingStatus === 'running' && (
+          {isRunning && (
             <>
               <div className="flex items-center space-x-2">
                 <span className="text-gray-500 dark:text-gray-400">단계:</span>
-                <span className={`font-semibold px-2 py-1 rounded-full text-xs ${
-                  currentStage === 1 || currentStage === 3 
-                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-800 dark:text-purple-200' 
-                    : 'bg-blue-100 text-blue-700 dark:bg-blue-800 dark:text-blue-200'
-                }`}>
+                <span className={`font-semibold px-2 py-1 rounded-full text-xs ${stageBadgeClass}`}>
                   {currentStage}/2
                 </span>
               </div>
@@ -104,21 +119,21 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
 
         {/* Right section: Essential info only */}
         <div className="flex items-center space-x-4">
-          {crawlingStatus === 'running' && (
+          {isRunning && (
             <div className="flex items-center space-x-2">
               <span className="text-gray-500 dark:text-gray-400">경과:</span>
-              <span className="font-mono text-sm bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded">{formatTime(elapsedTime)}</span>
+              <span className="font-mono text-sm bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded">{formattedTime}</span>
             </div>
           )}
         </div>
       </div>
 
       {/* Progress bar */}
-      {crawlingStatus === 'running' && (
+      {isRunning && (
         <div className="mt-3">
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-              {Math.round(percentage)}%
+              {roundedPercentage}%
             </span>
             {message && (
               <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-xs">
@@ -129,7 +144,7 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
           <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
             <div 
               className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300 ease-out"
-              style={{ width: `${Math.min(percentage, 100)}%` }}
+              style={{ width: `${progressWidth}%` }}
             />
           </div>
         </div>
@@ -137,3 +152,7 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
     </div>
   );
 });
+
+CompactStatusDisplay.displayName = 'CompactStatusDisplay';
+
+export default React.memo(CompactStatusDisplay);

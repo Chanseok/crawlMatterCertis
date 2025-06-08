@@ -1,12 +1,32 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './StatusCheckLoadingAnimation.css';
 
-const StatusCheckLoadingAnimation: React.FC = () => {
+const StatusCheckLoadingAnimation: React.FC = React.memo(() => {
   const [currentStep, setCurrentStep] = useState(0);
   const airplaneRef = useRef<HTMLDivElement>(null);
   const airplaneElementRef = useRef<HTMLDivElement>(null);
   const animationStartedRef = useRef(false);
   
+  // Memoized status messages to prevent recreation on every render
+  const statusMessages = useMemo(() => ({
+    0: "서버에 연결하고 있습니다...",
+    1: "데이터베이스를 확인하고 있습니다...",
+    2: "상태 정보를 수집하고 있습니다..."
+  }), []);
+
+  // Memoized CSS classes for optimization
+  const getCabinetStageClass = useCallback((step: number) => 
+    `cabinet-stage ${step === 1 ? 'active' : ''}`, []);
+
+  const getFileCheckStageClass = useCallback((step: number) => 
+    `file-check-stage ${step === 2 ? 'active' : ''}`, []);
+
+  const getCabinetDrawerClass = useCallback((step: number) => 
+    `cabinet-drawer ${step === 1 ? 'opening' : ''}`, []);
+
+  const getDotClass = useCallback((step: number, currentStep: number) => 
+    `dot ${currentStep >= step ? 'active' : ''}`, []);
+
   // 첫 렌더링 시에만 비행기 애니메이션 실행
   useEffect(() => {
     if (animationStartedRef.current) return;
@@ -61,17 +81,17 @@ const StatusCheckLoadingAnimation: React.FC = () => {
         </div>
 
         {/* 2단계: 캐비넷을 여는 애니메이션 */}
-        <div className={`cabinet-stage ${currentStep === 1 ? 'active' : ''}`}>
+        <div className={getCabinetStageClass(currentStep)}>
           <div className="filing-cabinet">
             <div className="cabinet-body">🗄️</div>
-            <div className={`cabinet-drawer ${currentStep === 1 ? 'opening' : ''}`}>
+            <div className={getCabinetDrawerClass(currentStep)}>
               📁
             </div>
           </div>
         </div>
 
         {/* 3단계: 파일을 확인하는 애니메이션 */}
-        <div className={`file-check-stage ${currentStep === 2 ? 'active' : ''}`}>
+        <div className={getFileCheckStageClass(currentStep)}>
           <div className="file-search">
             <div className="magnifying-glass">🔍</div>
             <div className="documents">
@@ -86,19 +106,19 @@ const StatusCheckLoadingAnimation: React.FC = () => {
 
       {/* 단계별 메시지 */}
       <div className="status-message">
-        {currentStep === 0 && <p>서버에 연결하고 있습니다...</p>}
-        {currentStep === 1 && <p>데이터베이스를 확인하고 있습니다...</p>}
-        {currentStep === 2 && <p>상태 정보를 수집하고 있습니다...</p>}
+        <p>{statusMessages[currentStep as keyof typeof statusMessages]}</p>
       </div>
 
       {/* 진행률 표시 */}
       <div className="progress-dots">
-        <div className={`dot ${currentStep >= 0 ? 'active' : ''}`}></div>
-        <div className={`dot ${currentStep >= 1 ? 'active' : ''}`}></div>
-        <div className={`dot ${currentStep >= 2 ? 'active' : ''}`}></div>
+        <div className={getDotClass(0, currentStep)}></div>
+        <div className={getDotClass(1, currentStep)}></div>
+        <div className={getDotClass(2, currentStep)}></div>
       </div>
     </div>
   );
-};
+});
+
+StatusCheckLoadingAnimation.displayName = 'StatusCheckLoadingAnimation';
 
 export default StatusCheckLoadingAnimation;

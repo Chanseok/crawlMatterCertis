@@ -10,7 +10,7 @@ interface StageTransitionIndicatorProps {
  * 크롤링 단계 전환 표시 컴포넌트
  * 현재 크롤링 단계를 시각적으로 표시하는 컴포넌트
  */
-export const StageTransitionIndicator: React.FC<StageTransitionIndicatorProps> = ({ 
+export const StageTransitionIndicator: React.FC<StageTransitionIndicatorProps> = React.memo(({ 
   currentStage, 
   currentStep,
   isVertical = false
@@ -171,6 +171,8 @@ export const StageTransitionIndicator: React.FC<StageTransitionIndicatorProps> =
       </div>
     </div>
   );
-};
+});
+
+StageTransitionIndicator.displayName = 'StageTransitionIndicator';
 
 export default StageTransitionIndicator;

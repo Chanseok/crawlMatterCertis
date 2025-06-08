@@ -1,21 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { serviceFactory } from '../../services/ServiceFactory';
+import { isDevelopment } from '../../utils/environment';
 import { PerformanceMetrics } from './PerformanceMetrics';
 import { ServiceStatusPanel } from './ServiceStatusPanel';
 import { DebugLogs } from './DebugLogs';
 import { ApplicationState } from './ApplicationState';
 
 /**
- * Debug Panel Component
+ * Debug Panel Component - Development Only
  * 
  * Main debugging interface that provides comprehensive development tools
  * including performance monitoring, service status, logs, and application state.
  * This component uses the DevToolsService for all debugging operations.
+ * Only available in development mode.
  */
-export const DebugPanel: React.FC = () => {
+export const DebugPanel: React.FC = React.memo(() => {
   const [activeTab, setActiveTab] = useState<'performance' | 'services' | 'logs' | 'state'>('performance');
   const [isVisible, setIsVisible] = useState(false);
-  const [devToolsService] = useState(() => serviceFactory.getDevToolsService());
+  const [devToolsService, setDevToolsService] = useState<any>(null);
+
+  // Only load in development mode
+  useEffect(() => {
+    if (!isDevelopment()) {
+      return;
+    }
+
+    const service = serviceFactory.getDevToolsService();
+    setDevToolsService(service);
+  }, []);
+
+  // Don't render in production
+  if (!isDevelopment() || !devToolsService) {
+    return null;
+  }
 
   // Toggle debug panel visibility (can be controlled by keyboard shortcut)
   useEffect(() => {
@@ -135,6 +152,8 @@ export const DebugPanel: React.FC = () => {
       </div>
     </div>
   );
-};
+});
+
+DebugPanel.displayName = 'DebugPanel';
 
 export default DebugPanel;

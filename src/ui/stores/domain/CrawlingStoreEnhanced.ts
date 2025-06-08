@@ -391,7 +391,7 @@ export class CrawlingStoreEnhanced {
           }
         }
       });
-    }, 1000);
+    }, 1000) as unknown as number;
   }
 
   // 기존 메소드들 유지 (startCrawling, stopCrawling 등)

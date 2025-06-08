@@ -1,5 +1,6 @@
+import { isDevelopment } from '../utils/environment';
+
 // Main components exports
-export { default as DomainStoreDemo } from './DomainStoreDemo';
 export { BatchProcessingSettings } from './BatchProcessingSettings';
 export { CrawlingCompleteView } from './CrawlingCompleteView';
 export { default as CrawlingDashboard } from './CrawlingDashboard';
@@ -15,12 +16,42 @@ export { TaskProgressIndicator } from './TaskProgressIndicator';
 export { ValidationResultsPanel } from './ValidationResultsPanel';
 
 
-// Demo components
-export * from './demo';
+// Conditional exports based on environment
+// Import and conditionally re-export debug and demo components
+import * as debugComponents from './debug';
+import * as demoComponents from './demo';
 
-// Sub-directory components
-// export * from './control';
-export * from './debug';
+// Re-export debug components
+export const {
+  DebugPanel,
+  PerformanceMetrics,
+  ServiceStatusPanel,
+  DebugLogs,
+  ApplicationState,
+  ProgressDebugPanel
+} = debugComponents;
+
+// Re-export demo components
+export const {
+  SearchSection,
+  ProductsTable,
+  CrawlingStatus,
+  TasksOverview,
+  LogsViewer
+} = demoComponents;
+
+// Export DomainStoreDemo conditionally
+export const DomainStoreDemo = isDevelopment() 
+  ? (function() {
+      try {
+        return require('./DomainStoreDemo').DomainStoreDemo;
+      } catch {
+        return null;
+      }
+    })()
+  : null;
+
+// Always export these components
 export * from './displays';
 export * from './layout';
 export * from './logs';

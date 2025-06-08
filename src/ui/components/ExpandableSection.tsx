@@ -13,7 +13,7 @@ interface ExpandableSectionProps {
   headerTextColor?: string;
 }
 
-export const ExpandableSection: React.FC<ExpandableSectionProps> = ({
+export const ExpandableSection: React.FC<ExpandableSectionProps> = React.memo(({
   title,
   isExpanded,
   onToggle,
@@ -66,4 +66,6 @@ export const ExpandableSection: React.FC<ExpandableSectionProps> = ({
       </div>
     </div>
   );
-};
+});
+
+ExpandableSection.displayName = 'ExpandableSection';

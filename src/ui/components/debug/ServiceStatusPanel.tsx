@@ -12,7 +12,7 @@ interface ServiceStatusPanelProps {
  * Displays real-time status of all application services including
  * connectivity tests, health checks, and diagnostic information.
  */
-export const ServiceStatusPanel: React.FC<ServiceStatusPanelProps> = ({ devToolsService }) => {
+export const ServiceStatusPanel: React.FC<ServiceStatusPanelProps> = React.memo(({ devToolsService }) => {
   const [serviceStatus, setServiceStatus] = useState<Record<string, boolean>>({});
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -207,4 +207,6 @@ export const ServiceStatusPanel: React.FC<ServiceStatusPanelProps> = ({ devTools
       </div>
     </div>
   );
-};
+});
+
+ServiceStatusPanel.displayName = 'ServiceStatusPanel';

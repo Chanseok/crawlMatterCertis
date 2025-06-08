@@ -9,6 +9,18 @@ import { LocalDBTab } from './components/LocalDBTab';
 import { AnalysisTab } from './components/tabs/AnalysisTab';
 import { ViewModelProvider, useUIStateViewModel, useCrawlingWorkflowViewModel, useLogViewModel } from './providers/ViewModelProvider';
 import { useApiInitialization } from './hooks/useApiInitialization';
+import { isDevelopment } from './utils/environment';
+
+// Conditionally import DebugPanel only in development
+let DebugPanel: React.ComponentType | null = null;
+if (isDevelopment()) {
+  try {
+    const debugModule = require('./components/debug/DebugPanel');
+    DebugPanel = debugModule.DebugPanel || debugModule.default;
+  } catch (error) {
+    console.warn('[APP] Failed to load DebugPanel in development mode:', error);
+  }
+}
 
 /**
  * Main App Content Component - separated for clean ViewModel usage
@@ -144,13 +156,16 @@ const AppContent: React.FC = observer(() => {
       <AppLayout 
         activeTab={uiStateViewModel.activeTab} 
         onTabChange={handleTabChange}
-        isDevelopment={true}
+        isDevelopment={isDevelopment()}
       >
         <div className="p-6 max-w-7xl mx-auto">
           {renderTabContent()}
         </div>
       </AppLayout>
       <LoadingOverlay />
+      
+      {/* Conditionally render DebugPanel only in development */}
+      {isDevelopment() && DebugPanel && <DebugPanel />}
     </>
   );
 });

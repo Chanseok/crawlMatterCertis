@@ -150,7 +150,7 @@ export class CrawlingWorkflowService extends BaseService {
         };
 
         // Check progress every 2 seconds
-        progressCheckInterval = setInterval(checkProgress, 2000);
+        progressCheckInterval = setInterval(checkProgress, 2000) as unknown as number;
         
         // Initial check
         checkProgress();
@@ -159,7 +159,7 @@ export class CrawlingWorkflowService extends BaseService {
         timeout = setTimeout(() => {
           clearInterval(progressCheckInterval);
           reject(new Error('Crawling monitoring timeout (30 minutes)'));
-        }, 30 * 60 * 1000);
+        }, 30 * 60 * 1000) as unknown as number;
       });
     }, 'monitorCrawlingProgress');
   }

@@ -11,7 +11,7 @@ interface PerformanceMetricsProps {
  * Displays performance statistics and metrics collected by DevToolsService.
  * Shows operation timing, service performance, and trending data.
  */
-export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({ devToolsService }) => {
+export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = React.memo(({ devToolsService }) => {
   const [performanceStats, setPerformanceStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -162,4 +162,6 @@ export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({ devTools
       </div>
     </div>
   );
-};
+});
+
+PerformanceMetrics.displayName = 'PerformanceMetrics';

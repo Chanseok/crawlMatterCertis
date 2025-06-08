@@ -6,7 +6,7 @@ import { usePageProgressCalculation } from '../hooks/usePageProgressCalculation'
 import { useDebugLog } from '../hooks/useDebugLog';
 
 // React.memo를 사용하여 불필요한 리렌더링 방지
-export const PageProgressDisplay: React.FC = observer(() => {
+export const PageProgressDisplay: React.FC = React.memo(observer(() => {
   // Domain Store Hooks 사용
   const { progress, status: crawlingStatus, statusSummary, config } = useCrawlingStore();
   const { concurrentTasks } = useTaskStore();
@@ -40,6 +40,8 @@ export const PageProgressDisplay: React.FC = observer(() => {
       </div>
     </div>
   );
-});
+}));
+
+PageProgressDisplay.displayName = 'PageProgressDisplay';
 
 export default PageProgressDisplay;

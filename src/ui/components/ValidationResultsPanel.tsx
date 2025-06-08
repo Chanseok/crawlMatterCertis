@@ -19,7 +19,7 @@ interface ValidationResultsPanelProps {
  * 제품 검증 결과 패널 컴포넌트
  * 1.5/3단계에서 수행된 로컬DB 중복 검증 결과를 표시
  */
-export const ValidationResultsPanel: React.FC<ValidationResultsPanelProps> = ({
+export const ValidationResultsPanel: React.FC<ValidationResultsPanelProps> = React.memo(({
   validationSummary,
   recommendations,
   isVisible,
@@ -268,7 +268,9 @@ export const ValidationResultsPanel: React.FC<ValidationResultsPanelProps> = ({
         )}
       </div>
     </div>
-  );
-};
+    );
+});
+
+ValidationResultsPanel.displayName = 'ValidationResultsPanel';
 
 export default ValidationResultsPanel;

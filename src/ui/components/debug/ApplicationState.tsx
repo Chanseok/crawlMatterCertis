@@ -11,7 +11,7 @@ interface ApplicationStateProps {
  * Provides a comprehensive view of the application's current state including
  * service status, configuration, and runtime information for debugging.
  */
-export const ApplicationState: React.FC<ApplicationStateProps> = ({ devToolsService }) => {
+export const ApplicationState: React.FC<ApplicationStateProps> = React.memo(({ devToolsService }) => {
   const [applicationState, setApplicationState] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['services']));
@@ -267,4 +267,6 @@ export const ApplicationState: React.FC<ApplicationStateProps> = ({ devToolsServ
       </div>
     </div>
   );
-};
+});
+
+ApplicationState.displayName = 'ApplicationState';

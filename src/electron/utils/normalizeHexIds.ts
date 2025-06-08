@@ -4,6 +4,8 @@
  * 애플리케이션 전체에서 16진수 ID 정규화에 사용할 수 있는 유틸리티 함수들
  */
 
+import { hexUtilsLogger } from './logger.js';
+
 /**
  * Hex ID를 표준 0xXXXX 형식으로 정규화하는 함수
  * @param value 정규화할 값 (문자열, 숫자 또는 null/undefined)
@@ -39,11 +41,11 @@ export function normalizeHexId(value: string | number | null | undefined): strin
     try {
       hexValue = parseInt(stringValue, 10).toString(16).toUpperCase();
     } catch (e) {
-      console.error(`"${stringValue}" 파싱 실패:`, e);
+      hexUtilsLogger.error('Failed to parse numeric string to hex', { data: { stringValue, error: e } });
       return null;
     }
   } else {
-    console.warn(`변환할 수 없는 hex 값: "${stringValue}"`);
+    hexUtilsLogger.warn('Cannot convert value to hex', { data: { stringValue } });
     return null;
   }
   
