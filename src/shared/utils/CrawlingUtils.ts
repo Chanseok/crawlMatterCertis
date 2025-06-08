@@ -91,6 +91,30 @@ export class CrawlingUtils {
     );
   }
 
+  /**
+   * 특정 시간만큼 지연시키는 Promise를 반환하는 함수 (abort signal 지원)
+   * @param ms 지연 시간 (밀리초)
+   * @param shouldAbort 중단 조건을 체크하는 함수 (선택사항)
+   * @returns Promise<void>
+   */
+  static async delay(ms: number, shouldAbort?: () => boolean): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        clearInterval(checkInterval);
+        resolve();
+      }, ms);
+      
+      // 100ms마다 중단 조건 체크
+      const checkInterval = setInterval(() => {
+        if (shouldAbort && shouldAbort()) {
+          clearTimeout(timer);
+          clearInterval(checkInterval);
+          reject(new Error('Delay aborted'));
+        }
+      }, 100);
+    });
+  }
+
   // === Phase 4: Enhanced Progress Calculation Utilities ===
 
   /**
@@ -304,7 +328,6 @@ export class CrawlingUtils {
       etaText = `ETA: ${TimeUtils.formatDuration(remainingTime)}`;
     }
     
-    
     // 상태 텍스트 조합
     const parts = [progressText];
     if (percentageText) parts.push(percentageText);
@@ -342,106 +365,16 @@ export class CrawlingUtils {
   }
 
   /**
-   * 페이지 범위 검증 함수
-   * 시작 페이지와 끝 페이지가 유효한지 검증하고 조정된 값 제공
+   * 백분율 포맷팅 헬퍼
+   * 일관된 백분율 표시를 위한 유틸리티 함수
+   * 
+   * @param percentage 백분율 (0-100)
+   * @param decimals 소수점 자리수 (기본값: 1)
+   * @returns 포맷팅된 백분율 문자열 (예: "75.5%")
    */
-  static validatePageRange(
-    startPage: number,
-    endPage: number,
-    totalPages: number
-  ): PageRangeValidationResult {
-    // 기본 유효성 검사
-    if (startPage < 1 || endPage < 1) {
-      return {
-        isValid: false,
-        message: '페이지 번호는 1 이상이어야 합니다.'
-      };
-    }
-    
-    if (startPage > totalPages || endPage > totalPages) {
-      return {
-        isValid: false,
-        message: `페이지 번호는 총 페이지 수(${totalPages})를 초과할 수 없습니다.`,
-        adjustedStartPage: Math.min(startPage, totalPages),
-        adjustedEndPage: Math.min(endPage, totalPages)
-      };
-    }
-    
-    if (startPage < endPage) {
-      return {
-        isValid: false,
-        message: '시작 페이지는 끝 페이지보다 크거나 같아야 합니다.',
-        adjustedStartPage: Math.max(startPage, endPage),
-        adjustedEndPage: Math.min(startPage, endPage)
-      };
-    }
-    
-    return {
-      isValid: true,
-      message: '유효한 페이지 범위입니다.'
-    };
-  }
-
-  /**
-   * 안전한 지연 함수
-   * 중단 조건을 확인하면서 지연을 수행
-   */
-  static async delay(ms: number, shouldAbort?: () => boolean): Promise<void> {
-    if (shouldAbort && shouldAbort()) {
-      return;
-    }
-    
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        resolve();
-      }, ms);
-      
-      // 중단 조건이 있는 경우 주기적으로 확인
-      if (shouldAbort) {
-        const checkInterval = Math.min(ms / 10, 100); // 최대 100ms 간격으로 확인
-        const checker = setInterval(() => {
-          if (shouldAbort()) {
-            clearTimeout(timeout);
-            clearInterval(checker);
-            resolve();
-          }
-        }, checkInterval);
-        
-        // timeout과 함께 interval도 정리
-        setTimeout(() => {
-          clearInterval(checker);
-        }, ms);
-      }
-    });
-  }
-
-  /**
-   * 배치 메트릭 계산 함수
-   * 현재 배치와 총 배치 수를 기반으로 메트릭 계산
-   */
-  static calculateBatchMetrics(
-    currentBatch: number,
-    totalBatches: number
-  ): BatchMetrics {
-    const safeTotalBatches = Math.max(totalBatches, 1);
-    const batchPercentage = Math.min(
-      Math.max((currentBatch / safeTotalBatches) * 100, 0),
-      100
-    );
-    
-    return {
-      currentBatch,
-      totalBatches,
-      batchPercentage
-    };
-  }
-
-  /**
-   * 퍼센트 포맷팅 함수
-   * 숫자를 백분율 문자열로 변환 (소수점 1자리)
-   */
-  static formatPercentage(value: number): string {
-    return `${Math.max(0, Math.min(100, value)).toFixed(1)}%`;
+  static formatPercentage(percentage: number, decimals: number = 1): string {
+    const clampedPercentage = Math.min(Math.max(percentage, 0), 100);
+    return `${clampedPercentage.toFixed(decimals)}%`;
   }
 
   /**
