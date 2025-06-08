@@ -492,7 +492,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     statusSummary?.siteProductCount
   ]);
 
-  // Completion status handling
+  // Completion status handling with automatic status refresh
   useEffect(() => {
     if (status === 'completed' && viewModel.currentStage === 2) {
       const totalItems = progress.totalItems || statusSummary?.siteProductCount || (targetPageCount * (config.productsPerPage || 12));
@@ -501,6 +501,20 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
 
       setIsSuccess(isCompleteSuccess);
       setShowCompletion(true);
+
+      // 🔧 NEW: Auto status update after crawling completion
+      dashboardLogger.info('Crawling completed, triggering automatic status update for site comparison');
+      
+      // Trigger automatic status check to refresh site-local comparison section
+      statusTabViewModel.performAutoStatusCheck()
+        .then(() => {
+          dashboardLogger.info('Auto status check completed after crawling completion');
+          // Ensure the site comparison section is expanded to show updated data
+          setAppCompareExpanded(true);
+        })
+        .catch((error) => {
+          dashboardLogger.error('Auto status check failed after crawling completion', error);
+        });
 
       if (completionTimerRef.current) {
         clearTimeout(completionTimerRef.current);
@@ -521,7 +535,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         completionTimerRef.current = null;
       }
     };
-  }, [status, viewModel.currentStage, progress.processedItems, progress.totalItems, targetPageCount, config.productsPerPage, statusSummary?.siteProductCount]);
+  }, [status, viewModel.currentStage, progress.processedItems, progress.totalItems, targetPageCount, config.productsPerPage, statusSummary?.siteProductCount, statusTabViewModel, setAppCompareExpanded]);
 
   // Animation effect for digit changes
   useEffect(() => {
@@ -1423,6 +1437,18 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
           </div>
         ) : statusSummary ? (
           <div className="space-y-3">
+            {/* 🔧 NEW: Visual feedback for status updates */}
+            {isStatusChecking && (
+              <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-blue-700 dark:text-blue-300 text-sm font-medium">
+                    사이트 비교 정보 업데이트 중...
+                  </span>
+                </div>
+              </div>
+            )}
+            
             <div className="p-2 bg-green-50 border border-green-200 rounded">
               <p className="text-green-800 font-semibold">✅ 상태 체크 완료!</p>
             </div>
