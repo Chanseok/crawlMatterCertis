@@ -1,6 +1,11 @@
 import { IPCService } from './IPCService';
 
 /**
+ * ARCHIVED: BaseService.ts (Core Version)
+ * Original location: src/ui/services/core/BaseService.ts
+ * Archived on: December 2024
+ * Reason: Consolidated to infrastructure layer to eliminate duplicate implementations
+ * 
  * Service operation result interface
  */
 export interface ServiceResult<T> {

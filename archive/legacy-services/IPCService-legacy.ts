@@ -1,5 +1,9 @@
 /**
- * IPCService.ts
+ * ARCHIVED: IPCService.ts (Legacy Version)
+ * Original location: src/ui/services/IPCService.ts
+ * Archived on: December 2024
+ * Reason: Consolidated to infrastructure/IPCService.ts to eliminate duplicate implementations
+ * 
  * Centralized IPC Communication Service
  * 
  * 책임:

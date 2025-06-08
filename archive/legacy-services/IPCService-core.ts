@@ -1,6 +1,11 @@
 import { toJS } from 'mobx';
 
 /**
+ * ARCHIVED: IPCService.ts (Core Version)
+ * Original location: src/ui/services/core/IPCService.ts
+ * Archived on: December 2024
+ * Reason: Consolidated to infrastructure/IPCService.ts to eliminate duplicate implementations
+ * 
  * IPC Communication Service
  * 
  * Provides safe IPC communication by automatically converting MobX observables
