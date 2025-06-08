@@ -11,7 +11,7 @@
  */
 
 import { makeObservable, observable, action, runInAction, computed } from 'mobx';
-import { IPCService, ipcService } from '../../services/IPCService';
+import { IPCService, ipcService } from '../../services/infrastructure/IPCService';
 import { v4 as uuidv4 } from 'uuid';
 
 import type {

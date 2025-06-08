@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useDatabaseStore } from '../hooks';
-import { IPCService } from '../services/IPCService';
+import { IPCService } from '../services/infrastructure/IPCService';
 import type { MatterProduct } from '../../../types';
 import { format } from 'date-fns';
 

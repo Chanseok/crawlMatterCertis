@@ -9,7 +9,7 @@
 console.log('[CrawlingStore] 🔄 MODULE LOADING - CrawlingStore.ts module is being imported');
 
 import { makeObservable, observable, action, runInAction } from 'mobx';
-import { IPCService, ipcService } from '../../services/IPCService'; // Added ipcService import
+import { IPCService, ipcService } from '../../services/infrastructure/IPCService'; // Added ipcService import
 import { crawlingProgressViewModel } from '../../viewmodels/CrawlingProgressViewModel';
 import { getPlatformApi } from '../../platform/api';
 import { storeEventBus, STORE_EVENTS } from '../../services/EventBus';

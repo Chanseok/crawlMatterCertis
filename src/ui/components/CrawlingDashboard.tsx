@@ -1412,7 +1412,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
           <div>
             <p>상태 확인 중...</p>
             <StatusCheckLoadingAnimation 
-              isActive={statusTabViewModel.statusChecking}
+              isActive={statusTabViewModel.isStatusChecking}
               onAnimationStart={() => {
                 dashboardLogger.debug('Site-local comparison animation started');
               }}
