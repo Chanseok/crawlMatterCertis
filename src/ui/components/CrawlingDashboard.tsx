@@ -378,6 +378,12 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       
       await checkStatus();
       dashboardLogger.info('Status check completed');
+      
+      // 🔧 NEW: Auto-refresh missing data analysis after status check
+      dashboardLogger.info('Status check completed, auto-refreshing missing data analysis');
+      // Reset missing data analysis to trigger re-analysis with updated status
+      setMissingProductsInfo(null);
+      
     } catch (error) {
       dashboardLogger.error('Status check failed', error);
     } finally {
@@ -703,6 +709,12 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     }
   }, [isMissingProductCrawling, status, missingProductsInfo, configurationViewModel.config, handleCheckStatus]);
 
+  // === Auto-refresh callback for missing data analysis ===
+  const handleAutoRefreshMissingData = useCallback(() => {
+    dashboardLogger.info('Auto-refreshing missing data analysis');
+    setMissingProductsInfo(null); // Reset to trigger re-analysis
+  }, []);
+
   // === Manual Crawling 관련 함수들 ===
   const handleStartManualCrawling = useCallback(async (ranges: Array<{
     startPage: number;
@@ -730,7 +742,9 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       ranges.forEach(range => {
         dashboardLogger.debug('Processing range', range);
         for (let sitePage = range.startPage; sitePage <= range.endPage; sitePage++) {
-          const pageId = Math.floor((sitePage - 1) / 2);
+          // For manual crawling, use site page numbers directly without conversion
+          // The crawling system should handle site pages as they are entered by the user
+          const pageId = sitePage; // Use site page number directly
           
           // Check if this pageId is already added
           const existingPage = incompletePages.find(p => p.pageId === pageId);
@@ -743,7 +757,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
               actualCount: 0
             };
             incompletePages.push(newPage);
-            dashboardLogger.debug('Added pageId for sitePage', { pageId, sitePage });
+            dashboardLogger.debug('Added manual crawling page (direct site page)', { pageId, sitePage });
           }
         }
       });
@@ -797,11 +811,10 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       dashboardLogger.info('Starting targeted page crawling', pages);
       
       // Convert site page numbers to pageId-based incompletePages structure
-      // Each site page corresponds to pageId = Math.floor((sitePage - 1) / 2)
+      // For targeted crawling, use site page numbers directly
       const pageIdSet = new Set<number>();
       pages.forEach(sitePage => {
-        const pageId = Math.floor((sitePage - 1) / 2);
-        pageIdSet.add(pageId);
+        pageIdSet.add(sitePage); // Use site page number directly
       });
       
       dashboardLogger.debug('Targeted crawling conversion', { 
@@ -1555,6 +1568,8 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
           statusSummary={statusSummary || undefined}
           missingProductsInfo={missingProductsInfo || undefined}
           onStartTargetedCrawling={handleStartTargetedCrawling}
+          // Auto-refresh callback
+          onAutoRefreshMissingData={handleAutoRefreshMissingData}
         />
       </div>
 

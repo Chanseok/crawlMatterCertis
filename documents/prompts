@@ -709,3 +709,14 @@ Missing Data Analysis에서도  사이트 상의 페이지수만큼 수집을 �
 어떤 동작을 통해서 로컬DB에 제품 정보를 업데이트 해야 할 지 명확하게 알 수 있을 것 같아요. 
 단, 이 역시 최소한의 변경으로 구현 해 주시면 좋겠습니다. 텍스트 박스에 구분해서 표현 하는 방식처럼 간결하게 표현 해 주시면 됩니다. 
 
+Missing Data Analysis 영역에서 'Analyze Missing Data' 버튼을 누르면 분석이 이루어지는데 이 분석이 좀 잘못되었네요. 
+제일 먼저 25 / Total Missing Products 라는 표현은 맞습니다. 
+두번째에는 차라리 사이트의 총 페이지 수와 로컬 DB의 총 페이지 수의 차이를 표현하는 게 좋겠습니다. 그리고 그 페이지에 해당하는 만큼의 제품 수를 표현 해 주면 될 것 같네요. 
+세번째 1 / Incompelete Pages / Pages missing entire products 라고 되어 있는데 여기서도 Incompelete pages 수와 사이트페이지 범위로 변환한 내용을 보여주는 게 좋겠습니다. 
+이렇게 하면 Action Recommendations 영역은 굳이 없어도 될 것 같네요
+
+그리고 버튼의 배치는 Collect All Missing 버튼과 Re-crawl Incompelete Pages 버튼은 나란히 두는 게 좋지 않을까 싶네요. 
+
+마지막 아래 두 줄은 없애도 되겠어요
+Missing products detected between site and local database. 
+1 pages need complete re-crawling 

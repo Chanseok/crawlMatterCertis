@@ -44,6 +44,8 @@ interface CrawlingControlsDisplayProps {
     analysisResult?: any;
   };
   onStartTargetedCrawling?: (pages: number[]) => void;
+  // NEW: Auto-refresh callback for missing data analysis
+  onAutoRefreshMissingData?: () => void;
 }
 
 export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = ({
@@ -66,7 +68,8 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
   // Missing data analysis props
   statusSummary,
   missingProductsInfo,
-  onStartTargetedCrawling
+  onStartTargetedCrawling,
+  onAutoRefreshMissingData
 }) => {
   // Missing Data Analysis 섹션의 확장/축소 상태 관리
   const [isMissingAnalysisExpanded, setIsMissingAnalysisExpanded] = useState(false);
@@ -146,6 +149,7 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
           onAnalyzeMissingProducts={onAnalyzeMissingProducts}
           onStartMissingProductCrawling={onStartMissingProductCrawling}
           onStartTargetedCrawling={onStartTargetedCrawling}
+          onAutoRefresh={onAutoRefreshMissingData}
         />
       </ExpandableSection>
 

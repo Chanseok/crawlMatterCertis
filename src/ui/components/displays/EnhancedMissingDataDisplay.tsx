@@ -4,11 +4,24 @@
  * Single Responsibility: Enhanced missing data analysis visualization and controls
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 
 interface MissingDataDetails {
   totalMissingDetails: number;
-  missingProductPages: Array<{
+  totalIncompletePages: number;
+  missingDetails?: Array<{
+    url: string;
+    pageId: number;
+    indexInPage: number;
+  }>;
+  incompletePages?: Array<{
+    pageId: number;
+    missingIndices: number[];
+    expectedCount: number;
+    actualCount: number;
+  }>;
+  missingProductPages?: Array<{
     pageNumber: number;
     estimatedProducts: number;
     priority: 'high' | 'medium' | 'low';
@@ -41,6 +54,8 @@ interface EnhancedMissingDataDisplayProps {
   onAnalyzeMissingProducts?: () => void;
   onStartMissingProductCrawling?: () => void;
   onStartTargetedCrawling?: (pages: number[]) => void;
+  // NEW: Auto-refresh callback
+  onAutoRefresh?: () => void;
 }
 
 export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProps> = ({
@@ -50,13 +65,36 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
   isMissingProductCrawling = false,
   onAnalyzeMissingProducts,
   onStartMissingProductCrawling,
-  onStartTargetedCrawling
+  onStartTargetedCrawling,
+  onAutoRefresh
 }) => {
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
-  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [pageRangeData, setPageRangeData] = useState<any>(null);
   const [isCalculatingRanges, setIsCalculatingRanges] = useState(false);
   const [showPageRanges, setShowPageRanges] = useState(false);
+
+  // Legacy state for backward compatibility
+  const [selectedPages] = useState<Set<number>>(new Set());
+
+  // Hook into crawling store for auto-refresh functionality
+  const { status } = useCrawlingStore();
+  const prevStatusRef = React.useRef(status);
+
+  // Auto-refresh when crawling completes
+  useEffect(() => {
+    const wasRunning = prevStatusRef.current === 'running';
+    const isNowCompleted = status === 'completed';
+    
+    if (wasRunning && isNowCompleted && onAutoRefresh) {
+      console.log('[EnhancedMissingDataDisplay] Crawling completed, triggering auto-refresh for missing data analysis');
+      // Add a small delay to ensure all data is updated
+      setTimeout(() => {
+        onAutoRefresh();
+      }, 1000);
+    }
+    
+    prevStatusRef.current = status;
+  }, [status, onAutoRefresh]);
 
   // Determine if there are missing products
   const hasMissingProducts = useMemo(() => {
@@ -69,33 +107,19 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
   const analysisData = missingProductsInfo?.analysisResult;
 
   const handlePageSelection = useCallback((pageNumber: number, selected: boolean) => {
-    setSelectedPages(prev => {
-      const newSet = new Set(prev);
-      if (selected) {
-        newSet.add(pageNumber);
-      } else {
-        newSet.delete(pageNumber);
-      }
-      return newSet;
-    });
+    // Legacy functionality - maintained for backward compatibility
   }, []);
 
   const handleSelectAll = useCallback(() => {
-    if (!analysisData?.missingProductPages) return;
-    
-    const allPages = analysisData.missingProductPages.map(p => p.pageNumber);
-    setSelectedPages(new Set(allPages));
-  }, [analysisData]);
+    // Legacy functionality - maintained for backward compatibility
+  }, []);
 
   const handleClearSelection = useCallback(() => {
-    setSelectedPages(new Set());
+    // Legacy functionality - maintained for backward compatibility
   }, []);
 
   const handleStartTargetedCrawling = useCallback(() => {
-    if (selectedPages.size > 0 && onStartTargetedCrawling) {
-      onStartTargetedCrawling(Array.from(selectedPages));
-      setSelectedPages(new Set()); // Clear selection after starting
-    }
+    // Legacy functionality - maintained for backward compatibility
   }, [selectedPages, onStartTargetedCrawling]);
 
   // 페이지 범위 계산 함수
@@ -115,6 +139,26 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
       setIsCalculatingRanges(false);
     }
   }, []);
+
+  // Re-crawl Incomplete Pages 함수 - 실제 크롤링 인터페이스로 전달
+  const handleReCrawlIncompletePages = useCallback(() => {
+    if (!analysisData?.incompletePages || analysisData.incompletePages.length === 0) {
+      console.error('No incomplete pages to re-crawl');
+      return;
+    }
+
+    if (!onStartTargetedCrawling) {
+      console.error('onStartTargetedCrawling not provided');
+      return;
+    }
+
+    // Convert pageIds to page numbers for targeted crawling
+    const pageIds = analysisData.incompletePages.map(page => page.pageId);
+    console.log('Starting targeted crawling for incomplete pages:', pageIds);
+    
+    // Call the targeted crawling function with incomplete page IDs
+    onStartTargetedCrawling(pageIds);
+  }, [analysisData, onStartTargetedCrawling]);
 
 
 
@@ -147,33 +191,60 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
           )}
         </div>
 
-        {/* Summary Statistics */}
-        <div className="grid grid-cols-2 gap-4 mb-3">
-          <div className="text-center p-2 bg-white dark:bg-gray-800 rounded">
+        {/* Summary Statistics with Categorization */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          {/* Total Missing Products */}
+          <div className="text-center p-3 bg-white dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-orange-600">
             <div className="text-lg font-bold text-orange-600 dark:text-orange-400">
               {statusSummary?.diff || missingProductsInfo?.missingCount || 0}
             </div>
-            <div className="text-xs text-gray-600 dark:text-gray-400">Missing Products</div>
+            <div className="text-xs text-gray-600 dark:text-gray-400">Total Missing Products</div>
           </div>
           
-          {analysisData && (
-            <div className="text-center p-2 bg-white dark:bg-gray-800 rounded">
+          {/* Missing Pages (Site vs Local DB) */}
+          {analysisData && statusSummary && (
+            <div className="text-center p-3 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-600">
               <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                {analysisData.missingProductPages?.length || 0}
+                {(() => {
+                  const siteTotalPages = statusSummary.siteTotalPages || 0;
+                  const dbProductCount = statusSummary.dbProductCount || 0;
+                  const productsPerPage = 12; // Standard products per page
+                  const localDbPages = Math.ceil(dbProductCount / productsPerPage);
+                  const missingPages = Math.max(0, siteTotalPages - localDbPages);
+                  return missingPages;
+                })()}
               </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">Affected Pages</div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Missing Pages</div>
+              <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                Site: {statusSummary.siteTotalPages || 0} vs Local: {Math.ceil((statusSummary.dbProductCount || 0) / 12)} pages
+              </div>
+            </div>
+          )}
+          
+          {/* Incomplete Pages with Site Page Range */}
+          {analysisData && (
+            <div className="text-center p-3 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-600">
+              <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                {analysisData.totalIncompletePages || 0}
+              </div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Incomplete Pages</div>
+              <div className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                ~{(analysisData.totalIncompletePages || 0) * 12} products affected
+              </div>
             </div>
           )}
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex space-x-2">
-          {/* Analyze Button */}
+
+
+        {/* Categorized Action Buttons */}
+        <div className="space-y-3">
+          {/* Analysis Button */}
           {onAnalyzeMissingProducts && (
             <button
               onClick={onAnalyzeMissingProducts}
               disabled={isMissingAnalyzing || isMissingProductCrawling}
-              className={`px-3 py-2 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm flex-1 ${
+              className={`w-full px-4 py-3 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm ${
                 isMissingAnalyzing || isMissingProductCrawling
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-orange-200 hover:shadow-orange-300'
@@ -181,67 +252,119 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
             >
               {isMissingAnalyzing ? (
                 <>
-                  <svg className="w-4 h-4 inline mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Analyzing...
+                  Analyzing Missing Data...
                 </>
               ) : (
-                'Analyze Missing Data'
+                <>
+                  <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Analyze Missing Data
+                </>
               )}
             </button>
           )}
 
-          {/* Start Collection Button */}
-          {hasMissingProducts && onStartMissingProductCrawling && (
-            <button
-              onClick={onStartMissingProductCrawling}
-              disabled={isMissingProductCrawling || !analysisData}
-              className={`px-3 py-2 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm flex-1 ${
-                isMissingProductCrawling || !analysisData
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-purple-200 hover:shadow-purple-300'
-              }`}
-            >
-              {isMissingProductCrawling ? (
-                <>
-                  <svg className="w-4 h-4 inline mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Collecting...
-                </>
-              ) : (
-                'Collect All Missing'
+          {/* Main Action Buttons - Side by Side */}
+          {analysisData && (analysisData.totalMissingDetails > 0 || analysisData.totalIncompletePages > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Collect All Missing Button */}
+              {onStartMissingProductCrawling && (
+                <button
+                  onClick={onStartMissingProductCrawling}
+                  disabled={isMissingProductCrawling || isMissingAnalyzing}
+                  className={`px-4 py-3 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm ${
+                    isMissingProductCrawling || isMissingAnalyzing
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-emerald-200 hover:shadow-emerald-300'
+                  }`}
+                >
+                  {isMissingProductCrawling ? (
+                    <>
+                      <svg className="w-4 h-4 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Collecting All...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                      </svg>
+                      Collect All  ({(analysisData.totalMissingDetails || 0) + (analysisData.totalIncompletePages || 0)})
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+
+              {/* Re-crawl Incomplete Pages Button */}
+              {analysisData.totalIncompletePages > 0 && (
+                <button
+                  onClick={handleReCrawlIncompletePages}
+                  disabled={isCalculatingRanges || isMissingProductCrawling}
+                  className={`px-4 py-3 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm ${
+                    isCalculatingRanges || isMissingProductCrawling
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-purple-200 hover:shadow-purple-300'
+                  }`}
+                >
+                  {isCalculatingRanges ? (
+                    <>
+                      <svg className="w-4 h-4 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Preparing Re-crawl...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Re-crawl Incompletes ({analysisData.totalIncompletePages})
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Categorized Collection Buttons */}
+          {analysisData && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Missing Details Collection */}
+              {analysisData.totalMissingDetails > 0 && onStartMissingProductCrawling && (
+                <button
+                  onClick={onStartMissingProductCrawling}
+                  disabled={isMissingProductCrawling}
+                  className={`px-4 py-3 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm ${
+                    isMissingProductCrawling
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-blue-200 hover:shadow-blue-300'
+                  }`}
+                >
+                  {isMissingProductCrawling ? (
+                    <>
+                      <svg className="w-4 h-4 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Collecting Details...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Collect Missing Details ({analysisData.totalMissingDetails})
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           )}
         </div>
-
-        {/* Calculate Page Ranges Button */}
-        {analysisData && (
-          <div className="mt-3 flex space-x-2">
-            <button
-              onClick={handleCalculatePageRanges}
-              disabled={isCalculatingRanges || isMissingProductCrawling}
-              className={`px-3 py-2 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm flex-1 ${
-                isCalculatingRanges || isMissingProductCrawling
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white shadow-blue-200 hover:shadow-indigo-300'
-              }`}
-            >
-              {isCalculatingRanges ? (
-                <>
-                  <svg className="w-4 h-4 inline mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Calculating...
-                </>
-              ) : (
-                'Calculate Page Ranges'
-              )}
-            </button>
-          </div>
-        )}
 
         {/* Page Ranges Display */}
         {showPageRanges && pageRangeData && (
@@ -287,32 +410,121 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
         )}
       </div>
 
-      {/* Detailed Analysis */}
+      {/* Detailed Analysis with Categorization */}
       {showDetailedAnalysis && analysisData && (
         <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-white dark:bg-gray-800">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-            Detailed Missing Data Analysis
+          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+            📋 Detailed Missing Data Analysis
           </h4>
+
+          {/* Missing Data Categories Tabs */}
+          <div className="space-y-4">
+            {/* Missing Product Details Section */}
+            {analysisData.totalMissingDetails > 0 && (
+              <div className="border border-blue-200 dark:border-blue-600 rounded-lg p-3 bg-blue-50 dark:bg-blue-900/20">
+                <div className="flex items-center justify-between mb-3">
+                  <h5 className="text-sm font-medium text-blue-800 dark:text-blue-300 flex items-center">
+                    <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 0v12h8V4H6z" clipRule="evenodd" />
+                    </svg>
+                    Missing Product Details ({analysisData.totalMissingDetails})
+                  </h5>
+                </div>
+                <div className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                  These products exist in the basic listing but are missing detailed information. They need individual detail collection.
+                </div>
+                
+                {/* Show sample missing details */}
+                {analysisData.missingDetails && analysisData.missingDetails.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-xs font-medium text-blue-800 dark:text-blue-300 mb-2">
+                      Sample Missing Details (showing first 5):
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded border p-2 max-h-32 overflow-y-auto">
+                      {analysisData.missingDetails.slice(0, 5).map((detail, index) => (
+                        <div key={index} className="text-xs text-gray-600 dark:text-gray-400 py-1 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
+                          <span className="font-mono text-blue-600 dark:text-blue-400">Page {detail.pageId}</span>
+                          <span className="mx-2">•</span>
+                          <span className="font-mono text-purple-600 dark:text-purple-400">Index {detail.indexInPage}</span>
+                          <span className="mx-2">•</span>
+                          <span className="text-gray-500 dark:text-gray-400 truncate">{detail.url}</span>
+                        </div>
+                      ))}
+                      {analysisData.missingDetails.length > 5 && (
+                        <div className="text-xs text-gray-500 dark:text-gray-400 pt-1 text-center">
+                          ... and {analysisData.missingDetails.length - 5} more
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Incomplete Pages Section */}
+            {analysisData.totalIncompletePages > 0 && (
+              <div className="border border-purple-200 dark:border-purple-600 rounded-lg p-3 bg-purple-50 dark:bg-purple-900/20">
+                <div className="flex items-center justify-between mb-3">
+                  <h5 className="text-sm font-medium text-purple-800 dark:text-purple-300 flex items-center">
+                    <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" clipRule="evenodd" />
+                    </svg>
+                    Incomplete Pages ({analysisData.totalIncompletePages})
+                  </h5>
+                </div>
+                <div className="text-xs text-purple-700 dark:text-purple-300 mb-2">
+                  These pages are missing entire products (gaps in page coverage). They need full page re-crawling.
+                </div>
+                
+                {/* Show sample incomplete pages */}
+                {analysisData.incompletePages && analysisData.incompletePages.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-xs font-medium text-purple-800 dark:text-purple-300 mb-2">
+                      Sample Incomplete Pages (showing first 5):
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded border p-2 max-h-32 overflow-y-auto">
+                      {analysisData.incompletePages.slice(0, 5).map((page, index) => (
+                        <div key={index} className="text-xs text-gray-600 dark:text-gray-400 py-1 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
+                          <span className="font-mono text-purple-600 dark:text-purple-400">Page {page.pageId}</span>
+                          <span className="mx-2">•</span>
+                          <span className="text-red-600 dark:text-red-400">{page.missingIndices.length} missing</span>
+                          <span className="mx-2">•</span>
+                          <span className="text-gray-500 dark:text-gray-400">{page.actualCount}/{page.expectedCount} products</span>
+                          <span className="mx-2">•</span>
+                          <span className="text-xs text-gray-400 font-mono">Missing indices: [{page.missingIndices.slice(0, 3).join(', ')}{page.missingIndices.length > 3 ? '...' : ''}]</span>
+                        </div>
+                      ))}
+                      {analysisData.incompletePages.length > 5 && (
+                        <div className="text-xs text-gray-500 dark:text-gray-400 pt-1 text-center">
+                          ... and {analysisData.incompletePages.length - 5} more
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Gap Analysis Summary */}
           {analysisData.gapAnalysis && (
-            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-700">
-              <h5 className="text-xs font-medium text-blue-800 dark:text-blue-300 mb-2">Gap Analysis</h5>
+            <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-900/20 rounded border border-gray-200 dark:border-gray-700">
+              <h5 className="text-xs font-medium text-gray-800 dark:text-gray-300 mb-2">📊 Gap Analysis Summary</h5>
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div className="text-center">
-                  <div className="font-bold text-blue-600 dark:text-blue-400">
+                  <div className="font-bold text-gray-600 dark:text-gray-400">
                     {analysisData.gapAnalysis.consecutiveGaps.length}
                   </div>
                   <div className="text-gray-600 dark:text-gray-400">Consecutive Gaps</div>
                 </div>
                 <div className="text-center">
-                  <div className="font-bold text-blue-600 dark:text-blue-400">
+                  <div className="font-bold text-gray-600 dark:text-gray-400">
                     {analysisData.gapAnalysis.scatteredMissing.length}
                   </div>
                   <div className="text-gray-600 dark:text-gray-400">Scattered Missing</div>
                 </div>
                 <div className="text-center">
-                  <div className="font-bold text-blue-600 dark:text-blue-400">
+                  <div className="font-bold text-gray-600 dark:text-gray-400">
                     {analysisData.gapAnalysis.totalGaps}
                   </div>
                   <div className="text-gray-600 dark:text-gray-400">Total Gaps</div>
@@ -320,99 +532,10 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
               </div>
             </div>
           )}
-
-          {/* Page Selection Controls */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex space-x-2">
-              <button
-                onClick={handleSelectAll}
-                className="px-2 py-1 text-xs bg-gradient-to-r from-blue-100 to-blue-200 hover:from-blue-200 hover:to-blue-300 text-blue-800 rounded-lg font-medium transition-all duration-200"
-              >
-                Select All
-              </button>
-              <button
-                onClick={handleClearSelection}
-                className="px-2 py-1 text-xs bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-800 rounded-lg font-medium transition-all duration-200"
-              >
-                Clear
-              </button>
-            </div>
-            
-            {selectedPages.size > 0 && onStartTargetedCrawling && (
-              <button
-                onClick={handleStartTargetedCrawling}
-                className="px-3 py-1 text-xs bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg font-medium transition-all duration-200 shadow-sm"
-              >
-                Crawl Selected ({selectedPages.size} pages)
-              </button>
-            )}
-          </div>
-
-          {/* Missing Pages List */}
-          <div className="max-h-60 overflow-y-auto">
-            <div className="space-y-2">
-              {analysisData.missingProductPages?.map((page) => (
-                <div
-                  key={page.pageNumber}
-                  className="flex items-center justify-between p-2 border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
-                >
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedPages.has(page.pageNumber)}
-                      onChange={(e) => handlePageSelection(page.pageNumber, e.target.checked)}
-                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                    <div>
-                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        Page {page.pageNumber}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        ~{page.estimatedProducts} products • {page.reason}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <span className={`px-2 py-1 text-xs font-medium rounded ${getPriorityColor(page.priority)}`}>
-                      {page.priority.toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Selection Summary */}
-          {selectedPages.size > 0 && (
-            <div className="mt-3 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded text-sm">
-              <div className="flex items-center space-x-2 text-green-800 dark:text-green-300">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                <span>
-                  {selectedPages.size} pages selected for targeted crawling
-                </span>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Status Messages */}
-      {hasMissingProducts && (
-        <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded text-sm">
-          <div className="flex items-center space-x-2 text-yellow-800 dark:text-yellow-300">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <span>
-              Missing products detected between site and local database. 
-              {!analysisData && ' Run analysis to identify specific missing pages.'}
-            </span>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 };
