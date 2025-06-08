@@ -134,12 +134,11 @@ export class CrawlingUtils {
   }
 
   /**
-   * 포괄적인 진행률 계산 함수
-   * 기존 calculateProgress를 확장하여 더 많은 옵션과 정보 제공
+   * 포괄적인 진행률 계산 with comprehensive options
+   * 기존의 여러 진행률 계산 로직을 통합하고 확장
    * 
    * @param processed 처리된 항목 수
-   * @param total 전체 항목 수  
-   * @param startTime 시작 시간 (밀리초)
+   * @param total 전체 항목 수
    * @param options 진행률 계산 옵션
    * @returns 확장된 진행률 정보
    */
@@ -304,6 +303,7 @@ export class CrawlingUtils {
       const remainingTime = (total - processed) * avgTimePerItem;
       etaText = `ETA: ${TimeUtils.formatDuration(remainingTime)}`;
     }
+    
     
     // 상태 텍스트 조합
     const parts = [progressText];
