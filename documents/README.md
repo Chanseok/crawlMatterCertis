@@ -11,6 +11,7 @@
 - `domain-hooks.md` - Domain Hooks 아키텍처
 - `clean-architecture-implementation.md` - Clean Architecture 구현 가이드
 - `viewmodel-pattern-implementation.md` - ViewModel 패턴 구현 문서
+- `CLEAN_CODE_STRUCTURE_PLAN.md` - 🎯 **Clean Code 구조적 정리 계획**
 - `final-architecture-completion-report.md` - 🎯 **최종 아키텍처 완성도 보고서**
 - `future-scalability-maintenance-guidelines.md` - 🚀 **향후 확장성 및 유지보수 가이드라인**
 
@@ -34,8 +35,27 @@
 - `mock-testing-guide*.md` - 모킹 테스트 가이드
 - 기타 배치 관련 상세 문서들
 
+#### 📊 Phase Reports (`development/phase-reports/`)
+프로젝트 단계별 완료 보고서
+- `PHASE_3_COMPLETION_REPORT.md` - Phase 3: 서비스 레이어 리팩토링 완료 보고서
+- `PHASE_4_PLAN.md` - Phase 4: 공통 유틸리티 통합 계획
+- `PHASE_4_1_COMPLETION_REPORT.md` - Phase 4.1: CrawlingUtils 강화 완료 보고서
+- `PHASE_4_COMPLETION_EVALUATION.md` - Phase 4: 완료 평가 보고서
+
+#### 🧹 Cleanup (`development/cleanup/`)
+코드베이스 정리 관련 문서
+- `CLEANUP_REPORT_20250608.md` - 2025년 6월 8일 정리 보고서
+- `CLEANUP_SUMMARY.md` - 정리 작업 요약
+- `cleanup-script.sh` - 정리 스크립트
+
+#### 🧪 Testing (`development/testing/`)
+테스트 관련 파일
+- `simple-test-phase4.js` - Phase 4 간단 테스트
+- `test-phase4-integration.js` - Phase 4 통합 테스트
+
 ### 🔄 Refactoring (`refactoring/`)
 리팩토링 관련 문서
+- `REFACTORING.md` - 주요 리팩토링 문서
 - `solution-summary.md` - 솔루션 요약
 - `improvement-log.md` - 개선 로그
 - `domain-store-migration-complete.md` - Domain Store 마이그레이션 완료
@@ -48,6 +68,8 @@
 - `project-structure-improvement-complete.md` - 프로젝트 구조 개선 완료
 - `typesafety-improvements.md` - 타입 안전성 개선
 - `progress-documentation-ko.md` - 리팩토링 진행 문서 (한국어)
+- `Phase2-Config-Management-Unification-COMPLETED.md` - Phase 2 설정 관리 통합 완료
+- `mobx-ipc-transmission-fixes-complete.md` - MobX-IPC 전송 수정 완료
 
 ### 📋 Requirements (`requirements/`)
 요구사항 및 기획 관련 문서
