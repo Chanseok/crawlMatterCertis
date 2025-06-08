@@ -105,35 +105,35 @@ export class CrawlingStore {
     
     try {
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingProgress...');
-      const progressSuccess = this.ipcServiceInstance.subscribeToCrawlingProgress(
+      const progressUnsubscribe = this.ipcServiceInstance.subscribeToCrawlingProgress(
         this.handleCrawlingProgress
       );
-      this.unsubscribeCrawlingProgress = progressSuccess ? (() => {}) : null;
-      console.log('[CrawlingStore] 🔗 crawlingProgress subscription result:', progressSuccess);
+      this.unsubscribeCrawlingProgress = progressUnsubscribe || (() => {});
+      console.log('[CrawlingStore] 🔗 crawlingProgress subscription result:', !!progressUnsubscribe);
       
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingComplete...');
-      const completeSuccess = this.ipcServiceInstance.subscribeToCrawlingComplete(
+      const completeUnsubscribe = this.ipcServiceInstance.subscribeToCrawlingComplete(
         this.handleCrawlingComplete
       );
-      this.unsubscribeCrawlingComplete = completeSuccess ? (() => {}) : null;
+      this.unsubscribeCrawlingComplete = completeUnsubscribe || (() => {});
       
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingError...');
-      const errorSuccess = this.ipcServiceInstance.subscribeToCrawlingError(
+      const errorUnsubscribe = this.ipcServiceInstance.subscribeToCrawlingError(
         this.handleCrawlingError
       );
-      this.unsubscribeCrawlingError = errorSuccess ? (() => {}) : null;
+      this.unsubscribeCrawlingError = errorUnsubscribe || (() => {});
       
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingStopped...');
-      const stoppedSuccess = this.ipcServiceInstance.subscribeCrawlingStopped(
+      const stoppedUnsubscribe = this.ipcServiceInstance.subscribeCrawlingStopped(
         this.handleCrawlingStopped
       );
-      this.unsubscribeCrawlingStopped = stoppedSuccess ? (() => {}) : null;
+      this.unsubscribeCrawlingStopped = stoppedUnsubscribe || (() => {});
       
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingStatusSummary...');
-      const summarySuccess = this.ipcServiceInstance.subscribeToCrawlingStatusSummary(
+      const summaryUnsubscribe = this.ipcServiceInstance.subscribeToCrawlingStatusSummary(
         this.handleCrawlingStatusSummary
       );
-      this.unsubscribeCrawlingStatusSummary = summarySuccess ? (() => {}) : null;
+      this.unsubscribeCrawlingStatusSummary = summaryUnsubscribe || (() => {});
       
       console.log('[CrawlingStore] 🔗 Subscribing to crawlingTaskStatus via platform API...');
       // Use the same platform API subscription mechanism as TaskStore to avoid conflicts

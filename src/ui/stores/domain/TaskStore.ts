@@ -9,6 +9,7 @@
 import { makeObservable, observable, action, reaction } from 'mobx';
 import { getPlatformApi } from '../../platform/api';
 import { storeEventBus, STORE_EVENTS } from '../../services/EventBus';
+import { CrawlingUtils } from '../../../shared/utils/CrawlingUtils';
 import type { ConcurrentCrawlingTask } from '../../types';
 
 /**
@@ -249,7 +250,7 @@ export class TaskStore {
 
     // Calculate success rate
     if (stats.total > 0) {
-      stats.successRate = Math.round((stats.success / stats.total) * 100);
+      stats.successRate = CrawlingUtils.safePercentage(stats.success, stats.total);
     }
 
     // Calculate average completion time
@@ -589,7 +590,7 @@ export class TaskStore {
     if (this.recentTasks.length === 0) return 0;
 
     const successCount = this.recentTasks.filter((task: TaskStatusDetail) => task.status === 'success').length;
-    return Math.round((successCount / this.recentTasks.length) * 100);
+    return CrawlingUtils.safePercentage(successCount, this.recentTasks.length);
   }
 
   /**

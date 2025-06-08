@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { DevToolsService } from '../../services/development/DevToolsService';
 import { serviceFactory } from '../../services/ServiceFactory';
+import { DisplayUtils } from '../../../shared/utils/DisplayUtils.js';
 
 interface ServiceStatusPanelProps {
   devToolsService: DevToolsService;
@@ -49,7 +50,7 @@ export const ServiceStatusPanel: React.FC<ServiceStatusPanelProps> = React.memo(
   }, [devToolsService]);
 
   const getStatusColor = (status: boolean): string => {
-    return status ? 'text-green-600' : 'text-red-600';
+    return DisplayUtils.getStatusColor(status ? 'completed' : 'error');
   };
 
   const getStatusIcon = (status: boolean): string => {
@@ -57,9 +58,7 @@ export const ServiceStatusPanel: React.FC<ServiceStatusPanelProps> = React.memo(
   };
 
   const formatPerformance = (ms: number): string => {
-    if (ms < 100) return `${ms.toFixed(0)}ms`;
-    if (ms < 1000) return `${ms.toFixed(0)}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
+    return DisplayUtils.formatPerformanceDuration(ms);
   };
 
   if (loading) {

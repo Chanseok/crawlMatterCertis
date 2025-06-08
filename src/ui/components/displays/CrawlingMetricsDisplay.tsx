@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { DisplayUtils } from '../../../shared/utils/DisplayUtils.js';
 
 interface AnimatedValues {
   percentage: number;
@@ -57,7 +58,7 @@ export const CrawlingMetricsDisplay: React.FC<CrawlingMetricsDisplayProps> = ({
               ? 'text-purple-800 dark:text-purple-200' 
               : 'text-gray-800 dark:text-gray-200'
           } transition-all duration-300 ${isAnimated ? 'animate-flip' : ''}`}>
-            {typeof value === 'number' ? Math.round(value).toLocaleString() : value}
+            {typeof value === 'number' ? DisplayUtils.formatNumber(Math.round(value)) : value}
             {unit && <span className={`text-sm ml-1 ${
               isPurpleTheme 
                 ? 'text-purple-500 dark:text-purple-400' 

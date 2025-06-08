@@ -162,15 +162,15 @@ export class CrawlingStoreEnhanced {
     
     try {
       // 기존 이벤트 구독은 유지
-      const progressSuccess = this.ipcServiceInstance.subscribeToCrawlingProgress((data: CrawlingProgress) => {
+      const progressUnsubscribe = this.ipcServiceInstance.subscribeToCrawlingProgress((data: CrawlingProgress) => {
         this.updateProgress(data);
         
         // 새로운 타입 체계로 변환하여 StageProgress 업데이트
         this.convertAndUpdateStageProgress(data);
       });
-      this.unsubscribeCrawlingProgress = progressSuccess ? (() => {}) : null;
+      this.unsubscribeCrawlingProgress = progressUnsubscribe || (() => {});
 
-      const completeSuccess = this.ipcServiceInstance.subscribeToCrawlingComplete(() => {
+      const completeUnsubscribe = this.ipcServiceInstance.subscribeToCrawlingComplete(() => {
         runInAction(() => {
           this.status = 'completed';
           this.session.overallStatus = 'completed';
@@ -183,9 +183,9 @@ export class CrawlingStoreEnhanced {
           }
         });
       });
-      this.unsubscribeCrawlingComplete = completeSuccess ? (() => {}) : null;
+      this.unsubscribeCrawlingComplete = completeUnsubscribe || (() => {});
 
-      const errorSuccess = this.ipcServiceInstance.subscribeToCrawlingError((error: any) => {
+      const errorUnsubscribe = this.ipcServiceInstance.subscribeToCrawlingError((error: any) => {
         runInAction(() => {
           this.error = error;
           this.status = 'error';
@@ -199,9 +199,9 @@ export class CrawlingStoreEnhanced {
           }
         });
       });
-      this.unsubscribeCrawlingError = errorSuccess ? (() => {}) : null;
+      this.unsubscribeCrawlingError = errorUnsubscribe || (() => {});
 
-      const stoppedSuccess = this.ipcServiceInstance.subscribeCrawlingStopped(() => {
+      const stoppedUnsubscribe = this.ipcServiceInstance.subscribeCrawlingStopped(() => {
         runInAction(() => {
           this.status = 'stopped';
           this.session.overallStatus = 'idle';
@@ -212,9 +212,9 @@ export class CrawlingStoreEnhanced {
           }
         });
       });
-      this.unsubscribeCrawlingStopped = stoppedSuccess ? (() => {}) : null;
+      this.unsubscribeCrawlingStopped = stoppedUnsubscribe || (() => {});
 
-      const statusSummarySuccess = this.ipcServiceInstance.subscribeCrawlingStatusSummary((summary: any) => {
+      const statusSummaryUnsubscribe = this.ipcServiceInstance.subscribeCrawlingStatusSummary((summary: any) => {
         runInAction(() => {
           this.statusSummary = summary;
           this.lastStatusSummary = { ...summary };
@@ -228,7 +228,7 @@ export class CrawlingStoreEnhanced {
           statusCheckStage.endTime = new Date();
         });
       });
-      this.unsubscribeCrawlingStatusSummary = statusSummarySuccess ? (() => {}) : null;
+      this.unsubscribeCrawlingStatusSummary = statusSummaryUnsubscribe || (() => {});
 
       this.ipcServiceInstance.subscribeCrawlingTaskStatus((taskStatus: any) => {
         // 기존 이벤트 처리에 추가로 세션 상태 업데이트

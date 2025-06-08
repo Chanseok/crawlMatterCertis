@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
 import { observer } from 'mobx-react-lite';
 import { toJS } from 'mobx';
+import { CrawlingUtils } from '../../shared/utils/CrawlingUtils';
 import type { CrawlingStatusSummary, MissingDataAnalysis } from '../../../types';
 
 // Clean Architecture - Display Components (Single Responsibility)
@@ -1168,8 +1169,8 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
                 {(() => {
                   const processed = progress.processedItems || progress.current || 0;
                   const total = progress.totalItems || progress.total || 0;
-                  const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
-                  return `${percentage}% 완료`;
+                  const percentage = CrawlingUtils.safePercentage(processed, total);
+                  return `${percentage.toFixed(1)}% 완료`;
                 })()}
               </div>
             </div>

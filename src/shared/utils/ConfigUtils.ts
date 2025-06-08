@@ -13,6 +13,7 @@
 
 import type { CrawlerConfig, MutableCrawlerConfig } from '../../../types.js';
 import { ConfigurationValidator } from '../domain/ConfigurationValue.js';
+import { ValidationUtils } from './ValidationUtils.js';
 
 /**
  * Default configuration values - single source of truth
@@ -163,49 +164,21 @@ export class ConfigUtils {
         error: `Configuration merge failed: ${error instanceof Error ? error.message : String(error)}`
       };
     }
-  }
-
-  /**
+  }  /**
    * Validate configuration with standardized result format
-   * 
+   * @deprecated Use ValidationUtils.validateCrawlerConfig() instead
    * @param config - Configuration to validate
    * @returns Validation result with success flag and details
    */
   static validateConfig(config: CrawlerConfig): ConfigOperationResult<CrawlerConfig> {
-    try {
-      const validationResult = ConfigurationValidator.validateComplete(config);
-      
-      if (!validationResult.isValid) {
-        const errorDetails = Object.entries(validationResult.errors)
-          .map(([field, errors]) => `${field}: ${(errors as string[]).join(', ')}`)
-          .join('; ');
-        
-        return {
-          success: false,
-          error: `Configuration validation failed: ${errorDetails}`
-        };
-      }
-
-      const warnings: string[] = [];
-      if (Object.keys(validationResult.warnings).length > 0) {
-        const warningDetails = Object.entries(validationResult.warnings)
-          .map(([field, warnings]) => `${field}: ${(warnings as string[]).join(', ')}`)
-          .join('; ');
-        warnings.push(warningDetails);
-      }
-
-      return {
-        success: true,
-        data: config,
-        warnings: warnings.length > 0 ? warnings : undefined
-      };
-
-    } catch (error) {
-      return {
-        success: false,
-        error: `Configuration validation failed: ${error instanceof Error ? error.message : String(error)}`
-      };
-    }
+    const result = ValidationUtils.validateCrawlerConfig(config);
+    
+    return {
+      success: result.success,
+      data: result.success ? config : undefined,
+      error: result.success ? undefined : result.errors.join(', '),
+      warnings: result.warnings && result.warnings.length > 0 ? result.warnings : undefined
+    };
   }
 
   /**

@@ -14,6 +14,7 @@ import type {
 import { crawlerEvents } from '../utils/progress.js';
 import { PageValidator, type PageValidationResult } from '../utils/page-validator.js';
 import { logger } from '../../../shared/utils/Logger.js';
+import { CrawlingUtils } from '../../../shared/utils/CrawlingUtils.js';
 import type { CrawlingStage } from '../../../../types.js';
 
 // Mutable version of CrawlingProgress for internal state management
@@ -279,13 +280,13 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
           const totalEstimatedTime = this.progressData.elapsedTime / percentComplete;
           this.progressData.remainingTime = Math.max(0, totalEstimatedTime - this.progressData.elapsedTime);
         }
-        this.progressData.percentage = Math.round(percentComplete * 100);
+        this.progressData.percentage = CrawlingUtils.safePercentage(this.progressData.current, this.progressData.total);
       }
     }
   }
 
   // 명시적 디버그 로깅 추가
-  logger.debug(`Progress updated: ${this.progressData.current}/${this.progressData.total} (${Math.round((this.progressData.current || 0) / (this.progressData.total || 1) * 100)}%)`, 'CrawlerState');
+  logger.debug(`Progress updated: ${this.progressData.current}/${this.progressData.total} (${CrawlingUtils.safePercentage(this.progressData.current || 0, this.progressData.total || 1).toFixed(1)}%)`, 'CrawlerState');
 
   // 헬퍼 메서드를 사용하여 이벤트 발행 (일관성 유지)
   this.emitProgressUpdate();
@@ -1052,7 +1053,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
     this.updateProgress({
       currentPage: processed,
       totalPages: total,
-      percentage: Math.min(Math.round((processed / total) * 100), 100),
+      percentage: CrawlingUtils.safePercentage(processed, total),
       processedItems: processed,
       totalItems: total,
       newItems: this.detailStageNewCount,

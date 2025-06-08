@@ -5,6 +5,7 @@
 
 import { logger } from '../../shared/utils/Logger.js';
 import { MissingDataAnalyzer } from './MissingDataAnalyzer.js';
+import { DisplayUtils } from '../../shared/utils/DisplayUtils.js';
 import type { 
   IncompletePage, 
   CrawlingRange 
@@ -279,19 +280,18 @@ export class MissingPageCalculator {
   /**
    * 크롤링 범위를 사용자에게 표시할 텍스트로 변환
    * Copy & paste 가능한 형태로 포맷팅: "201~205, 458~460, 407, 409, 411"
+   * @deprecated Use DisplayUtils.formatRangesForCopyPaste() instead
    */
   formatRangesForDisplay(ranges: CrawlingRange[]): string {
-    const formattedRanges = ranges.map(range => {
-      // startPage가 더 큰 번호이므로 절댓값으로 계산
-      const totalPages = Math.abs(range.endPage - range.startPage) + 1;
-      if (totalPages === 1) {
-        return `${range.startPage}`;
-      } else {
-        return `${range.startPage}~${range.endPage}`;
-      }
-    });
-    
-    return formattedRanges.join(', ');
+    // Transform ranges to ensure priority is defined for DisplayUtils compatibility
+    const transformedRanges = ranges.map(range => ({
+      startPage: range.startPage,
+      endPage: range.endPage,
+      reason: range.reason,
+      priority: range.priority ?? 1, // Default priority if undefined
+      estimatedProducts: range.estimatedProducts ?? 0 // Default estimated products if undefined
+    }));
+    return DisplayUtils.formatRangesForCopyPaste(transformedRanges);
   }
 
   /**

@@ -6,6 +6,11 @@ import type { CrawlerConfig } from '../../../../types';
  * ConfigurationService.ts
  * IPC-based configuration service for UI components
  * 
+ * Phase 3: Service Layer Refactoring
+ * - Enhanced with resilience management for configuration operations
+ * - Improved service lifecycle management  
+ * - Standardized error handling and recovery patterns
+ * 
  * REFACTORED: Now uses centralized ConfigUtils for:
  * - Configuration validation (ConfigUtils.validateConfig)
  * - Safe configuration merging (ConfigUtils.mergeConfig)
@@ -17,6 +22,11 @@ import type { CrawlerConfig } from '../../../../types';
 
 /**
  * Configuration Service
+ * 
+ * Phase 3 Enhanced Features:
+ * - Resilience patterns for configuration operations
+ * - Enhanced error handling and recovery
+ * - Improved service lifecycle management
  * 
  * Handles all configuration-related operations including:
  * - Getting current configuration
@@ -32,6 +42,12 @@ export class ConfigurationService extends BaseService {
 
   private constructor() {
     super('ConfigurationService');
+    // Initialize resilience patterns for database-like operations  
+    this.initializeResilience({ 
+      serviceType: 'database',
+      enableCircuitBreaker: true,
+      enableRetry: true 
+    });
   }
 
   /**
@@ -46,32 +62,41 @@ export class ConfigurationService extends BaseService {
 
   /**
    * Get the current configuration
+   * Enhanced with resilience patterns
    */
   public async getConfig(): Promise<CrawlerConfig> {
-    try {      this.log('getConfig: Fetching configuration from backend');
+    const result = await this.executeOperation(async () => {
+      this.log('getConfig: Fetching configuration from backend');
+
+      if (!this.isIPCAvailable()) {
+        throw new Error('IPC not available');
+      }
 
       // Call IPC to get configuration from ConfigManager
-      const result = await this.ipcService.call<any>('getConfig');
+      const ipcResult = await this.ipcService.call<any>('getConfig');
       
-      if (result.success && result.config) {
-        this.currentConfig = result.config;
+      if (ipcResult.success && ipcResult.config) {
+        this.currentConfig = ipcResult.config;
         this.log('getConfig: Configuration retrieved successfully');
-        return result.config;
+        return ipcResult.config;
       } else {
-        throw new Error(result.error || 'Failed to get configuration');
+        throw new Error(ipcResult.error || 'Failed to get configuration');
       }
-    } catch (error) {
-      this.logError('getConfig failed', this.createError('CONFIG_FETCH_FAILED', 'Failed to fetch configuration', error));
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to get configuration: ${errorMessage}`);
+    }, 'getConfig');
+
+    if (!result.success) {
+      throw new Error(`Failed to get configuration: ${result.error?.message || 'Unknown error'}`);
     }
+
+    return result.data!;
   }
 
   /**
    * Update configuration with validation
+   * Enhanced with resilience patterns
    */
   public async updateConfig(config: Partial<CrawlerConfig>): Promise<CrawlerConfig> {
-    try {
+    const result = await this.executeOperation(async () => {
       this.log('updateConfig: Updating configuration with keys: ' + Object.keys(config).join(', '));
       
       // Use ConfigUtils for validation and merging
@@ -81,7 +106,6 @@ export class ConfigurationService extends BaseService {
       );
       
       if (!validationResult.success) {
-        this.logError('updateConfig validation failed', this.createError('CONFIG_VALIDATION_FAILED', 'Configuration validation failed', validationResult.error));
         throw new Error(validationResult.error || 'Configuration validation failed');
       }
 
@@ -92,53 +116,66 @@ export class ConfigurationService extends BaseService {
         });
       }
 
+      if (!this.isIPCAvailable()) {
+        throw new Error('IPC not available');
+      }
+
       // Call IPC to update configuration in ConfigManager
       // BaseService.ipcService automatically handles MobX observable conversion
-      const result = await this.ipcService.call<any>('updateConfig', config);
+      const ipcResult = await this.ipcService.call<any>('updateConfig', config);
       
-      if (result.success && result.config) {
+      if (ipcResult.success && ipcResult.config) {
         // Post-validate the complete configuration returned from backend
-        const backendValidation = ConfigUtils.validateConfig(result.config);
+        const backendValidation = ConfigUtils.validateConfig(ipcResult.config);
         
         if (!backendValidation.success) {
-          this.logError('updateConfig backend validation failed', this.createError('CONFIG_BACKEND_VALIDATION_FAILED', 'Backend returned invalid configuration', backendValidation.error));
           throw new Error(backendValidation.error || 'Backend validation failed');
         }
 
-        this.currentConfig = result.config;
+        this.currentConfig = ipcResult.config;
         this.log('updateConfig: Configuration updated and validated successfully');
-        return result.config;
+        return ipcResult.config;
       } else {
-        throw new Error(result.error || 'Failed to update configuration');
+        throw new Error(ipcResult.error || 'Failed to update configuration');
       }
-    } catch (error) {
-      this.logError('updateConfig failed', this.createError('CONFIG_UPDATE_FAILED', 'Failed to update configuration', { error, configKeys: Object.keys(config) }));
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to update configuration: ${errorMessage}`);
+    }, 'updateConfig');
+
+    if (!result.success) {
+      throw new Error(`Failed to update configuration: ${result.error?.message || 'Unknown error'}`);
     }
+
+    return result.data!;
   }
 
   /**
    * Reset configuration to defaults
+   * Enhanced with resilience patterns
    */
   public async resetConfig(): Promise<CrawlerConfig> {
-    try {      this.log('resetConfig: Resetting configuration to defaults');
+    const result = await this.executeOperation(async () => {
+      this.log('resetConfig: Resetting configuration to defaults');
+
+      if (!this.isIPCAvailable()) {
+        throw new Error('IPC not available');
+      }
 
       // Call IPC to reset configuration in ConfigManager
-      const result = await this.ipcService.call<any>('resetConfig');
+      const ipcResult = await this.ipcService.call<any>('resetConfig');
       
-      if (result.success && result.config) {
-        this.currentConfig = result.config;
+      if (ipcResult.success && ipcResult.config) {
+        this.currentConfig = ipcResult.config;
         this.log('resetConfig: Configuration reset successfully');
-        return result.config;
+        return ipcResult.config;
       } else {
-        throw new Error(result.error || 'Failed to reset configuration');
+        throw new Error(ipcResult.error || 'Failed to reset configuration');
       }
-    } catch (error) {
-      this.logError('resetConfig failed', this.createError('CONFIG_RESET_FAILED', 'Failed to reset configuration', error));
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to reset configuration: ${errorMessage}`);
+    }, 'resetConfig');
+
+    if (!result.success) {
+      throw new Error(`Failed to reset configuration: ${result.error?.message || 'Unknown error'}`);
     }
+
+    return result.data!;
   }
 
   /**
@@ -150,21 +187,29 @@ export class ConfigurationService extends BaseService {
 
   /**
    * Get configuration file path
+   * Enhanced with resilience patterns
    */
   public async getConfigPath(): Promise<string> {
-    try {
-      // Call IPC to get configuration file path from ConfigManager
-      const result = await this.ipcService.call<any>('getConfigPath');
-      
-      if (result.success && result.configPath) {
-        return result.configPath;
-      } else {
-        throw new Error(result.error || 'Failed to get configuration path');
+    const result = await this.executeOperation(async () => {
+      if (!this.isIPCAvailable()) {
+        throw new Error('IPC not available');
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to get configuration path: ${errorMessage}`);
+
+      // Call IPC to get configuration file path from ConfigManager
+      const ipcResult = await this.ipcService.call<any>('getConfigPath');
+      
+      if (ipcResult.success && ipcResult.configPath) {
+        return ipcResult.configPath;
+      } else {
+        throw new Error(ipcResult.error || 'Failed to get configuration path');
+      }
+    }, 'getConfigPath');
+
+    if (!result.success) {
+      throw new Error(`Failed to get configuration path: ${result.error?.message || 'Unknown error'}`);
     }
+
+    return result.data!;
   }
 
   /**

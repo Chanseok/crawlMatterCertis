@@ -5,6 +5,8 @@
 
 import { crawlerEvents } from '../utils/progress.js';
 import { createElectronLogger } from '../../utils/logger.js';
+import { CrawlingUtils } from '../../../shared/utils/CrawlingUtils.js';
+import { TimeUtils } from '../../../shared/utils/TimeUtils.js';
 import type { CrawlingProgress, FinalCrawlingResult, CrawlingStage } from '../../../../types.js';
 
 export class ProgressReporter {
@@ -61,32 +63,13 @@ export class ProgressReporter {
     // 필요한 경우 추가 데이터 가공
     const enrichedData = {
       ...data,
-      formattedElapsedTime: this.formatTime(data.elapsedTime),
-      formattedRemainingTime: this.formatTime(data.remainingTime),
+      formattedElapsedTime: TimeUtils.formatDuration(data.elapsedTime || 0),
+      formattedRemainingTime: TimeUtils.formatDuration(data.remainingTime || 0),
       percentComplete: percentComplete
     };
     
     // UI 콜백 호출
     this.updateCallback(enrichedData);
-  }
-  
-  /**
-   * 시간을 사람이 읽기 쉬운 형식으로 변환
-   */
-  public formatTime(timeMs: number | undefined): string {
-    if (!timeMs) return '알 수 없음';
-    
-    const seconds = Math.floor(timeMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    if (hours > 0) {
-      return `${hours}시간 ${minutes % 60}분`;
-    } else if (minutes > 0) {
-      return `${minutes}분 ${seconds % 60}초`;
-    } else {
-      return `${seconds}초`;
-    }
   }
   
   /**
@@ -98,11 +81,16 @@ export class ProgressReporter {
     }
     
     if (data.currentPage && data.totalPages) {
-      return Math.floor((data.currentPage / data.totalPages) * 100);
+      return CrawlingUtils.safePercentage(data.currentPage, data.totalPages);
+    }
+    
+    if (data.totalItems && data.totalItems > 0) {
+      const processed = (data.newItems || 0) + (data.updatedItems || 0);
+      return CrawlingUtils.safePercentage(processed, data.totalItems);
     }
     
     if (data.current && data.total) {
-      return Math.floor((data.current / data.total) * 100);
+      return CrawlingUtils.safePercentage(data.current, data.total);
     }
     
     return 0;

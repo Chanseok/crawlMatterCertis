@@ -8,7 +8,8 @@
  * - 중복 페이지 제거 및 범위 최적화
  */
 
-import { Logger } from './Logger';
+import { Logger } from './Logger.js';
+import { ValidationUtils } from './ValidationUtils.js';
 
 const logger = Logger.getInstance();
 
@@ -58,22 +59,17 @@ export class PageRangeParser {
     };
 
     try {
-      // 입력 검증
-      if (!input || typeof input !== 'string') {
-        result.errors.push('입력 문자열이 비어있거나 유효하지 않습니다.');
+      // Use ValidationUtils for input validation
+      const inputValidation = ValidationUtils.validatePageRangeString(input);
+      if (!inputValidation.success) {
+        result.errors.push(...inputValidation.errors);
         return result;
       }
 
-      if (totalSitePages <= 0) {
+      const normalizedInput = inputValidation.data!;
+
+      if (!ValidationUtils.isValidPositiveInteger(totalSitePages)) {
         result.errors.push('총 페이지 수가 유효하지 않습니다.');
-        return result;
-      }
-
-      // 공백 제거 및 정규화
-      const normalizedInput = input.trim().replace(/\s+/g, '');
-      
-      if (!normalizedInput) {
-        result.errors.push('입력이 비어있습니다.');
         return result;
       }
 
@@ -173,14 +169,17 @@ export class PageRangeParser {
           return result;
         }
 
-        // 범위 유효성 검증
-        if (start < 1 || end < 1) {
-          result.errors.push(`페이지 번호는 1 이상이어야 합니다: "${token}"`);
+        // Use ValidationUtils for page number validation
+        const startValidation = ValidationUtils.validatePageNumber(start, totalSitePages, `Start page in range "${token}"`);
+        const endValidation = ValidationUtils.validatePageNumber(end, totalSitePages, `End page in range "${token}"`);
+
+        if (!startValidation.success) {
+          result.errors.push(...startValidation.errors);
           return result;
         }
 
-        if (start > totalSitePages || end > totalSitePages) {
-          result.errors.push(`페이지 번호가 총 페이지 수(${totalSitePages})를 초과합니다: "${token}"`);
+        if (!endValidation.success) {
+          result.errors.push(...endValidation.errors);
           return result;
         }
 
@@ -201,13 +200,11 @@ export class PageRangeParser {
           return result;
         }
 
-        if (pageNumber < 1) {
-          result.errors.push(`페이지 번호는 1 이상이어야 합니다: "${token}"`);
-          return result;
-        }
-
-        if (pageNumber > totalSitePages) {
-          result.errors.push(`페이지 번호가 총 페이지 수(${totalSitePages})를 초과합니다: "${token}"`);
+        // Use ValidationUtils for single page validation
+        const pageValidation = ValidationUtils.validatePageNumber(pageNumber, totalSitePages, `Page "${token}"`);
+        
+        if (!pageValidation.success) {
+          result.errors.push(...pageValidation.errors);
           return result;
         }
 
@@ -330,17 +327,15 @@ export class PageRangeParser {
     const errors: string[] = [];
 
     for (const range of ranges) {
-      // 기본 범위 유효성 검증
-      if (range.startPage < 1 || range.endPage < 1) {
-        errors.push(`페이지 번호는 1 이상이어야 합니다: ${range.startPage}-${range.endPage}`);
-      }
+      // Use ValidationUtils for range validation
+      const rangeValidation = ValidationUtils.validatePageRange(
+        range.startPage,
+        range.endPage,
+        totalSitePages
+      );
 
-      if (range.startPage > totalSitePages || range.endPage > totalSitePages) {
-        errors.push(`페이지 번호가 총 페이지 수(${totalSitePages})를 초과합니다: ${range.startPage}-${range.endPage}`);
-      }
-
-      if (range.startPage < range.endPage) {
-        errors.push(`시작 페이지가 끝 페이지보다 작습니다: ${range.startPage}-${range.endPage}`);
+      if (!rangeValidation.isValid) {
+        errors.push(`Range ${range.startPage}-${range.endPage}: ${rangeValidation.message}`);
       }
     }
 

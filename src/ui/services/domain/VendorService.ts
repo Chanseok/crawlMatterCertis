@@ -2,6 +2,11 @@
  * VendorService.ts
  * Domain Service for Vendor Operations
  * 
+ * Phase 3: Service Layer Refactoring
+ * - Enhanced with resilience management for vendor operations
+ * - Improved error handling and recovery patterns
+ * - Standardized service lifecycle management
+ * 
  * 책임:
  * - 벤더 정보 조회 및 관리
  * - 벤더 목록 갱신 및 동기화
@@ -36,12 +41,23 @@ export interface VendorUpdateResult {
 /**
  * 벤더 서비스 클래스
  * 모든 벤더 관련 작업을 추상화하여 제공
+ * 
+ * Phase 3 Enhanced Features:
+ * - Resilience patterns for vendor operations
+ * - Enhanced error handling and recovery
+ * - Improved service lifecycle management
  */
 export class VendorService extends BaseService {
   private static _instance: VendorService | null = null;
 
   constructor() {
     super('VendorService');
+    // Initialize resilience patterns for API-like operations
+    this.initializeResilience({ 
+      serviceType: 'api',
+      enableCircuitBreaker: true,
+      enableRetry: true 
+    });
   }
 
   /**

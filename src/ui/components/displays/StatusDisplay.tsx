@@ -7,6 +7,7 @@
 import React from 'react';
 import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../../hooks/useCrawlingStore';
+import { DisplayUtils } from '../../../shared/utils/DisplayUtils.js';
 
 /**
  * 상태 표시 컴포넌트
@@ -16,32 +17,12 @@ export const StatusDisplay: React.FC = observer(() => {
   const { status, progress } = useCrawlingStore();
   
   const getStatusInfo = () => {
-    switch (status) {
-      case 'running':
-        return {
-          text: '실행 중',
-          color: 'text-blue-600 dark:text-blue-400',
-          bgColor: 'bg-blue-100 dark:bg-blue-900/50'
-        };
-      case 'completed':
-        return {
-          text: '완료',
-          color: 'text-green-600 dark:text-green-400',
-          bgColor: 'bg-green-100 dark:bg-green-900/50'
-        };
-      case 'error':
-        return {
-          text: '오류',
-          color: 'text-red-600 dark:text-red-400',
-          bgColor: 'bg-red-100 dark:bg-red-900/50'
-        };
-      default:
-        return {
-          text: '대기',
-          color: 'text-gray-600 dark:text-gray-400',
-          bgColor: 'bg-gray-100 dark:bg-gray-900/50'
-        };
-    }
+    const statusDisplayInfo = DisplayUtils.getStatusDisplayInfo(status);
+    return {
+      text: statusDisplayInfo.text,
+      color: statusDisplayInfo.color,
+      bgColor: statusDisplayInfo.bgColor
+    };
   };
 
   const statusInfo = getStatusInfo();

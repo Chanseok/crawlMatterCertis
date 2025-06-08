@@ -2,6 +2,11 @@
  * ExportService.ts
  * Domain Service for Export Operations
  * 
+ * Phase 3: Service Layer Refactoring
+ * - Enhanced with resilience management for export operations
+ * - Improved error handling and recovery patterns
+ * - Standardized service lifecycle management
+ * 
  * 책임:
  * - 데이터 내보내기 작업 관리
  * - Excel/CSV 파일 생성 및 저장
@@ -55,12 +60,23 @@ export interface ExportProgress {
 /**
  * 내보내기 서비스 클래스
  * 모든 데이터 내보내기 관련 작업을 추상화하여 제공
+ * 
+ * Phase 3 Enhanced Features:
+ * - Resilience patterns for export operations
+ * - Enhanced error handling and recovery
+ * - Improved service lifecycle management
  */
 export class ExportService extends BaseService {
   private static _instance: ExportService | null = null;
 
   constructor() {
     super('ExportService');
+    // Initialize resilience patterns for minimal operations (file I/O)
+    this.initializeResilience({ 
+      serviceType: 'minimal',
+      enableCircuitBreaker: false,
+      enableRetry: true 
+    });
   }
 
   /**

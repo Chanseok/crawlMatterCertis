@@ -7,7 +7,7 @@
 
 import React, { useCallback, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
-import { TimeUtils } from '../../shared/utils';
+import { TimeUtils } from '../../shared/utils/TimeUtils';
 
 interface CompactStatusDisplayProps {
   crawlingStatus: string;
@@ -32,10 +32,10 @@ export const CompactStatusDisplay: React.FC<CompactStatusDisplayProps> = observe
   elapsedTime,
   message
 }) => {
-  // Memoized time formatting function using TimeUtils
+  // Memoized time formatting function using TimeUtils directly
   const formatTime = useCallback((ms?: number): string => {
     if (!ms || ms <= 0) return '--:--';
-    return TimeUtils.formatDuration(ms);
+    return TimeUtils.formatCompactDuration(ms);
   }, []);
 
   // Memoized status color function to prevent recreation

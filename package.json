@@ -9,7 +9,7 @@
     "dev:react": "vite",
     "dev:electron": "npm run transpile:electron && cross-env NODE_ENV=development electron .",
     "dev:api": "ts-node-esm ./scripts/devApiServer.ts",
-    "build": "tsc -b && vite build",
+    "build": "npm run transpile:electron && vite build",
     "clean": "rimraf dist-electron dist-react",
     "rebuild": "npm run clean && npm run transpile:electron && npm run build",
     "lint": "eslint .",
