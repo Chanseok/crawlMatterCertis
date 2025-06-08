@@ -1,12 +1,15 @@
 /**
  * ConfigurationViewModel.ts
- * 크롤링 설정 관리를 위한 ViewModel
+ * UI ViewModel for configuration management with MobX integration
  * 
- * 책임:
- * - 설정 로드/저장/검증
- * - 설정 변경사항 추적
- * - 기본값 및 유효성 검사
- * - SessionConfigManager 통합
+ * REFACTORED: Now uses centralized ConfigUtils for:
+ * - Default configuration access (ConfigUtils.getDefaultConfig)
+ * - Configuration validation (ConfigUtils.validateConfig)
+ * - Safe configuration merging (ConfigUtils.mergeConfig)
+ * - Eliminated duplicate getDefaultConfiguration() method
+ * 
+ * This ViewModel maintains all UI-specific functionality while leveraging
+ * the shared configuration utilities for consistency across the app.
  */
 
 import { BaseViewModel } from './core/BaseViewModel';
@@ -14,7 +17,7 @@ import { makeObservable, observable, action, computed, runInAction, observable a
 import { crawlingStore } from '../stores/domain/CrawlingStore';
 import { logStore } from '../stores/domain/LogStore';
 import { SessionConfigManager } from '../services/domain/SessionConfigManager';
-import { ConfigurationValidator } from '../../shared/domain/ConfigurationValue';
+import { ConfigUtils } from '../../shared/utils/ConfigUtils';
 import { Logger, LogLevel } from '../../shared/utils/Logger';
 import { 
   handleConfigChangeForPageRange, 
@@ -423,7 +426,7 @@ export class ConfigurationViewModel extends BaseViewModel {
    */
   @action
   resetToDefaults(): void {
-    this.config = mobxObservable(this.getDefaultConfiguration());
+    this.config = mobxObservable(ConfigUtils.getDefaultConfig());
     this.updateValidationErrors();
     this.clearError();
     this.addLog('Configuration reset to default values', 'info');
@@ -433,25 +436,29 @@ export class ConfigurationViewModel extends BaseViewModel {
   
   /**
    * 전체 설정 유효성 검사 (상태 수정 없이 결과만 반환)
-   * Value Object pattern을 사용한 검증
+   * ConfigUtils를 사용한 검증
    */
   validateConfiguration(): ValidationResult {
-    const validationResult = ConfigurationValidator.validateComplete(this.config);
+    const validationResult = ConfigUtils.validateConfig(this.config);
     
-    // ConfigurationValidator 결과를 UI 형식으로 변환
+    // ConfigUtils 결과를 UI 형식으로 변환
     const errors: Record<string, string> = {};
     const warnings: Record<string, string> = {};
     
-    Object.entries(validationResult.errors).forEach(([field, fieldErrors]) => {
-      errors[field] = fieldErrors.join('; ');
-    });
+    if (!validationResult.success && validationResult.error) {
+      // Simple error case - put in general field
+      errors['general'] = validationResult.error;
+    }
     
-    Object.entries(validationResult.warnings).forEach(([field, fieldWarnings]) => {
-      warnings[field] = fieldWarnings.join('; ');
-    });
+    // Handle warnings if available
+    if (validationResult.warnings) {
+      validationResult.warnings.forEach((warning, index) => {
+        warnings[`warning_${index}`] = warning;
+      });
+    }
 
     return {
-      isValid: validationResult.isValid,
+      isValid: validationResult.success,
       errors,
       warnings
     };
@@ -467,7 +474,7 @@ export class ConfigurationViewModel extends BaseViewModel {
   }
 
   /**
-   * 특정 필드 유효성 검사 - Value Object pattern 사용
+   * 특정 필드 유효성 검사 - ConfigUtils 사용
    */
   @action
   validateField<K extends keyof CrawlerConfig>(
@@ -481,19 +488,17 @@ export class ConfigurationViewModel extends BaseViewModel {
     
     // 부분 설정 객체 생성하여 검증
     const partialConfig = { [key]: value } as Partial<CrawlerConfig>;
-    const validationResult = ConfigurationValidator.validatePartialUpdate(
-      this.config,
-      partialConfig
-    );
+    const currentConfig = this.config || ConfigUtils.getDefaultConfig();
+    const validationResult = ConfigUtils.mergeConfig(currentConfig, partialConfig);
     
     // 해당 필드의 검증 결과 반영
-    if (!validationResult.isValid && validationResult.errors[key as string]) {
-      errors[key as string] = validationResult.errors[key as string].join('; ');
+    if (!validationResult.success && validationResult.error) {
+      errors[key as string] = validationResult.error;
     }
     
     // 경고 메시지도 콘솔에 출력
-    if (validationResult.warnings[key as string]) {
-      console.warn(`Configuration field ${key} warning:`, validationResult.warnings[key as string]);
+    if (validationResult.warnings && validationResult.warnings.length > 0) {
+      console.warn(`Configuration field ${key} warnings:`, validationResult.warnings);
     }
     
     this.validationErrors = errors;
@@ -502,39 +507,7 @@ export class ConfigurationViewModel extends BaseViewModel {
 
   // === Utility Methods ===
   
-  /**
-   * 기본 설정 반환
-   */
-  private getDefaultConfiguration(): CrawlerConfig {
-    return {
-      pageRangeLimit: 5,
-      productListRetryCount: 3,
-      productDetailRetryCount: 5,
-      productsPerPage: 12,
-      autoAddToLocalDB: true,
-      autoStatusCheck: true,    // 기본값: 자동 상태 체크 활성화
-      crawlerType: 'axios',
-      batchSize: 50,
-      batchDelayMs: 1000,
-      enableBatchProcessing: true,
-      batchRetryLimit: 3,
-      baseUrl: 'https://csa-iot.org/csa-iot_products/',
-      matterFilterUrl: 'https://csa-iot.org/csa-iot_products/?p_keywords=&p_type%5B%5D=14&p_program_type%5B%5D=1049&p_certificate=&p_family=&p_firmware_ver=',
-      pageTimeoutMs: 30000,
-      productDetailTimeoutMs: 30000,
-      initialConcurrency: 10,
-      detailConcurrency: 10,
-      retryConcurrency: 5,
-      minRequestDelayMs: 100,
-      maxRequestDelayMs: 2000,
-      retryStart: 1,
-      retryMax: 5,
-      cacheTtlMs: 300000,
-      headlessBrowser: true,
-      maxConcurrentTasks: 10,
-      requestDelay: 100
-    };
-  }
+  // Note: Default configuration is now provided by ConfigUtils.getDefaultConfig()
 
   @action
   clearError(): void {
@@ -582,7 +555,7 @@ export class ConfigurationViewModel extends BaseViewModel {
   importConfiguration(configJson: string): void {
     try {
       const importedConfig = JSON.parse(configJson) as CrawlerConfig;
-      this.config = { ...this.getDefaultConfiguration(), ...importedConfig };
+      this.config = { ...ConfigUtils.getDefaultConfig(), ...importedConfig };
       this.updateValidationErrors();
       this.addLog('Configuration imported successfully', 'success');
     } catch (error) {

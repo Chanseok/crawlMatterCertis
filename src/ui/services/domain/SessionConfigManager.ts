@@ -1,6 +1,6 @@
 import { makeAutoObservable, runInAction, toJS } from 'mobx';
 import { ConfigurationService } from './ConfigurationService';
-import { ConfigurationValidator } from '../../../shared/domain/ConfigurationValue';
+import { ConfigUtils } from '../../../shared/utils/ConfigUtils';
 import type { CrawlerConfig } from '../../../../types';
 
 /**
@@ -121,26 +121,19 @@ export class SessionConfigManager {
         isProxy: updates.constructor?.name === 'Object' ? 'Plain' : 'Proxy'
       });
 
-      // 클라이언트 측 사전 검증 (Value Object 패턴 적용)
+      // 클라이언트 측 사전 검증 (ConfigUtils 사용)
       if (this.config) {
-        const validationResult = ConfigurationValidator.validatePartialUpdate(
-          this.config, 
-          plainUpdates
-        );
+        const validationResult = ConfigUtils.mergeConfig(this.config, plainUpdates);
         
-        if (!validationResult.isValid) {
-          const errorDetails = Object.entries(validationResult.errors)
-            .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
-            .join('; ');
-          throw new Error(`Configuration validation failed: ${errorDetails}`);
+        if (!validationResult.success) {
+          throw new Error(validationResult.error || 'Configuration validation failed');
         }
         
         // 경고 로그 출력
-        if (Object.keys(validationResult.warnings).length > 0) {
-          const warningDetails = Object.entries(validationResult.warnings)
-            .map(([field, warnings]) => `${field}: ${warnings.join(', ')}`)
-            .join('; ');
-          console.warn(`[SessionConfigManager] 설정 경고:`, warningDetails);
+        if (validationResult.warnings && validationResult.warnings.length > 0) {
+          validationResult.warnings.forEach(warning => {
+            console.warn(`[SessionConfigManager] 설정 경고:`, warning);
+          });
         }
       }
 
@@ -414,17 +407,11 @@ export class SessionConfigManager {
       return { isValid: false, errors: ['No configuration loaded'] };
     }
 
-    const errors: string[] = [];
-
-    try {
-      this.configService.validateConfigComplete(this.config);
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error));
-    }
-
+    const validationResult = ConfigUtils.validateConfig(this.config);
+    
     return {
-      isValid: errors.length === 0,
-      errors
+      isValid: validationResult.success,
+      errors: validationResult.success ? [] : [validationResult.error || 'Validation failed']
     };
   }
 }

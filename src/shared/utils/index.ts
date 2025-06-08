@@ -12,5 +12,9 @@ export { TimeUtils } from './TimeUtils';
 export { ProgressUtils } from './ProgressUtils';
 export type { StageProgressInfo, OverallProgressInfo } from './ProgressUtils';
 
+// Configuration utilities
+export { ConfigUtils, DEFAULT_CONFIG } from './ConfigUtils';
+export type { ConfigOperationResult } from './ConfigUtils';
+
 // Logger utility (기존)
 export { Logger } from './Logger';

@@ -1,6 +1,19 @@
 import { BaseService } from '../base/BaseService';
-import { ConfigurationValidator } from '../../../shared/domain/ConfigurationValue';
+import { ConfigUtils } from '../../../shared/utils/ConfigUtils';
 import type { CrawlerConfig } from '../../../../types';
+
+/**
+ * ConfigurationService.ts
+ * IPC-based configuration service for UI components
+ * 
+ * REFACTORED: Now uses centralized ConfigUtils for:
+ * - Configuration validation (ConfigUtils.validateConfig)
+ * - Safe configuration merging (ConfigUtils.mergeConfig)
+ * - Standardized error handling (ConfigOperationResult<T>)
+ * 
+ * This service bridges the gap between frontend configuration needs
+ * and backend ConfigManager, using unified configuration patterns.
+ */
 
 /**
  * Configuration Service
@@ -61,26 +74,22 @@ export class ConfigurationService extends BaseService {
     try {
       this.log('updateConfig: Updating configuration with keys: ' + Object.keys(config).join(', '));
       
-      // Pre-validate the configuration update using Value Object pattern
-      const validationResult = ConfigurationValidator.validatePartialUpdate(
-        this.currentConfig || {} as CrawlerConfig, 
+      // Use ConfigUtils for validation and merging
+      const validationResult = ConfigUtils.mergeConfig(
+        this.currentConfig || ConfigUtils.getDefaultConfig(), 
         config
       );
       
-      if (!validationResult.isValid) {
-        const errorMessages = Object.entries(validationResult.errors)
-          .map(([field, errors]) => `${field}: ${errors.join(', ')}`);
-         this.logError('updateConfig validation failed', this.createError('CONFIG_VALIDATION_FAILED', 'Configuration validation failed', validationResult.errors));
-        throw new Error(`Configuration validation failed: ${errorMessages.join('; ')}`);
+      if (!validationResult.success) {
+        this.logError('updateConfig validation failed', this.createError('CONFIG_VALIDATION_FAILED', 'Configuration validation failed', validationResult.error));
+        throw new Error(validationResult.error || 'Configuration validation failed');
       }
 
       // Log warnings if any
-      const warningMessages = Object.entries(validationResult.warnings);
-      if (warningMessages.length > 0) {
-        const warningText = warningMessages
-          .map(([field, warnings]) => `${field}: ${warnings.join(', ')}`)
-          .join('; ');
-        this.logger.info('Configuration update warnings', warningText);
+      if (validationResult.warnings && validationResult.warnings.length > 0) {
+        validationResult.warnings.forEach(warning => {
+          this.logger.info('Configuration update warnings', warning);
+        });
       }
 
       // Call IPC to update configuration in ConfigManager
@@ -89,14 +98,11 @@ export class ConfigurationService extends BaseService {
       
       if (result.success && result.config) {
         // Post-validate the complete configuration returned from backend
-        const completeValidationResult = ConfigurationValidator.validateComplete(result.config);
+        const backendValidation = ConfigUtils.validateConfig(result.config);
         
-        if (!completeValidationResult.isValid) {
-          const errorMessages = Object.entries(completeValidationResult.errors)
-            .map(([field, errors]) => `${field}: ${errors.join(', ')}`);
-          
-          this.logError('updateConfig backend validation failed', this.createError('CONFIG_BACKEND_VALIDATION_FAILED', 'Backend returned invalid configuration', completeValidationResult.errors));
-          throw new Error(`Backend validation failed: ${errorMessages.join('; ')}`);
+        if (!backendValidation.success) {
+          this.logError('updateConfig backend validation failed', this.createError('CONFIG_BACKEND_VALIDATION_FAILED', 'Backend returned invalid configuration', backendValidation.error));
+          throw new Error(backendValidation.error || 'Backend validation failed');
         }
 
         this.currentConfig = result.config;
@@ -165,22 +171,17 @@ export class ConfigurationService extends BaseService {
    * Validate complete configuration using Value Object pattern
    */
   public validateConfigComplete(config: CrawlerConfig): void {
-    const validationResult = ConfigurationValidator.validateComplete(config);
+    const validationResult = ConfigUtils.validateConfig(config);
     
-    if (!validationResult.isValid) {
-      const errorMessages = Object.entries(validationResult.errors)
-        .map(([field, errors]) => `${field}: ${errors.join(', ')}`);
-      
-      throw new Error(`Configuration validation failed: ${errorMessages.join('; ')}`);
+    if (!validationResult.success) {
+      throw new Error(validationResult.error || 'Configuration validation failed');
     }
 
     // Log warnings if any
-    const warningMessages = Object.entries(validationResult.warnings);
-    if (warningMessages.length > 0) {
-      const warningText = warningMessages
-        .map(([field, warnings]) => `${field}: ${warnings.join(', ')}`)
-        .join('; ');
-      this.logger.info('Configuration validation warnings', warningText);
+    if (validationResult.warnings && validationResult.warnings.length > 0) {
+      validationResult.warnings.forEach(warning => {
+        this.logger.info('Configuration validation warnings', warning);
+      });
     }
   }
 
