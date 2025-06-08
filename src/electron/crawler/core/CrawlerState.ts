@@ -12,7 +12,7 @@ import type {
   CrawlingStatus
 } from '../../../../types.d.ts';
 import { crawlerEvents } from '../utils/progress.js';
-import { PageValidator, PageValidationResult } from '../utils/page-validator.js';
+import { PageValidator, type PageValidationResult } from '../utils/page-validator.js';
 import { logger } from '../../../shared/utils/Logger.js';
 import type { CrawlingStage } from '../../../../types.js';
 

@@ -12,9 +12,9 @@ import {
   PageInitializationError, PageContentExtractionError, PageOperationError, 
   PageTimeoutError, PageNavigationError 
 } from '../utils/page-errors.js';
-import { RawProductData, SitePageInfo } from '../tasks/product-list-types.js';
+import type { RawProductData, SitePageInfo } from '../tasks/product-list-types.js';
 import { MAX_FETCH_TOTAL_PAGES_ATTEMPTS, RETRY_DELAY_MS } from '../tasks/product-list-constants.js';
-import { ICrawlerStrategy } from './crawler-strategy.js';
+import type { ICrawlerStrategy } from './crawler-strategy.js';
 
 /**
  * Axios와 Cheerio를 사용한 크롤링 전략 구현

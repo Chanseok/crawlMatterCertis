@@ -33,8 +33,7 @@ export default tseslint.config(
           destructuredArrayIgnorePattern: '^_',
         }
       ],
-      // 미사용 임포트 감지 규칙 추가
-      '@typescript-eslint/no-unused-imports': 'warn',
+      // 미사용 임포트는 no-unused-vars로 감지됨
       // 불필요한 타입 임포트 감지
       '@typescript-eslint/consistent-type-imports': [
         'warn',

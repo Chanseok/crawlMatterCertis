@@ -15,7 +15,7 @@ import { CrawlerState } from './CrawlerState.js';
 import { ProductListCollector } from '../tasks/productList.js';
 import { ProductDetailCollector } from '../tasks/productDetail.js';
 import { ProductValidationCollector } from '../tasks/productValidation.js';
-import { CrawlerConfig, CrawlingRange } from '../../../../types.js';
+import type { CrawlerConfig, CrawlingRange } from '../../../../types.js';
 import { saveProductsToFile, saveMatterProductsToFile } from '../utils/file.js';
 import { 
   deduplicateAndSortMatterProducts, 

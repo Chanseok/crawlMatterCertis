@@ -3,7 +3,7 @@
  * 크롤링 전략 인터페이스 정의
  */
 
-import { RawProductData, SitePageInfo } from '../tasks/product-list-types.js';
+import type { RawProductData, SitePageInfo } from '../tasks/product-list-types.js';
 
 /**
  * 크롤러 전략 인터페이스

@@ -204,7 +204,7 @@ export class PageCrawler {
     
     // 전환 시작
     const previousType = this.crawlerType;
-    let previousStrategy = this.crawlerStrategy;
+    const previousStrategy = this.crawlerStrategy;
     
     logger.debug(`[PageCrawler] 크롤링 전략 변경 시작: ${previousType} → ${crawlerType}`, 'PageCrawler');
     
@@ -252,7 +252,7 @@ export class PageCrawler {
           await this.crawlerStrategy.initialize();
         }
         logger.info(`[PageCrawler] 이전 전략(${previousType})으로 복구 성공`, 'PageCrawler');
-      } catch (recoveryError) {
+      } catch (_recoveryError) {
         // 복구 실패 시 기본 전략(axios)으로 추가 복구 시도
         const fallbackType = 'axios';
         try {

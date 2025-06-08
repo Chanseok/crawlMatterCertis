@@ -3,7 +3,7 @@
  * 크롤러 모듈의 메인 진입점
  */
 
-import { CrawlerConfig } from '../../../types.js';
+import type { CrawlerConfig } from '../../../types.js';
 import { CrawlerEngine } from './core/CrawlerEngine.js';
 import { configManager } from '../ConfigManager.js';
 

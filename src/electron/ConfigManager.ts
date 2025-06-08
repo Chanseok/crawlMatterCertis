@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { electronResourcePaths } from './resourceManager.js';
-import { CrawlerConfig, MutableCrawlerConfig } from '../../types.js';
+import type { CrawlerConfig, MutableCrawlerConfig } from '../../types.js';
 import { ConfigurationValidator } from '../shared/domain/ConfigurationValue.js';
 
 // 기본 설정 값 (Consolidated DEFAULT_CONFIG)

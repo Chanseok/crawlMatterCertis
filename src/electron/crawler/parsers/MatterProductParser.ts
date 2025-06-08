@@ -142,7 +142,7 @@ export class MatterProductParser {
           
           if (colonIndex > 0) {
             const rawLabel = fullText.substring(0, colonIndex).trim().toLowerCase();
-            let rawValue = fullText.substring(colonIndex + 1).trim();
+            const rawValue = fullText.substring(colonIndex + 1).trim();
             
             // 라벨 타입 인식
             if (rawLabel.includes('manufacturer') || rawLabel.includes('company')) {
@@ -482,7 +482,7 @@ export class MatterProductParser {
           try {
             // 10진수를 16진수로 변환 (앞에 0x 제외)
             hexValue = parseInt(trimmedValue, 10).toString(16).toUpperCase();
-          } catch (e) {
+          } catch (_e) {
             // 변환 실패 시 원본 값 반환
             return value;
           }
@@ -555,7 +555,7 @@ export class MatterProductParser {
           try {
             // 10진수를 16진수로 변환 (앞에 0x 제외)
             hexValue = parseInt(trimmedValue, 10).toString(16).toUpperCase();
-          } catch (e) {
+          } catch (_e) {
             // 변환 실패 시 원본 값 반환
             return id;
           }
