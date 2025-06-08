@@ -5,7 +5,7 @@
 
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { type CrawlerConfig } from '../core/config.js';
+import { type CrawlerConfig } from '../../../../types.js';
 import { debugLog } from '../../util.js';
 import { delay } from '../utils/delay.js';
 import { 

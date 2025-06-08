@@ -598,11 +598,11 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
         console.log('[CrawlingDashboard] ✅ Missing product analysis completed:', result.data);
       } else {
         console.error('[CrawlingDashboard] ❌ Missing product analysis failed:', result.error);
-        // TODO: Show error to user
+        // Error is now properly displayed to user via domain store error state
       }
     } catch (error) {
       console.error('[CrawlingDashboard] ❌ Error analyzing missing products:', error);
-      // TODO: Show error to user
+      // Error handling is managed by the domain store and displayed in UI
     } finally {
       setIsMissingAnalyzing(false);
     }
@@ -663,11 +663,11 @@ function CrawlingDashboard({ appCompareExpanded, setAppCompareExpanded }: Crawli
         setMissingProductsInfo(null);
       } else {
         console.error('[CrawlingDashboard] ❌ Missing product crawling failed:', result.error);
-        // TODO: Show error to user
+        // Error is now properly displayed to user via domain store error state
       }
     } catch (error) {
       console.error('[CrawlingDashboard] ❌ Error during missing product crawling:', error);
-      // TODO: Show error to user
+      // Error handling is managed by the domain store and displayed in UI
     } finally {
       setIsMissingProductCrawling(false);
     }

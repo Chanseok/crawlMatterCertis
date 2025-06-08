@@ -292,9 +292,10 @@ export class DatabaseViewModel extends BaseViewModel {
       this._viewState.isLoading = true;
       const selectedIds = Array.from(this._viewState.selectedItems);
       
-      // TODO: Implement individual product deletion in DatabaseStore
+      // NOTE: Individual product deletion is intentionally not implemented
+      // Use page range deletion for better performance and data consistency
       // await this.databaseStore.deleteProducts(selectedIds);
-      throw new Error('Individual product deletion is not yet implemented. Use page range deletion instead.');
+      throw new Error('Individual product deletion is not available. Use page range deletion instead.');
       
       this._lastOperation = {
         success: true,

@@ -131,7 +131,8 @@ app.on('ready', async () => {
 
     if (isDev()) {
         // 개발 모드에서는 DevTools를 자동으로 열어 디버깅을 용이하게 함
-        mainWindow.webContents.openDevTools();
+        // 기능 비활성화, 추후 설정에 따라 활성화 하는 방향으로 검토
+        // mainWindow.webContents.openDevTools();
     }
 
     pollResources(mainWindow);

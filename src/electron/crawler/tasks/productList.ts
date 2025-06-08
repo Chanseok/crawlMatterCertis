@@ -11,7 +11,7 @@ import {
 
 import type { CrawlResult, CrawlError } from '../utils/types.js';
 import type { Product, PageProcessingStatusValue, MutablePageProcessingStatusItem } from '../../../../types.js';
-import { type CrawlerConfig } from '../core/config.js';
+import { type CrawlerConfig } from '../../../../types.js';
 import { logger } from '../../../shared/utils/Logger.js';
 import { crawlerEvents, updateRetryStatus } from '../utils/progress.js';
 import { PageIndexManager } from '../utils/page-index-manager.js';

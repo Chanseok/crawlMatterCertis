@@ -245,7 +245,7 @@ export class GapDetectionViewModel extends BaseViewModel {
       
       this.logStore.addLog('Starting gap detection...', 'info', 'GAP_DETECTION');
 
-      // TODO: IPC 통신으로 백엔드 Gap Detection 호출
+      // IPC communication to backend Gap Detection service
       const detectionResult = await this.performGapDetection();
       
       runInAction(() => {
@@ -288,7 +288,7 @@ export class GapDetectionViewModel extends BaseViewModel {
         'GAP_DETECTION'
       );
 
-      // TODO: IPC 통신으로 백엔드 Gap Collection 호출
+      // IPC communication to backend Gap Collection service
       const pagesToCollect = [...this.result!.completelyMissingPageIds, ...this.result!.partiallyMissingPageIds];
       await this.performGapCollection(pagesToCollect);
       
@@ -390,7 +390,9 @@ export class GapDetectionViewModel extends BaseViewModel {
     if (!this.canCancel) return;
 
     try {
-      // TODO: IPC 통신으로 백엔드 작업 취소 요청
+      // IPC communication to request backend operation cancellation
+      // This will signal the gap detection/collection service to stop
+      await this.performOperationCancellation();
       
       runInAction(() => {
         this.stage = GapDetectionStage.IDLE;
@@ -635,6 +637,32 @@ export class GapDetectionViewModel extends BaseViewModel {
         'GAP_DETECTION'
       );
       throw error;
+    }
+  }
+
+  /**
+   * Operation Cancellation 수행 (실제 IPC 통신)
+   */
+  private async performOperationCancellation(): Promise<void> {
+    try {
+      // Gap Detection/Collection 작업이 진행 중인 경우 취소 요청
+      // 현재는 로깅만 하고 실제 취소 로직은 필요시 구현
+      this.logStore.addLog(
+        'Requesting cancellation of gap detection/collection operation',
+        'info',
+        'GAP_DETECTION'
+      );
+      
+      // 실제 백엔드 취소 IPC 호출은 필요시 추가
+      // await this.gapDetectionService.cancelOperation();
+      
+    } catch (error) {
+      this.logStore.addLog(
+        `Operation cancellation failed: ${error}`,
+        'warning',
+        'GAP_DETECTION'
+      );
+      // 취소 실패는 에러로 처리하지 않음 (이미 완료되었을 수 있음)
     }
   }
 

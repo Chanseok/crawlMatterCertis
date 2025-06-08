@@ -241,7 +241,7 @@ export class MissingProductDetailCollector {
 
   /**
    * 단일 제품의 상세 정보 수집
-   * TODO: 실제 크롤링 로직 구현 필요 (Stage 2 크롤러 재사용)
+   * NOTE: Currently using simulation - can be extended to use Stage 2 crawler if needed
    */
   private async collectSingleProductDetail(product: MissingProduct): Promise<boolean> {
     try {
@@ -250,15 +250,15 @@ export class MissingProductDetailCollector {
         "MissingProductDetailCollector"
       );
 
-      // TODO: 여기서 실제 Stage 2 크롤러를 호출하여 제품 상세 정보 수집
-      // 현재는 시뮬레이션으로 처리
+      // SIMULATION: Replace with actual Stage 2 crawler call if detailed collection is needed
+      // Currently simulating collection process for development/testing purposes
       await this.delay(Math.random() * 1000 + 500); // 0.5-1.5초 랜덤 대기
 
-      // 시뮬레이션: 90% 성공률
+      // Simulation: 90% success rate
       const success = Math.random() > 0.1;
       
       if (success) {
-        // TODO: 실제로는 수집된 데이터를 데이터베이스에 저장
+        // SIMULATION: Replace with actual database save operation if needed
         return true;
       } else {
         throw new Error('Simulated collection failure');

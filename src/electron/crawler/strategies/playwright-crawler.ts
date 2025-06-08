@@ -5,7 +5,7 @@
 
 import { type Page, type BrowserContext } from 'playwright-chromium';
 import { BrowserManager } from '../browser/BrowserManager.js';
-import { type CrawlerConfig } from '../core/config.js';
+import { type CrawlerConfig } from '../../../../types.js';
 import { debugLog } from '../../util.js';
 import { delay } from '../utils/delay.js';
 import { 

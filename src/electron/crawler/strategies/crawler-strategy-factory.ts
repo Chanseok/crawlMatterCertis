@@ -4,7 +4,7 @@
  */
 
 import { BrowserManager } from '../browser/BrowserManager.js';
-import { type CrawlerConfig } from '../core/config.js';
+import { type CrawlerConfig } from '../../../../types.js';
 import { ICrawlerStrategy } from './crawler-strategy.js';
 import { PlaywrightCrawlerStrategy } from './playwright-crawler.js';
 import { AxiosCrawlerStrategy } from './axios-crawler.js';
