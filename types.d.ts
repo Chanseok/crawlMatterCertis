@@ -460,81 +460,6 @@ export interface CrawlerConfig {
 
 /**
  * =====================================================
- * GAP DETECTION TYPES
- * =====================================================
- */
-
-/**
- * 페이지 갭 정보
- */
-export interface PageGap {
-    readonly pageId: number;
-    readonly missingIndices: ReadonlyArray<number>;
-    readonly expectedCount: number;
-    readonly actualCount: number;
-    readonly completenessRatio: number; // 0.0 ~ 1.0
-}
-
-/**
- * 크롤링 페이지 범위 정보
- */
-export interface CrawlingPageRange {
-    readonly startPage: number; // 사이트 페이지 번호 시작
-    readonly endPage: number;   // 사이트 페이지 번호 끝
-    readonly missingPageIds: ReadonlyArray<number>; // 이 범위에 포함된 누락 pageId들
-    readonly reason: string; // 이 범위가 생성된 이유
-    readonly priority: number; // 우선순위 (1: 높음, 2: 보통, 3: 낮음)
-    readonly estimatedProducts: number; // 예상 수집 제품 수
-}
-
-/**
- * 갭 탐지 결과 (확장됨)
- */
-export interface GapDetectionResult {
-    readonly totalMissingProducts: number;
-    readonly missingPages: ReadonlyArray<PageGap>;
-    readonly completelyMissingPageIds: ReadonlyArray<number>;
-    readonly partiallyMissingPageIds: ReadonlyArray<number>;
-    readonly summary: {
-        readonly totalExpectedProducts: number;
-        readonly totalActualProducts: number;
-        readonly completionPercentage: number;
-    };
-    // 새로 추가: 크롤링 범위 정보
-    readonly crawlingRanges: ReadonlyArray<CrawlingPageRange>;
-    readonly totalSitePages: number; // 사이트의 총 페이지 수
-    readonly batchInfo: {
-        readonly totalBatches: number; // 총 배치 수
-        readonly estimatedTime: number; // 예상 소요 시간 (분)
-        readonly recommendedConcurrency: number; // 권장 동시 실행 수
-    };
-}
-
-/**
- * 갭 수집 옵션
- */
-export interface GapCollectionOptions {
-    readonly maxConcurrentPages?: number;
-    readonly delayBetweenPages?: number;
-    readonly skipCompletePages?: boolean;
-    readonly prioritizePartialPages?: boolean;
-    readonly useExtendedCollection?: boolean; // 주변 페이지 포함 수집 옵션
-}
-
-/**
- * 갭 수집 결과
- */
-export interface GapCollectionResult {
-    readonly collected: number;
-    readonly failed: number;
-    readonly skipped: number;
-    readonly collectedPages: ReadonlyArray<number>;
-    readonly failedPages: ReadonlyArray<number>;
-    readonly errors: ReadonlyArray<string>;
-}
-
-/**
- * =====================================================
  * CONCURRENT PROCESSING TYPES
  * =====================================================
  */
@@ -620,9 +545,6 @@ export interface MethodParamsMapping {
     readonly 'fetchAndUpdateVendors': void;
     readonly 'getVendors': void;
     readonly 'getConfigPath': void;
-    readonly 'detectGaps': { readonly config?: CrawlerConfig };
-    readonly 'collectGaps': { readonly gapResult: GapDetectionResult; readonly options?: GapCollectionOptions };
-    readonly 'executeGapBatchCollection': { readonly config?: CrawlerConfig };
 }
 
 /**
@@ -667,22 +589,6 @@ export interface MethodReturnMapping {
     readonly 'getConfigPath': {
         readonly success: boolean;
         readonly configPath?: string;
-        readonly error?: string;
-    };
-    readonly 'detectGaps': {
-        readonly success: boolean;
-        readonly result?: GapDetectionResult;
-        readonly error?: string;
-    };
-    readonly 'collectGaps': {
-        readonly success: boolean;
-        readonly result?: GapCollectionResult;
-        readonly error?: string;
-    };
-    readonly 'executeGapBatchCollection': {
-        readonly success: boolean;
-        readonly gapResult?: GapDetectionResult;
-        readonly collectionResult?: GapCollectionResult;
         readonly error?: string;
     };
 }
@@ -755,9 +661,6 @@ export interface IElectronAPI extends IPlatformAPI {
     readonly deleteRecordsByPageRange: (params: MethodParamsMapping['deleteRecordsByPageRange']) => Promise<MethodReturnMapping['deleteRecordsByPageRange']>;
     readonly fetchAndUpdateVendors: () => Promise<MethodReturnMapping['fetchAndUpdateVendors']>;
     readonly getVendors: () => Promise<MethodReturnMapping['getVendors']>;
-    readonly detectGaps: (params: MethodParamsMapping['detectGaps']) => Promise<MethodReturnMapping['detectGaps']>;
-    readonly collectGaps: (params: MethodParamsMapping['collectGaps']) => Promise<MethodReturnMapping['collectGaps']>;
-    readonly executeGapBatchCollection: (params: MethodParamsMapping['executeGapBatchCollection']) => Promise<MethodReturnMapping['executeGapBatchCollection']>;
     
     // 누락 제품 수집 API
     readonly analyzeMissingProducts: () => Promise<any>;

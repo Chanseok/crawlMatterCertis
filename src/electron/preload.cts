@@ -228,11 +228,6 @@ const electronAPI: IElectronAPI = {
     fetchAndUpdateVendors: createMethodHandler('fetchAndUpdateVendors'),
     getVendors: createMethodHandler('getVendors'),
     
-    // Gap Detection API 추가
-    detectGaps: createMethodHandler('detectGaps'),
-    collectGaps: createMethodHandler('collectGaps'),
-    executeGapBatchCollection: createMethodHandler('executeGapBatchCollection'),
-    
     // 누락 제품 수집 API 추가
     analyzeMissingProducts: () => ipcRenderer.invoke('analyzeMissingProducts'),
     crawlMissingProducts: (params: any) => ipcRenderer.invoke('crawlMissingProducts', params),

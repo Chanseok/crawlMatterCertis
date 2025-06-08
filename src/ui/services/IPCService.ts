@@ -782,55 +782,7 @@ export class IPCService {
     }
   }
 
-  // === Gap Detection 관련 ===
 
-  /**
-   * 갭 탐지 실행
-   */
-  public async detectGaps(params: any): Promise<any> {
-    if (!this.isElectronAvailable) {
-      throw new Error('Electron not available');
-    }
-
-    try {
-      return await window.electron.detectGaps(params);
-    } catch (error) {
-      console.error('[IPCService] Failed to detect gaps:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 갭 수집 실행
-   */
-  public async collectGaps(params: any): Promise<any> {
-    if (!this.isElectronAvailable) {
-      throw new Error('Electron not available');
-    }
-
-    try {
-      return await window.electron.collectGaps(params);
-    } catch (error) {
-      console.error('[IPCService] Failed to collect gaps:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 갭 배치 수집 실행 (새로운 배치 처리 시스템)
-   */
-  public async executeGapBatchCollection(params: any): Promise<any> {
-    if (!this.isElectronAvailable) {
-      throw new Error('Electron not available');
-    }
-
-    try {
-      return await window.electron.executeGapBatchCollection(params);
-    } catch (error) {
-      console.error('[IPCService] Failed to execute gap batch collection:', error);
-      throw error;
-    }
-  }
 }
 
 // 싱글톤 인스턴스 생성
