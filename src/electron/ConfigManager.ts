@@ -217,7 +217,7 @@ export class ConfigManager {
         .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
         .join('; ');
       
-      console.error(`[ConfigManager] 설정 검증 실패:`, errorDetails);
+      configManagerLogger.error('설정 검증 실패', { data: errorDetails });
       throw new Error(`Configuration validation failed: ${errorDetails}`);
     }
     
@@ -226,7 +226,7 @@ export class ConfigManager {
       const warningDetails = Object.entries(validationResult.warnings)
         .map(([field, warnings]) => `${field}: ${warnings.join(', ')}`)
         .join('; ');
-      console.warn(`[ConfigManager] 설정 경고:`, warningDetails);
+      configManagerLogger.warn('설정 경고', { data: warningDetails });
     }
     
     // 3. readonly 제약을 우회하여 안전한 설정 병합
@@ -249,15 +249,15 @@ export class ConfigManager {
     // 6. 내부 상태 업데이트
     this.config = newConfig;
     
-    console.log(`[ConfigManager] 병합 후 설정:`, JSON.stringify(this.config, null, 2));
+    configManagerLogger.info('병합 후 설정', { data: JSON.stringify(this.config, null, 2) });
     
     // 7. 설정 저장
     try {
       this.saveConfig();
-      console.log(`[ConfigManager] 설정 업데이트 및 저장 완료`);
+      configManagerLogger.info('설정 업데이트 및 저장 완료');
     } catch (error) {
-      console.error(`[ConfigManager] 설정 저장 실패:`, error);
-      console.error(`[ConfigManager] 저장 실패한 설정:`, JSON.stringify(this.config, null, 2));
+      configManagerLogger.error('설정 저장 실패', { data: error });
+      configManagerLogger.error('저장 실패한 설정', { data: JSON.stringify(this.config, null, 2) });
       // 저장 실패 시에도 메모리의 설정은 유지하지만 에러를 로그에 남김
     }
     

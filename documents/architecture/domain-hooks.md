@@ -33,14 +33,6 @@ function MyComponent() {
 }
 ```
 
-## Demo Component
-
-To see all hooks in action, check out the demo component:
-
-```
-src/ui/components/DomainStoreDemo.tsx
-```
-
 ## Testing
 
 Run UI tests with:

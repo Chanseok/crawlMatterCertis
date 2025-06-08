@@ -4,11 +4,13 @@
  */
 
 import { crawlerEvents } from '../utils/progress.js';
+import { createElectronLogger } from '../../utils/logger.js';
 import type { CrawlingProgress, FinalCrawlingResult, CrawlingStage } from '../../../../types.js';
 
 export class ProgressReporter {
   private updateCallback: (data: CrawlingProgress) => void;
   private lastStage: CrawlingStage | null = null;
+  private logger = createElectronLogger('ProgressReporter');
   
   /**
    * @param updateCallback UI에 진행 상태를 업데이트하는 콜백 함수
@@ -23,13 +25,15 @@ export class ProgressReporter {
     
     // 단계 변경 이벤트 추가 모니터링
     crawlerEvents.on('crawlingStageChanged', (stage: CrawlingStage, message: string) => {
-      console.log(`[ProgressReporter] Stage changed to ${stage}: ${message}`);
+      this.logger.info('Stage changed', { data: `${stage}: ${message}` });
       this.lastStage = stage;
     });
     
     // 최종 크롤링 결과 이벤트 모니터링 추가
     crawlerEvents.on('finalCrawlingResult', (result: FinalCrawlingResult) => {
-      console.log(`[ProgressReporter] Final crawling result received: ${result.newItems} new, ${result.updatedItems} updated of ${result.collected} total`);
+      this.logger.info('Final crawling result received', { 
+        data: `${result.newItems} new, ${result.updatedItems} updated of ${result.collected} total` 
+      });
       
       // 이 이벤트는 CrawlerState에서 이미 처리되어 crawlingProgress 이벤트를 발생시키지만,
       // 추가적인 상태 업데이트가 필요하면 여기서 처리
@@ -42,14 +46,16 @@ export class ProgressReporter {
   private handleProgressUpdate(data: CrawlingProgress): void {
     // 단계 변경 감지 및 로깅 (status 사용)
     if (data.status && this.lastStage !== data.status) {
-      console.log(`[ProgressReporter] Status changed from ${this.lastStage || 'none'} to ${data.status}`);
+      this.logger.info('Status changed', { 
+        data: `from ${this.lastStage || 'none'} to ${data.status}` 
+      });
       // 여기서는 직접적인 매핑이 어려움 - status와 stage가 다른 개념이므로 로깅만 수행
     }
     
     // 진행 상황 로깅 (진행률이 변경될 때만)
     const percentComplete = this.calculatePercentComplete(data);
     if (percentComplete > 0 && percentComplete % 10 < 1) {
-      console.log(`[ProgressReporter] Progress: ${percentComplete.toFixed(0)}% complete`);
+      this.logger.info('Progress update', { data: `${percentComplete.toFixed(0)}% complete` });
     }
     
     // 필요한 경우 추가 데이터 가공

@@ -6,11 +6,13 @@
 import type { CrawlerConfig } from '../../../types.js';
 import { CrawlerEngine } from './core/CrawlerEngine.js';
 import { configManager } from '../ConfigManager.js';
+import { createElectronLogger } from '../utils/logger.js';
 
 import type { CrawlingSummary } from './utils/types.js';
 
 // 크롤러 인스턴스 생성
 const crawler = new CrawlerEngine();
+const logger = createElectronLogger('CrawlerIndex');
 
 /**
  * 크롤링 작업을 시작하는 함수
@@ -18,8 +20,8 @@ const crawler = new CrawlerEngine();
  * @returns 크롤링 작업 시작 성공 여부
  */
 export async function startCrawling(config: CrawlerConfig): Promise<boolean> {
-  console.log('[Crawler] startCrawling called');
-  console.log('[Crawler] Config received from UI:', JSON.stringify(config));
+  logger.info('startCrawling called');
+  logger.info('Config received from UI', { data: JSON.stringify(config) });
   return crawler.startCrawling(config);
 }
 

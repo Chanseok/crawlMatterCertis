@@ -240,10 +240,11 @@ export class PlaywrightCrawlerStrategy implements ICrawlerStrategy {
         const attemptError = error instanceof PageOperationError ? error :
           new PageOperationError(error instanceof Error ? error.message : String(error), 0, attempt);
 
-        console.warn(`[PlaywrightCrawlerStrategy] fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS} failed: ${attemptError.message}`);
+        // Note: Using debugLog for consistency with existing pattern in this file
+        debugLog(`[PlaywrightCrawlerStrategy] fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS} failed: ${attemptError.message}`);
 
         if (attempt === MAX_FETCH_ATTEMPTS) {
-          console.error(`[PlaywrightCrawlerStrategy] fetchTotalPages - All ${MAX_FETCH_ATTEMPTS} attempts failed. Last error: ${attemptError.message}`, attemptError);
+          debugLog(`[PlaywrightCrawlerStrategy] fetchTotalPages - All ${MAX_FETCH_ATTEMPTS} attempts failed. Last error: ${attemptError.message}`, attemptError);
           throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts: ${attemptError.message}`, 0, attempt);
         }
         
@@ -253,13 +254,13 @@ export class PlaywrightCrawlerStrategy implements ICrawlerStrategy {
           try {
             await this.browserManager.closePageAndContext(page);
           } catch (e) {
-            console.error(`[PlaywrightCrawlerStrategy] Error releasing page and context in fetchTotalPages (Attempt ${attempt}):`, e);
+            debugLog(`[PlaywrightCrawlerStrategy] Error releasing page and context in fetchTotalPages (Attempt ${attempt}):`, e);
           }
         } else if (context) {
           try {
             await context.close();
           } catch (e) {
-            console.error(`[PlaywrightCrawlerStrategy] Error releasing context in fetchTotalPages (Attempt ${attempt}):`, e);
+            debugLog(`[PlaywrightCrawlerStrategy] Error releasing context in fetchTotalPages (Attempt ${attempt}):`, e);
           }
         }
       }

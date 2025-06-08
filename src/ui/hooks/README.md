@@ -146,5 +146,3 @@ To run tests for the domain store hooks:
 ```bash
 npm run test:ui
 ```
-
-A complete demo component showcasing the use of all hooks is available at: `/src/ui/components/DomainStoreDemo.tsx`

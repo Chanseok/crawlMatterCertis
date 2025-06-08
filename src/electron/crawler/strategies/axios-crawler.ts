@@ -260,10 +260,10 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
         const attemptError = error instanceof PageOperationError ? error :
           new PageOperationError(error instanceof Error ? error.message : String(error), 0, attempt);
 
-        console.warn(`[AxiosCrawlerStrategy] fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS} failed: ${attemptError.message}`);
+        debugLog(`[AxiosCrawlerStrategy] fetchTotalPages - Attempt ${attempt}/${MAX_FETCH_ATTEMPTS} failed: ${attemptError.message}`);
 
         if (attempt === MAX_FETCH_ATTEMPTS) {
-          console.error(`[AxiosCrawlerStrategy] fetchTotalPages - All ${MAX_FETCH_ATTEMPTS} attempts failed. Last error: ${attemptError.message}`, attemptError);
+          debugLog(`[AxiosCrawlerStrategy] fetchTotalPages - All ${MAX_FETCH_ATTEMPTS} attempts failed. Last error: ${attemptError.message}`, attemptError);
           throw new PageInitializationError(`Failed to get total pages after ${MAX_FETCH_ATTEMPTS} attempts: ${attemptError.message}`, 0, attempt);
         }
         

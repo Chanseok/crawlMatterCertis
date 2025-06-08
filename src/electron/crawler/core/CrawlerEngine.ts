@@ -685,7 +685,7 @@ export class CrawlerEngine {
         });
       }
 
-      console.log('[CrawlerEngine] Crawling process completed successfully.');
+      this.logger.info('Crawling process completed successfully');
       this.finalizeSession(); // 세션 최종화 호출
       return true;
     } catch (error) {
@@ -986,7 +986,7 @@ export class CrawlerEngine {
         });
       }
     } else {
-      console.log('[CrawlerEngine] Automatic DB save is disabled in settings. Products not saved to DB.');
+      this.logger.info('Automatic DB save is disabled in settings. Products not saved to DB');
       
       // 사용자에게 수동 저장이 필요함을 알리는 이벤트 발생
       crawlerEvents.emit('dbSaveSkipped', {
@@ -1010,7 +1010,7 @@ export class CrawlerEngine {
    */
   private handleCrawlingError(error: unknown): void {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('[CrawlerEngine] Error during crawling process:', errorMessage);
+    this.logger.error('Error during crawling process', { data: errorMessage });
 
     this.state.reportCriticalFailure(`크롤링 과정에서 오류가 발생했습니다: ${errorMessage}`);
 
@@ -1039,10 +1039,10 @@ export class CrawlerEngine {
       
       const filePath = path.join(outputDir, filename);
       fs.writeFileSync(filePath, JSON.stringify(products, null, 2), 'utf-8');
-      console.log(`[CrawlerEngine] Batch products saved to ${filePath}`);
+      this.logger.info('Batch products saved', { data: filePath });
       return filePath;
     } catch (error) {
-      console.error('[CrawlerEngine] Failed to save batch file:', error);
+      this.logger.error('Failed to save batch file', { data: error });
       throw error;
     }
   }
@@ -1067,7 +1067,9 @@ export class CrawlerEngine {
       saveResult.failed || 0
     );
     
-    console.log(`[CrawlerEngine] Final counts updated based on DB results: ${saveResult.added} new, ${saveResult.updated} updated`);
+    this.logger.info('Final counts updated based on DB results', { 
+      data: `${saveResult.added} new, ${saveResult.updated} updated` 
+    });
   }
 
   /**
@@ -1075,7 +1077,7 @@ export class CrawlerEngine {
    * 이 메서드는 모든 데이터 수집이 완료된 후 호출되어야 함
    */
   private finalizeSession(): void {
-    console.log('[CrawlerEngine] Finalizing crawling session...');
+    this.logger.info('Finalizing crawling session...');
     // 상태를 완료로 설정
     this.state.setStage('completed', '크롤링이 성공적으로 완료되었습니다.');
     this.isCrawling = false;
@@ -1103,7 +1105,7 @@ export class CrawlerEngine {
     if (this.abortController && !this.abortController.signal.aborted) {
       this.abortController.abort('cleanup');
     }
-    console.log('[CrawlerEngine] Session finalized successfully');
+    this.logger.info('Session finalized successfully');
   }
 
   /**
@@ -1115,11 +1117,11 @@ export class CrawlerEngine {
    */
   public async crawlMissingProductPages(ranges: CrawlingRange[], config: CrawlerConfig): Promise<boolean> {
     if (this.isCrawling) {
-      console.log('[CrawlerEngine] Crawling is already in progress.');
+      this.logger.info('Crawling is already in progress');
       return false;
     }
 
-    console.log(`[CrawlerEngine] Starting missing product collection for ${ranges.length} ranges`);
+    this.logger.info('Starting missing product collection', { data: `${ranges.length} ranges` });
     
     // 세션 설정 초기화
     this.sessionConfig = config;
@@ -1142,7 +1144,7 @@ export class CrawlerEngine {
     this.browserManager = new BrowserManager(sessionConfig);
 
     try {
-      console.log('[CrawlerEngine] Starting missing product pages crawling process...');
+      this.logger.info('Starting missing product pages crawling process...');
       
       // 초기 크롤링 상태 이벤트
       initializeCrawlingProgress('누락된 제품 페이지 수집을 시작합니다...', CRAWLING_STAGE.PRODUCT_LIST);
@@ -1153,21 +1155,25 @@ export class CrawlerEngine {
       // 각 범위별로 처리
       for (const range of ranges) {
         if (this.abortController.signal.aborted) {
-          console.log('[CrawlerEngine] Missing product crawling aborted during range processing.');
+          this.logger.info('Missing product crawling aborted during range processing');
           break;
         }
         
         totalRangesProcessed++;
         const rangeId = `${range.startPage}-${range.endPage}`;
         
-        console.log(`[CrawlerEngine] Processing range ${totalRangesProcessed}/${ranges.length}: Pages ${range.startPage} to ${range.endPage} (${range.reason})`);
+        this.logger.info('Processing range', { 
+          data: `${totalRangesProcessed}/${ranges.length}: Pages ${range.startPage} to ${range.endPage} (${range.reason})` 
+        });
         
         // 범위 내 페이지 수 계산
         const totalPagesInRange = range.startPage - range.endPage + 1;
         
         // 범위가 배치 크기보다 큰 경우 배치 처리
         if (totalPagesInRange > batchSize) {
-          console.log(`[CrawlerEngine] Range ${rangeId} has ${totalPagesInRange} pages, using batch processing`);
+          this.logger.info('Range has pages, using batch processing', { 
+            data: `${rangeId} has ${totalPagesInRange} pages` 
+          });
           
           let currentPage = range.startPage;
           let batchNumber = 0;
@@ -1175,7 +1181,7 @@ export class CrawlerEngine {
           
           while (currentPage >= range.endPage) {
             if (this.abortController.signal.aborted) {
-              console.log('[CrawlerEngine] Missing product crawling aborted during batch processing.');
+              this.logger.info('Missing product crawling aborted during batch processing');
               break;
             }
             
@@ -1186,7 +1192,9 @@ export class CrawlerEngine {
               endPage: batchEndPage
             };
             
-            console.log(`[CrawlerEngine] Processing batch ${batchNumber}/${totalBatches} for range ${rangeId}: ${batchRange.startPage} to ${batchRange.endPage}`);
+            this.logger.info('Processing batch', { 
+              data: `${batchNumber}/${totalBatches} for range ${rangeId}: ${batchRange.startPage} to ${batchRange.endPage}` 
+            });
             
             let batchSuccess = false;
             let batchRetryCount = 0;
@@ -1196,10 +1204,12 @@ export class CrawlerEngine {
             while (!batchSuccess && batchRetryCount <= batchRetryLimit) {
               try {
                 if (batchRetryCount > 0) {
-                  console.log(`[CrawlerEngine] Retrying batch ${batchNumber} for range ${rangeId} (attempt ${batchRetryCount}/${batchRetryLimit})`);
+                  this.logger.info('Retrying batch', { 
+                    data: `${batchNumber} for range ${rangeId} (attempt ${batchRetryCount}/${batchRetryLimit})` 
+                  });
                   
                   const retryDelay = Math.min(batchDelayMs * (1.5 ** batchRetryCount), 30000);
-                  console.log(`[CrawlerEngine] Waiting ${retryDelay}ms before retry...`);
+                  this.logger.info('Waiting before retry', { data: `${retryDelay}ms` });
                   await new Promise(resolve => setTimeout(resolve, retryDelay));
                 }
                 
@@ -1224,7 +1234,9 @@ export class CrawlerEngine {
                   );
                 });
                 
-                console.log(`[CrawlerEngine] Collecting batch ${batchNumber} range: ${batchRange.startPage} to ${batchRange.endPage} for missing products`);
+                this.logger.info('Collecting batch for missing products', { 
+                  data: `${batchNumber} range: ${batchRange.startPage} to ${batchRange.endPage}` 
+                });
                 batchProducts = await batchCollector.collectPageRange(batchRange);
                 
                 // 실패 확인
@@ -1232,13 +1244,19 @@ export class CrawlerEngine {
                 
                 if (failedPages.length === 0) {
                   batchSuccess = true;
-                  console.log(`[CrawlerEngine] Batch ${batchNumber} for range ${rangeId} completed successfully${batchRetryCount > 0 ? ` after ${batchRetryCount} retries` : ''}`);
+                  this.logger.info('Batch completed successfully', { 
+                    data: `${batchNumber} for range ${rangeId}${batchRetryCount > 0 ? ` after ${batchRetryCount} retries` : ''}` 
+                  });
                 } else {
-                  console.warn(`[CrawlerEngine] Batch ${batchNumber} for range ${rangeId} attempt ${batchRetryCount + 1} failed with ${failedPages.length} failed pages.`);
+                  this.logger.warn('Batch attempt failed', { 
+                    data: `${batchNumber} for range ${rangeId} attempt ${batchRetryCount + 1} failed with ${failedPages.length} failed pages` 
+                  });
                   batchRetryCount++;
                   
                   if (batchRetryCount > batchRetryLimit) {
-                    console.error(`[CrawlerEngine] Batch ${batchNumber} for range ${rangeId} failed after ${batchRetryLimit} retries.`);
+                    this.logger.error('Batch failed after retries', { 
+                      data: `${batchNumber} for range ${rangeId} failed after ${batchRetryLimit} retries` 
+                    });
                     // 실패해도 다음 배치로 계속 진행
                     batchSuccess = true; // 루프를 빠져나가기 위해
                   } else {
@@ -1251,11 +1269,15 @@ export class CrawlerEngine {
                 await batchCollector.cleanupResources();
                 
               } catch (error) {
-                console.error(`[CrawlerEngine] Error processing batch ${batchNumber} for range ${rangeId}:`, error);
+                this.logger.error('Error processing batch', { 
+                  data: `${batchNumber} for range ${rangeId}: ${error}` 
+                });
                 batchRetryCount++;
                 
                 if (batchRetryCount > batchRetryLimit) {
-                  console.error(`[CrawlerEngine] Batch ${batchNumber} for range ${rangeId} failed after ${batchRetryLimit} retries.`);
+                  this.logger.error('Batch failed after retries', { 
+                    data: `${batchNumber} for range ${rangeId} failed after ${batchRetryLimit} retries` 
+                  });
                   batchSuccess = true; // 루프를 빠져나가기 위해
                 }
               }
@@ -1269,13 +1291,15 @@ export class CrawlerEngine {
             
             // 배치 간 지연
             if (currentPage >= range.endPage && batchDelayMs > 0) {
-              console.log(`[CrawlerEngine] Waiting ${batchDelayMs}ms before next batch...`);
+              this.logger.info('Waiting before next batch', { data: `${batchDelayMs}ms` });
               await new Promise(resolve => setTimeout(resolve, batchDelayMs));
             }
           }
         } else {
           // 배치 크기보다 작은 범위는 직접 처리
-          console.log(`[CrawlerEngine] Range ${rangeId} has ${totalPagesInRange} pages, processing directly`);
+          this.logger.info('Range processing directly', { 
+            data: `${rangeId} has ${totalPagesInRange} pages` 
+          });
           
           try {
             const rangeCollector = new ProductListCollector(
@@ -1309,22 +1333,24 @@ export class CrawlerEngine {
             await rangeCollector.cleanupResources();
             
           } catch (error) {
-            console.error(`[CrawlerEngine] Error processing range ${rangeId}:`, error);
+            this.logger.error('Error processing range', { data: `${rangeId}: ${error}` });
             // 오류가 있어도 다음 범위로 계속 진행
           }
         }
         
         // 범위 간 지연 (마지막 범위가 아닌 경우)
         if (totalRangesProcessed < ranges.length && batchDelayMs > 0) {
-          console.log(`[CrawlerEngine] Waiting ${batchDelayMs}ms before next range...`);
+          this.logger.info('Waiting before next range', { data: `${batchDelayMs}ms` });
           await new Promise(resolve => setTimeout(resolve, batchDelayMs));
         }
       }
       
-      console.log(`[CrawlerEngine] Missing product page collection completed. Collected ${allCollectedProducts.length} products from ${totalRangesProcessed} ranges.`);
+      this.logger.info('Missing product page collection completed', { 
+        data: `Collected ${allCollectedProducts.length} products from ${totalRangesProcessed} ranges` 
+      });
       
       if (allCollectedProducts.length === 0) {
-        console.log('[CrawlerEngine] No products found in missing page ranges.');
+        this.logger.info('No products found in missing page ranges');
         this.finalizeSession();
         return true;
       }
@@ -1341,7 +1367,9 @@ export class CrawlerEngine {
       
       const matterProducts = await detailCollector.collect(allCollectedProducts);
       
-      console.log(`[CrawlerEngine] Missing product detail collection completed. Processed ${matterProducts.length} products.`);
+      this.logger.info('Missing product detail collection completed', { 
+        data: `Processed ${matterProducts.length} products` 
+      });
       
       // 3단계: 데이터 저장 (자동 저장이 활성화된 경우)
       if (sessionConfig.autoAddToLocalDB && matterProducts.length > 0) {
@@ -1349,11 +1377,13 @@ export class CrawlerEngine {
         
         try {
           const saveResult = await saveProductsToDb(matterProducts);
-          console.log(`[CrawlerEngine] Missing products saved to database: ${saveResult.added} new, ${saveResult.updated} updated`);
+          this.logger.info('Missing products saved to database', { 
+            data: `${saveResult.added} new, ${saveResult.updated} updated` 
+          });
           
           this.handleDatabaseSaveResult(saveResult);
         } catch (error) {
-          console.error('[CrawlerEngine] Failed to save missing products to database:', error);
+          this.logger.error('Failed to save missing products to database', { data: error });
         }
       }
       
@@ -1362,7 +1392,7 @@ export class CrawlerEngine {
       return true;
       
     } catch (error) {
-      console.error('[CrawlerEngine] Error during missing product crawling:', error);
+      this.logger.error('Error during missing product crawling', { data: error });
       this.handleCrawlingError(error);
       return false;
     } finally {
