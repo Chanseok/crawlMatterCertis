@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+// TimeUtils import available for future use - keeping specialized formatDuration for ms/s format
 import type { DevToolsService } from '../../services/development/DevToolsService';
 
 interface PerformanceMetricsProps {
@@ -33,6 +34,7 @@ export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = React.memo(
     }
   }, [autoRefresh, devToolsService]);
 
+  // Performance-specific formatting that extends TimeUtils
   const formatDuration = (ms: number): string => {
     if (ms < 1000) return `${ms.toFixed(1)}ms`;
     return `${(ms / 1000).toFixed(2)}s`;

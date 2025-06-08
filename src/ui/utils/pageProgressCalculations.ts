@@ -2,6 +2,8 @@
  * 페이지 진행 상황 계산을 위한 유틸리티 함수
  */
 
+// ProgressUtils import available for future consolidation opportunities
+
 /**
  * 성공한 페이지 수를 계산
  * 여러 소스 중 가장 높은 값을 사용

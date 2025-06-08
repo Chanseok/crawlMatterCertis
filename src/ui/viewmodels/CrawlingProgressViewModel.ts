@@ -9,6 +9,7 @@
 import { makeObservable, observable, computed, action, reaction, IReactionDisposer } from 'mobx';
 import type { CrawlingStageId } from '../../../types';
 import type { UICrawlingProgress } from '../types/ui-types';
+import { ProgressUtils } from '../../shared/utils';
 
 // 숫자 단계를 문자열 ID로 매핑
 const STAGE_NUMBER_TO_ID: Record<number, CrawlingStageId> = {
@@ -95,8 +96,9 @@ export class CrawlingProgressViewModel {
     const stageWeight = STAGE_WEIGHTS[stageId];
     const stageProgress = this.currentProgress.progress || 0;
     
-    // 단계 내 진행률을 고려하여 더 정확한 퍼센티지 계산
-    return Math.min(100, stageWeight + (stageProgress * 0.1));
+    // Use ProgressUtils for standardized stage progress calculation
+    const calculatedProgress = ProgressUtils.calculateStageProgress(stageProgress, 100);
+    return Math.min(100, stageWeight + (calculatedProgress * 0.1));
   }
 
   /**

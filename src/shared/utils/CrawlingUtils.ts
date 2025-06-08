@@ -5,6 +5,7 @@
  */
 
 import { retryWithBackoff } from '../../electron/crawler/utils/retry.js';
+// TimeUtils import removed - keeping existing specialized formatDuration for ms/s display compatibility
 
 export interface ProgressMetrics {
   percentage: number;
@@ -86,68 +87,6 @@ export class CrawlingUtils {
       remainingTime,
       estimatedEndTime
     };
-  }
-
-  /**
-   * 시간 포맷팅 함수 (표준 형식)
-   * 밀리초를 "0h 0m 0s" 형식으로 변환
-   */
-  static formatDuration(ms: number): string {
-    if (ms < 0) return '0초';
-    
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    if (hours > 0) {
-      return `${hours}시간 ${minutes % 60}분 ${seconds % 60}초`;
-    } else if (minutes > 0) {
-      return `${minutes}분 ${seconds % 60}초`;
-    } else {
-      return `${seconds}초`;
-    }
-  }
-
-  /**
-   * 시간 포맷팅 함수 (간결한 형식)
-   * 밀리초를 "0h 0m 0s" 형식으로 변환
-   */
-  static formatDurationCompact(ms: number): string {
-    if (ms < 0) return '0s';
-    
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${seconds % 60}s`;
-    } else {
-      return `${seconds}s`;
-    }
-  }
-
-  /**
-   * 시간 포맷팅 함수 (짧은 형식)
-   * 밀리초를 "00:00:00" 형식으로 변환
-   */
-  static formatDurationShort(ms: number): string {
-    if (ms < 0) return '00:00';
-    
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    const h = hours.toString().padStart(2, '0');
-    const m = (minutes % 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    
-    if (hours > 0) {
-      return `${h}:${m}:${s}`;
-    } else {
-      return `${m}:${s}`;
-    }
   }
 
   /**

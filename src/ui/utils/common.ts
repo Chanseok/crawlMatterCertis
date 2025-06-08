@@ -64,10 +64,6 @@ export const formatPercentage = (value: number): string => {
   return `${Math.round(value)}%`;
 };
 
-export const formatTimestamp = (date: Date): string => {
-  return date.toLocaleTimeString();
-};
-
 export const formatFileSize = (bytes: number): string => {
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   if (bytes === 0) return '0 Bytes';

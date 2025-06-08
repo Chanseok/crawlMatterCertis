@@ -14,6 +14,7 @@ import { makeObservable, observable, action, computed } from 'mobx';
 import { crawlingStore } from '../stores/domain/CrawlingStore';
 import { databaseStore } from '../stores/domain/DatabaseStore';
 import { logStore } from '../stores/domain/LogStore';
+import { ProgressUtils } from '../../shared/utils';
 
 /**
  * 크롤링 워크플로우 단계 정의
@@ -369,30 +370,17 @@ export class CrawlingWorkflowViewModel extends BaseViewModel {
 
   @action
   private calculateOverallProgress(): void {
-    const weights = {
-      statusCheck: 5,
-      stage1: 40,
-      dbComparison: 10,
-      stage2: 45
-    };
-
-    let totalProgress = 0;
+    const weights = [5, 40, 10, 45]; // statusCheck, stage1, dbComparison, stage2
     
-    if (this.currentStage !== WorkflowStage.IDLE) totalProgress += weights.statusCheck;
-    if (this.currentStage !== WorkflowStage.CHECKING_STATUS) {
-      totalProgress += (this.stage1Progress / 100) * weights.stage1;
-    }
-    if (this.currentStage === WorkflowStage.DB_COMPARISON || 
-        this.currentStage === WorkflowStage.STAGE2_PRODUCT_DETAILS || 
-        this.currentStage === WorkflowStage.COMPLETED) {
-      totalProgress += (this.dbComparisonProgress / 100) * weights.dbComparison;
-    }
-    if (this.currentStage === WorkflowStage.STAGE2_PRODUCT_DETAILS || 
-        this.currentStage === WorkflowStage.COMPLETED) {
-      totalProgress += (this.stage2Progress / 100) * weights.stage2;
-    }
+    // Use ProgressUtils for standardized weighted progress calculation
+    const stageProgresses = [
+      this.currentStage !== WorkflowStage.IDLE ? 100 : 0, // statusCheck
+      this.stage1Progress,
+      this.dbComparisonProgress,
+      this.stage2Progress
+    ];
 
-    this.overallProgress = Math.min(100, Math.max(0, totalProgress));
+    this.overallProgress = ProgressUtils.calculateWeightedProgress(stageProgresses, weights);
   }
 
   @action

@@ -7,6 +7,7 @@
  */
 
 import { makeObservable, observable, action } from 'mobx';
+import { ProgressUtils } from '../../shared/utils';
 import { crawlingStore } from '../stores/domain/CrawlingStore';
 import { taskStore } from '../stores/domain/TaskStore';
 import type {
@@ -213,7 +214,11 @@ export class CrawlingDashboardViewModel {
         statusSummary?.siteTotalPages || 
         1);
 
-    return actualTargetPageCount > 0 ? (successCount / actualTargetPageCount) * 100 : 0;
+    // Use ProgressUtils for standardized progress calculation
+    return ProgressUtils.calculateStageProgress(
+      successCount,
+      actualTargetPageCount
+    );
   }
 
   get stageInfo(): { text: string; color: string } {

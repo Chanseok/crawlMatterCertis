@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { TimeUtils } from '../../../shared/utils';
 import type { DevToolsService } from '../../services/development/DevToolsService';
 
 interface DebugLogsProps {
@@ -89,7 +90,7 @@ export const DebugLogs: React.FC<DebugLogsProps> = ({ devToolsService }) => {
   };
 
   const formatTimestamp = (timestamp: string): string => {
-    return new Date(timestamp).toLocaleTimeString();
+    return TimeUtils.formatTimestamp(new Date(timestamp));
   };
 
   const getLogLevelColor = (log: any): string => {

@@ -29,8 +29,8 @@ import { StatusTabViewModel } from '../viewmodels/StatusTabViewModel';
 // Configuration and Page Range Utilities
 import { useConfigurationViewModel } from '../providers/ViewModelProvider';
 
-// Centralized Logging
-import { Logger } from '../../shared/utils/Logger';
+// Centralized Logging and Utilities
+import { Logger, TimeUtils } from '../../shared/utils';
 
 import { format } from 'date-fns';
 
@@ -412,19 +412,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     );
   }, [status, localTime.remainingTime]);
 
-  const formatDuration = useCallback((ms: number) => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    const remainingMinutes = minutes % 60;
-    const remainingSeconds = seconds % 60;
-    
-    if (hours > 0) {
-      return `${hours}:${remainingMinutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-    }
-    return `${remainingMinutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  }, []);
+
 
   // === EFFECTS (Lifecycle Management) ===
   
@@ -900,7 +888,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         {/* Time Information Display */}
         <TimeDisplay 
           localTime={localTime}
-          formatDuration={formatDuration}
+          formatDuration={TimeUtils.formatDuration}
           isBeforeStatusCheck={isBeforeStatusCheck}
           isAfterStatusCheck={isAfterStatusCheck}
           currentStage={viewModel.currentStage}
