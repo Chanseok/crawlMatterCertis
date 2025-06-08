@@ -2,21 +2,24 @@ import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
 import { isDev } from './util.js';
+import { createElectronLogger } from './utils/logger.js';
+
+const logger = createElectronLogger('PathResolver');
 
 export function getPreloadPath() {
     const appPath = app.getAppPath();
-    console.log('App path:', appPath);
+    logger.debug('App path', { data: { appPath } });
     
     if (isDev()) {
         // 개발 모드에서는 기존 경로 사용
         const devPath = path.join(appPath, './dist-electron/electron/preload.cjs');
-        console.log('Development preload path:', devPath);
+        logger.debug('Development preload path', { data: { devPath } });
         
         // 존재 여부 확인 (디버깅용)
         if (fs.existsSync(devPath)) {
-            console.log('Preload script exists at development path');
+            logger.debug('Preload script exists at development path');
         } else {
-            console.warn('Preload script NOT found at development path');
+            logger.warn('Preload script NOT found at development path');
         }
         
         return devPath;
@@ -34,15 +37,15 @@ export function getPreloadPath() {
         
         // 가능한 경로들을 순차적으로 확인
         for (const candidatePath of possiblePaths) {
-            console.log('Checking preload path:', candidatePath);
+            logger.debug('Checking preload path', { data: { candidatePath } });
             if (fs.existsSync(candidatePath)) {
-                console.log('Preload script found at:', candidatePath);
+                logger.info('Preload script found', { data: { candidatePath } });
                 return candidatePath;
             }
         }
         
         // 혹은 파일을 직접 검색하여 경로 찾기
-        console.warn('Could not find preload script in expected locations. Falling back to first possible path.');
+        logger.warn('Could not find preload script in expected locations, falling back to first possible path');
         return possiblePaths[0]; // 일단 첫 번째 경로 반환
     }
 }

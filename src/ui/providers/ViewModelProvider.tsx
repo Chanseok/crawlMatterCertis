@@ -9,6 +9,7 @@ import { StatusTabViewModel } from '../viewmodels/StatusTabViewModel';
 import { logStore } from '../stores/domain/LogStore';
 import { databaseStore } from '../stores/domain/DatabaseStore';
 import { uiStore } from '../stores/domain/UIStore';
+import { Logger } from '../../shared/utils/Logger';
 
 /**
  * ViewModels container for dependency injection
@@ -38,9 +39,11 @@ interface ViewModelProviderProps {
  * Creates and provides ViewModels to the React component tree
  */
 export const ViewModelProvider: React.FC<ViewModelProviderProps> = ({ children }) => {
+  const logger = React.useMemo(() => new Logger('ViewModelProvider'), []);
+  
   // Create ViewModels with Domain Store dependencies
   const viewModels: ViewModels = React.useMemo(() => {
-    console.log('[ViewModelProvider] Creating ViewModels...');
+    logger.info('Creating ViewModels');
     
     const crawlingWorkflowViewModel = new CrawlingWorkflowViewModel();
     const logViewModel = new LogViewModel(logStore);
@@ -65,7 +68,7 @@ export const ViewModelProvider: React.FC<ViewModelProviderProps> = ({ children }
 
   // Initialize ViewModels
   React.useEffect(() => {
-    console.log('[ViewModelProvider] Initializing ViewModels...');
+    logger.info('Initializing ViewModels');
     
     const initializeViewModels = async () => {
       try {
@@ -78,9 +81,9 @@ export const ViewModelProvider: React.FC<ViewModelProviderProps> = ({ children }
           // StatusTabViewModel doesn't need initialization
         ]);
         
-        console.log('[ViewModelProvider] All ViewModels initialized successfully');
+        logger.info('All ViewModels initialized successfully');
       } catch (error) {
-        console.error('[ViewModelProvider] Failed to initialize ViewModels:', error);
+        logger.error('Failed to initialize ViewModels', error);
       }
     };
 
@@ -88,16 +91,16 @@ export const ViewModelProvider: React.FC<ViewModelProviderProps> = ({ children }
 
     // Cleanup on unmount
     return () => {
-      console.log('[ViewModelProvider] Disposing ViewModels...');
+      logger.info('Disposing ViewModels');
       Object.values(viewModels).forEach(viewModel => {
         try {
           viewModel.dispose();
         } catch (error) {
-          console.error('[ViewModelProvider] Error disposing ViewModel:', error);
+          logger.error('Error disposing ViewModel', error);
         }
       });
     };
-  }, [viewModels]);
+  }, [viewModels, logger]);
 
   return (
     <ViewModelContext.Provider value={viewModels}>

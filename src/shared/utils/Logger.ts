@@ -51,6 +51,11 @@ export class Logger {
   private componentLevels: Map<string, LogLevel> = new Map();
   private enableStackTrace: boolean = false;
   private enableTimestamp: boolean = true;
+  private componentName?: string;
+  
+  constructor(componentName?: string) {
+    this.componentName = componentName;
+  }
   
   static getInstance(): Logger {
     if (!Logger.instance) {
@@ -95,50 +100,131 @@ export class Logger {
   private formatMessage(level: string, message: string, component?: string): string {
     const timestamp = this.enableTimestamp ? 
       `${new Date().toLocaleTimeString()} › ` : '';
-    const componentTag = component ? `[${component}] ` : '';
+    const effectiveComponent = component || this.componentName;
+    const componentTag = effectiveComponent ? `[${effectiveComponent}] ` : '';
     return `${timestamp}[${level}] ${componentTag}${message}`;
   }
   
-  error(message: string, component?: string, error?: Error): void {
+  private formatData(data: any): string {
+    if (data === undefined || data === null) return '';
+    if (typeof data === 'string') return ` - ${data}`;
+    if (typeof data === 'object') {
+      try {
+        return ` - ${JSON.stringify(data, null, 2)}`;
+      } catch {
+        return ` - [Object]`;
+      }
+    }
+    return ` - ${String(data)}`;
+  }
+  
+  error(message: string, componentOrData?: string | any, errorOrComponent?: Error | string): void {
+    let component: string | undefined;
+    let data: any;
+    let error: Error | undefined;
+    
+    if (typeof componentOrData === 'string' && typeof errorOrComponent === 'object') {
+      component = componentOrData;
+      error = errorOrComponent as Error;
+    } else if (typeof componentOrData === 'object' || typeof componentOrData === 'undefined') {
+      data = componentOrData;
+      if (typeof errorOrComponent === 'string') {
+        component = errorOrComponent;
+      }
+    } else {
+      component = componentOrData;
+    }
+    
     if (this.shouldLog(LogLevel.ERROR, component)) {
-      console.error(this.formatMessage('ERROR', message, component));
+      const formattedData = this.formatData(data);
+      console.error(this.formatMessage('ERROR', message, component) + formattedData);
       if (error && this.enableStackTrace) {
         console.error(error);
       }
     }
   }
   
-  warn(message: string, component?: string): void {
+  warn(message: string, componentOrData?: string | any): void {
+    let component: string | undefined;
+    let data: any;
+    
+    if (typeof componentOrData === 'string') {
+      component = componentOrData;
+    } else {
+      data = componentOrData;
+    }
+    
     if (this.shouldLog(LogLevel.WARN, component)) {
-      console.warn(this.formatMessage('WARN', message, component));
+      const formattedData = this.formatData(data);
+      console.warn(this.formatMessage('WARN', message, component) + formattedData);
     }
   }
   
-  info(message: string, component?: string): void {
+  info(message: string, componentOrData?: string | any): void {
+    let component: string | undefined;
+    let data: any;
+    
+    if (typeof componentOrData === 'string') {
+      component = componentOrData;
+    } else {
+      data = componentOrData;
+    }
+    
     if (this.shouldLog(LogLevel.INFO, component)) {
-      console.log(this.formatMessage('INFO', message, component));
+      const formattedData = this.formatData(data);
+      console.log(this.formatMessage('INFO', message, component) + formattedData);
     }
   }
   
-  debug(message: string, component?: string): void {
+  debug(message: string, componentOrData?: string | any): void {
+    let component: string | undefined;
+    let data: any;
+    
+    if (typeof componentOrData === 'string') {
+      component = componentOrData;
+    } else {
+      data = componentOrData;
+    }
+    
     if (this.shouldLog(LogLevel.DEBUG, component)) {
-      console.log(this.formatMessage('DEBUG', message, component));
+      const formattedData = this.formatData(data);
+      console.log(this.formatMessage('DEBUG', message, component) + formattedData);
     }
   }
   
-  verbose(message: string, component?: string): void {
+  verbose(message: string, componentOrData?: string | any): void {
+    let component: string | undefined;
+    let data: any;
+    
+    if (typeof componentOrData === 'string') {
+      component = componentOrData;
+    } else {
+      data = componentOrData;
+    }
+    
     if (this.shouldLog(LogLevel.VERBOSE, component)) {
-      console.log(this.formatMessage('VERBOSE', message, component));
+      const formattedData = this.formatData(data);
+      console.log(this.formatMessage('VERBOSE', message, component) + formattedData);
     }
   }
   
-  log(message: string, component?: string): void {
-    this.info(message, component);
+  log(message: string, componentOrData?: string | any): void {
+    this.info(message, componentOrData);
   }
   
-  trace(message: string, component?: string): void {
+  trace(message: string, componentOrData?: string | any): void {
+    let component: string | undefined;
+    let data: any;
+    
+    if (typeof componentOrData === 'string') {
+      component = componentOrData;
+    } else {
+      data = componentOrData;
+    }
+    
     if (this.shouldLog(LogLevel.VERBOSE, component) && this.enableStackTrace) {
-      console.log(this.formatMessage('TRACE', message, component));
+      const formattedData = this.formatData(data);
+      console.log(this.formatMessage('TRACE', message, component) + formattedData);
       console.trace();
     }
   }

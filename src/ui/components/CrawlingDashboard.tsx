@@ -29,7 +29,7 @@ import { CrawlingDashboardViewModel } from '../viewmodels/CrawlingDashboardViewM
 import { useConfigurationViewModel } from '../providers/ViewModelProvider';
 
 // Centralized Logging
-import { dashboardLogger } from '../utils/logger';
+import { Logger } from '../../shared/utils/Logger';
 
 import { format } from 'date-fns';
 
@@ -49,6 +49,9 @@ interface CrawlingDashboardProps {
  * This maintains Domain Store architecture while adding Clean Code patterns
  */
 const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpanded, setAppCompareExpanded }) => {
+  // Logger instance for this component
+  const dashboardLogger = useMemo(() => new Logger('CrawlingDashboard'), []);
+
   // === PRIMARY: Domain Store Hooks (Main State Management) ===
   const { 
     status,
@@ -336,7 +339,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
             // 🔧 페이지 범위 계산 정보가 있으면 항상 우선 사용
             if (configurationViewModel.lastPageRangeCalculation) {
               const info = configurationViewModel.lastPageRangeCalculation;
-              console.log('[CrawlingDashboard] ✅ Displaying calculated range:', info);
+              dashboardLogger.info('Displaying calculated range', info);
               return `${info.pageRangeStart} ~ ${info.pageRangeEnd} 페이지 (예상: ${info.estimatedProducts}개)`;
             }
             // 서버의 실제 크롤링 범위가 있는 경우 (fallback)
@@ -363,14 +366,14 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
 
   const handleCheckStatus = useCallback(async () => {
     try {
-      console.log('=== 상태 체크 시작 ===');
+      dashboardLogger.info('Status check started');
       setIsStatusChecking(true);
       setAppCompareExpanded(true);
       
       await checkStatus();
-      console.log('=== 상태 체크 완료 ===');
+      dashboardLogger.info('Status check completed');
     } catch (error) {
-      console.error('상태 체크 실패:', error);
+      dashboardLogger.error('Status check failed', error);
     } finally {
       setTimeout(() => setIsStatusChecking(false), 1500);
     }
@@ -600,7 +603,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     
     setIsMissingAnalyzing(true);
     try {
-      console.log('[CrawlingDashboard] 🔍 Starting missing product analysis...');
+      dashboardLogger.info('Starting missing product analysis');
       
       // MissingDataAnalyzer 서비스 호출
       const result = await window.electron.analyzeMissingProducts();
@@ -610,13 +613,13 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
           missingCount: result.data.totalMissingDetails || 0,
           analysisResult: result.data
         });
-        console.log('[CrawlingDashboard] ✅ Missing product analysis completed:', result.data);
+        dashboardLogger.info('Missing product analysis completed', result.data);
       } else {
-        console.error('[CrawlingDashboard] ❌ Missing product analysis failed:', result.error);
+        dashboardLogger.error('Missing product analysis failed', result.error);
         // Error is now properly displayed to user via domain store error state
       }
     } catch (error) {
-      console.error('[CrawlingDashboard] ❌ Error analyzing missing products:', error);
+      dashboardLogger.error('Error analyzing missing products', error);
       // Error handling is managed by the domain store and displayed in UI
     } finally {
       setIsMissingAnalyzing(false);
@@ -628,7 +631,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     
     setIsMissingProductCrawling(true);
     try {
-      console.log('[CrawlingDashboard] 🚀 Starting missing product crawling...');
+      dashboardLogger.info('Starting missing product crawling');
       
       // Create a clean, serializable version of the analysis result
       const analysisResult = missingProductsInfo.analysisResult as MissingDataAnalysis;
@@ -655,7 +658,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         }
       };
 
-      console.log('[CrawlingDashboard] Sending clean analysis result:', {
+      dashboardLogger.info('Sending clean analysis result', {
         missingDetailsCount: cleanAnalysisResult.missingDetails.length,
         incompletePagesCount: cleanAnalysisResult.incompletePages.length,
         totalMissingDetails: cleanAnalysisResult.totalMissingDetails
@@ -671,17 +674,17 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       });
       
       if (result.success) {
-        console.log('[CrawlingDashboard] ✅ Missing product crawling completed successfully');
+        dashboardLogger.info('Missing product crawling completed successfully');
         // 상태 체크를 다시 실행하여 최신 정보 업데이트
         await handleCheckStatus();
         // 분석 결과 초기화 (재분석 필요)
         setMissingProductsInfo(null);
       } else {
-        console.error('[CrawlingDashboard] ❌ Missing product crawling failed:', result.error);
+        dashboardLogger.error('Missing product crawling failed', result.error);
         // Error is now properly displayed to user via domain store error state
       }
     } catch (error) {
-      console.error('[CrawlingDashboard] ❌ Error during missing product crawling:', error);
+      dashboardLogger.error('Error during missing product crawling', error);
       // Error handling is managed by the domain store and displayed in UI
     } finally {
       setIsMissingProductCrawling(false);
@@ -699,7 +702,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     if (isManualCrawling || status === 'running') return;
     setIsManualCrawling(true);
     try {
-      console.log('[CrawlingDashboard] 🚀 Starting manual page range crawling...', ranges);
+      dashboardLogger.info('Starting manual page range crawling', ranges);
       
       // Convert site page ranges to pageId-based incompletePages structure
       // Each site page corresponds to pageId = Math.floor((sitePage - 1) / 2)
@@ -710,10 +713,10 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         actualCount: number;
       }> = [];
       
-      console.log('[CrawlingDashboard] 🔍 Processing ranges for manual crawling:', ranges.length);
+      dashboardLogger.debug('Processing ranges for manual crawling', { rangeCount: ranges.length });
       
       ranges.forEach(range => {
-        console.log('[CrawlingDashboard] 🔍 Processing range:', range);
+        dashboardLogger.debug('Processing range', range);
         for (let sitePage = range.startPage; sitePage <= range.endPage; sitePage++) {
           const pageId = Math.floor((sitePage - 1) / 2);
           
@@ -728,12 +731,12 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
               actualCount: 0
             };
             incompletePages.push(newPage);
-            console.log('[CrawlingDashboard] 🔍 Added pageId:', pageId, 'for sitePage:', sitePage);
+            dashboardLogger.debug('Added pageId for sitePage', { pageId, sitePage });
           }
         }
       });
       
-      console.log('[CrawlingDashboard] 🔍 Generated incompletePages array:', incompletePages.length, 'pages');
+      dashboardLogger.debug('Generated incompletePages array', { pageCount: incompletePages.length });
       
       // Create proper analysis result structure for Stage 1-3 workflow
       const analysisResult = {
@@ -748,28 +751,28 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         }
       };
       
-      console.log('[CrawlingDashboard] 🔍 Before serialization - analysisResult.incompletePages.length:', analysisResult.incompletePages.length);
+      dashboardLogger.debug('Before serialization', { incompletePagesCount: analysisResult.incompletePages.length });
       
       // Ensure clean serializable objects
       const cleanAnalysisResult = JSON.parse(JSON.stringify(analysisResult));
       const cleanConfig = JSON.parse(JSON.stringify(toJS(configurationViewModel.config)));
       
-      console.log('[CrawlingDashboard] 🔍 After serialization - cleanAnalysisResult.incompletePages.length:', cleanAnalysisResult.incompletePages.length);
-      console.log('[CrawlingDashboard] 📊 Manual crawling analysis result:', cleanAnalysisResult);
+      dashboardLogger.debug('After serialization', { incompletePagesCount: cleanAnalysisResult.incompletePages.length });
+      dashboardLogger.info('Manual crawling analysis result', cleanAnalysisResult);
       
       const result = await window.electron.crawlMissingProducts({
         analysisResult: cleanAnalysisResult,
         config: cleanConfig
       });
       if (result.success) {
-        console.log('[CrawlingDashboard] ✅ Manual crawling completed successfully');
+        dashboardLogger.info('Manual crawling completed successfully');
         await handleCheckStatus();
         setMissingProductsInfo(null); // Reset analysis data
       } else {
-        console.error('[CrawlingDashboard] ❌ Manual crawling failed:', result.error);
+        dashboardLogger.error('Manual crawling failed', result.error);
       }
     } catch (error) {
-      console.error('[CrawlingDashboard] ❌ Error during manual crawling:', error);
+      dashboardLogger.error('Error during manual crawling', error);
     } finally {
       setIsManualCrawling(false);
     }
@@ -779,7 +782,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     if (isManualCrawling || status === 'running') return;
     setIsManualCrawling(true);
     try {
-      console.log('[CrawlingDashboard] 🎯 Starting targeted page crawling...', pages);
+      dashboardLogger.info('Starting targeted page crawling', pages);
       
       // Convert site page numbers to pageId-based incompletePages structure
       // Each site page corresponds to pageId = Math.floor((sitePage - 1) / 2)
@@ -789,7 +792,10 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         pageIdSet.add(pageId);
       });
       
-      console.log('[CrawlingDashboard] 🔍 Targeted crawling - site pages:', pages.length, 'unique pageIds:', pageIdSet.size);
+      dashboardLogger.debug('Targeted crawling conversion', { 
+        sitePages: pages.length, 
+        uniquePageIds: pageIdSet.size 
+      });
       
       const incompletePages: Array<{
         pageId: number;
@@ -803,7 +809,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         actualCount: 0
       }));
       
-      console.log('[CrawlingDashboard] 🔍 Generated targeted incompletePages:', incompletePages.length, 'pages');
+      dashboardLogger.debug('Generated targeted incompletePages', { pageCount: incompletePages.length });
       
       // Create proper analysis result structure for Stage 1-3 workflow
       const analysisResult = {
@@ -818,28 +824,32 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         }
       };
       
-      console.log('[CrawlingDashboard] 🔍 Before serialization - targeted analysisResult.incompletePages.length:', analysisResult.incompletePages.length);
+      dashboardLogger.debug('Before serialization - targeted analysis', { 
+        incompletePagesCount: analysisResult.incompletePages.length 
+      });
       
       // Ensure clean serializable objects
       const cleanAnalysisResult = JSON.parse(JSON.stringify(analysisResult));
       const cleanConfig = JSON.parse(JSON.stringify(toJS(configurationViewModel.config)));
       
-      console.log('[CrawlingDashboard] 🔍 After serialization - targeted cleanAnalysisResult.incompletePages.length:', cleanAnalysisResult.incompletePages.length);
-      console.log('[CrawlingDashboard] 📊 Targeted crawling analysis result:', cleanAnalysisResult);
+      dashboardLogger.debug('After serialization - targeted analysis', { 
+        incompletePagesCount: cleanAnalysisResult.incompletePages.length 
+      });
+      dashboardLogger.info('Targeted crawling analysis result', cleanAnalysisResult);
       
       const result = await window.electron.crawlMissingProducts({
         analysisResult: cleanAnalysisResult,
         config: cleanConfig
       });
       if (result.success) {
-        console.log('[CrawlingDashboard] ✅ Targeted crawling completed successfully');
+        dashboardLogger.info('Targeted crawling completed successfully');
         await handleCheckStatus();
         setMissingProductsInfo(null);
       } else {
-        console.error('[CrawlingDashboard] ❌ Targeted crawling failed:', result.error);
+        dashboardLogger.error('Targeted crawling failed', result.error);
       }
     } catch (error) {
-      console.error('[CrawlingDashboard] ❌ Error during targeted crawling:', error);
+      dashboardLogger.error('Error during targeted crawling', error);
     } finally {
       setIsManualCrawling(false);
     }

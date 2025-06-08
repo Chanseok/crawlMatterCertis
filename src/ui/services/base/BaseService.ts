@@ -5,8 +5,9 @@
  * 공통 기능과 표준화된 에러 처리, 로깅을 제공
  */
 
-import { IPCService } from '../IPCService';
+import { IPCService } from '../core/IPCService';
 import { ResilienceManager } from '../resilience/ResilienceManager';
+import { Logger } from '../../../shared/utils/Logger';
 
 export interface ServiceError {
   code: string;
@@ -28,11 +29,13 @@ export interface ServiceResult<T = unknown> {
 export abstract class BaseService {
   protected readonly serviceName: string;
   protected readonly ipcService: IPCService;
+  protected readonly logger: Logger;
   protected resilienceManager?: ResilienceManager;
 
   constructor(serviceName: string) {
     this.serviceName = serviceName;
     this.ipcService = IPCService.getInstance();
+    this.logger = new Logger(serviceName);
   }
 
   /**
@@ -94,21 +97,21 @@ export abstract class BaseService {
    * 서비스 로깅
    */
   protected log(message: string, data?: unknown): void {
-    console.log(`[${this.serviceName}] ${message}`, data ? data : '');
+    this.logger.info(message, data);
   }
 
   /**
    * 에러 로깅
    */
   protected logError(message: string, error: ServiceError): void {
-    console.error(`[${this.serviceName}] ERROR: ${message}`, error);
+    this.logger.error(message, error);
   }
 
   /**
    * IPC 연결 상태 확인
    */
   protected isIPCAvailable(): boolean {
-    return this.ipcService.isAvailable;
+    return this.ipcService.isAvailable();
   }
 
   /**

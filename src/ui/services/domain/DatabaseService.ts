@@ -71,7 +71,7 @@ export class DatabaseService extends BaseService {
       }
 
       const { page = 1, limit } = params;
-      const result = await this.ipcService.getProducts({ page, limit });
+      const result = await this.ipcService.call<any>('getProducts', { page, limit });
       
       if (!result || typeof result.total !== 'number') {
         throw new Error('Invalid response format from database');
@@ -103,7 +103,7 @@ export class DatabaseService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      return await this.ipcService.getProductById(id);
+      return await this.ipcService.call<MatterProduct | null>('getProductById', id);
     }, 'getProductById');
   }
 
@@ -124,7 +124,7 @@ export class DatabaseService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      const result = await this.ipcService.searchProducts({ query, page, limit });
+      const result = await this.ipcService.call<any>('searchProducts', { query, page, limit });
       
       if (!result || typeof result.total !== 'number') {
         throw new Error('Invalid response format from search');
@@ -150,7 +150,7 @@ export class DatabaseService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      return await this.ipcService.getDatabaseSummary();
+      return await this.ipcService.call<DatabaseSummary>('getDatabaseSummary');
     }, 'getDatabaseSummary');
   }
 
@@ -174,7 +174,7 @@ export class DatabaseService extends BaseService {
       // 제품 데이터 유효성 검사
       this.validateProductsData(products);
 
-      const result = await this.ipcService.saveProductsToDb(products);
+      const result = await this.ipcService.call<SaveResult>('saveProductsToDb', products);
       
       if (!result || typeof result.added !== 'number') {
         throw new Error('Invalid response format from save operation');
@@ -199,7 +199,7 @@ export class DatabaseService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      await this.ipcService.markLastUpdated(count);
+      await this.ipcService.call<void>('markLastUpdated', count);
     }, 'markLastUpdated');
   }
 
@@ -212,7 +212,7 @@ export class DatabaseService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      return await this.ipcService.clearDatabase();
+      return await this.ipcService.call<{ success: boolean; message?: string }>('clearDatabase');
     }, 'clearDatabase');
   }
 
@@ -269,7 +269,7 @@ export class DatabaseService extends BaseService {
           throw new Error('IPC not available');
         }
   
-        return await this.ipcService.deleteRecordsByPageRange({ startPageId: startPage, endPageId: endPage });
+        return await this.ipcService.call<{ deletedCount: number }>('deleteRecordsByPageRange', { startPageId: startPage, endPageId: endPage });
       }, 'deleteRecordsByPageRange');
     } catch (error) {
       console.error('[DatabaseService] Error during validation:', error);

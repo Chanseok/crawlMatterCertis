@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useCrawlingStore } from '../hooks/useCrawlingStore';
 import { useTaskStore } from '../hooks/useTaskStore';
+import { Logger } from '../../shared/utils/Logger';
 import './TaskProgressIndicator.css';
 
 interface TaskProgressIndicatorProps {
@@ -19,6 +20,7 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = React
   pageNumber,
   statusEmoji = '🚀'
 }) => {
+  const logger = new Logger('TaskProgressIndicator');
   // 활성 작업 목록과 설정 구독
   const { activeTasks, concurrentTasks } = useTaskStore();
   const { config: currentConfig } = useCrawlingStore();
@@ -95,19 +97,34 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = React
       const taskStartTime = currentTask.startTime || Date.now();
 
       // 상세 타임아웃 디버깅 로그
-      console.log(`[TaskProgressIndicator] Page ${pageNumber} - Status: ${currentTask.status}, StartTime: ${new Date(taskStartTime).toISOString()}, Timeout: ${pageTimeoutMs}ms`);
-      console.log(`[TaskProgressIndicator] Page ${pageNumber} - Config timeout: ${currentConfig.pageTimeoutMs}ms, Fallback: ${pageTimeoutMs}ms`);
+      logger.debug(`Page ${pageNumber} status and timing`, {
+        status: currentTask.status,
+        startTime: new Date(taskStartTime).toISOString(),
+        timeout: pageTimeoutMs
+      });
+      logger.debug(`Page ${pageNumber} timeout configuration`, {
+        configTimeout: currentConfig.pageTimeoutMs,
+        fallback: pageTimeoutMs
+      });
       
       // 타임아웃 설정 불일치 경고
       if (currentConfig.pageTimeoutMs && currentConfig.pageTimeoutMs !== 60000) {
-        console.warn(`[TaskProgressIndicator] ⚠️ Frontend timeout (${pageTimeoutMs}ms) may differ from backend timeout. Check ConfigManager settings.`);
+        logger.warn(`Frontend timeout may differ from backend timeout`, {
+          pageNumber,
+          frontendTimeout: pageTimeoutMs,
+          message: 'Check ConfigManager settings'
+        });
       }
 
       const updateTimer = () => {
         const elapsedTime = Date.now() - taskStartTime;
         const timeLeftMs = pageTimeoutMs - elapsedTime;
 
-        console.log(`[TaskProgressIndicator] Page ${pageNumber} - Elapsed: ${elapsedTime}ms, TimeLeft: ${timeLeftMs}ms, Progress: ${((elapsedTime/pageTimeoutMs)*100).toFixed(1)}%`);
+        logger.debug(`Page ${pageNumber} timer update`, {
+          elapsed: elapsedTime,
+          timeLeft: timeLeftMs,
+          progress: ((elapsedTime/pageTimeoutMs)*100).toFixed(1) + '%'
+        });
 
         if (timeLeftMs <= 9000 && timeLeftMs > 0) {
           // 타임아웃 9초 전부터 카운트다운 모드
@@ -120,14 +137,17 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = React
             setSecondsLeft(currentSeconds);
             // 애니메이션 키 업데이트로 강제 리렌더링
             setAnimationKey(prev => prev + 1);
-            console.log(`[TaskProgressIndicator] Page ${pageNumber} - Countdown: ${currentSeconds}s`);
+            logger.debug(`Page ${pageNumber} countdown`, { seconds: currentSeconds });
           }
         } else if (timeLeftMs <= 0) {
           // 타임아웃 발생 또는 작업 완료/실패 시 기본 상태로 돌아감
           setDisplayState('default');
           setSecondsLeft(null);
           setShowRocketAnimation(false);
-          console.log(`[TaskProgressIndicator] Page ${pageNumber} - Timeout reached or task completed (elapsed: ${elapsedTime}ms, configured timeout: ${pageTimeoutMs}ms)`);
+          logger.info(`Page ${pageNumber} timeout or completion`, {
+            elapsed: elapsedTime,
+            configuredTimeout: pageTimeoutMs
+          });
           if (timerId) clearInterval(timerId);
         } else {
           // 수집 중이지만, 카운트다운 시작 전
@@ -143,7 +163,7 @@ export const TaskProgressIndicator: React.FC<TaskProgressIndicatorProps> = React
       setDisplayState('default');
       setSecondsLeft(null);
       setShowRocketAnimation(false);
-      console.log(`[TaskProgressIndicator] Page ${pageNumber} - Reset to default state`);
+      logger.debug(`Page ${pageNumber} reset to default state`);
     }
 
     return () => {

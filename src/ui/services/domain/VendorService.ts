@@ -63,7 +63,7 @@ export class VendorService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      const result = await this.ipcService.getVendors();
+      const result = await this.ipcService.call<any>('getVendors');
       
       if (!result || !Array.isArray(result.vendors)) {
         throw new Error('Invalid vendor data format');
@@ -82,7 +82,7 @@ export class VendorService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      const result = await this.ipcService.fetchAndUpdateVendors();
+      const result = await this.ipcService.call<VendorUpdateResult>('fetchAndUpdateVendors');
       
       if (!result || typeof result.added !== 'number') {
         throw new Error('Invalid vendor update response format');

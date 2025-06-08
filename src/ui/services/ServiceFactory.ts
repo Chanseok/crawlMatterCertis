@@ -7,6 +7,7 @@ import { ConfigurationService } from './domain/ConfigurationService';
 import { CrawlingWorkflowService } from './composite/CrawlingWorkflowService';
 import { IPCService } from './IPCService';
 import { isDevelopment } from '../utils/environment';
+import { Logger } from '../../shared/utils/Logger';
 
 /**
  * Service Factory for centralized service management and dependency injection
@@ -17,6 +18,7 @@ import { isDevelopment } from '../utils/environment';
  */
 export class ServiceFactory {
   private static instance: ServiceFactory;
+  private static logger = new Logger('ServiceFactory');
   
   // Service instances
   private databaseService?: DatabaseService;
@@ -143,9 +145,9 @@ export class ServiceFactory {
       // Initialize composite services
       this.getCrawlingWorkflowService();
 
-      console.log('[ServiceFactory] All services initialized successfully');
+      ServiceFactory.logger.info('All services initialized successfully');
     } catch (error) {
-      console.error('[ServiceFactory] Failed to initialize services:', error);
+      ServiceFactory.logger.error('Failed to initialize services', error);
       throw error;
     }
   }
@@ -162,7 +164,7 @@ export class ServiceFactory {
     this.crawlingWorkflowService = undefined;
     this.devToolsService = undefined;
     this.ipcService = undefined;
-    console.log('[ServiceFactory] All services reset');
+    ServiceFactory.logger.info('All services reset');
   }
 
   /**

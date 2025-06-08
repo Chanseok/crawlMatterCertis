@@ -72,7 +72,7 @@ export class CrawlingService extends BaseService {
         ...(mode && { mode })
       };
 
-      const result = await this.ipcService.startCrawling(startParams);
+      const result = await this.ipcService.call<boolean>('startCrawling', startParams);
       
       if (typeof result !== 'boolean') {
         throw new Error('Invalid response from crawling start');
@@ -91,7 +91,7 @@ export class CrawlingService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      const result = await this.ipcService.stopCrawling();
+      const result = await this.ipcService.call<boolean>('stopCrawling');
       
       if (typeof result !== 'boolean') {
         throw new Error('Invalid response from crawling stop');
@@ -110,7 +110,7 @@ export class CrawlingService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      const result = await this.ipcService.checkCrawlingStatus();
+      const result = await this.ipcService.call<any>('checkCrawlingStatus');
       // result: { success: true, status: {...} } or { success: false, error: ... }
       const statusObj = (result && result.success && typeof result.status === 'object' && result.status !== null)
         ? result.status
@@ -153,7 +153,7 @@ export class CrawlingService extends BaseService {
 
       // 즉시 적용이 요청된 경우 IPC를 통해 백엔드에 전달
       if (applyImmediately && this.isIPCAvailable()) {
-        await this.ipcService.updateConfig(updatedConfig);
+        await this.ipcService.call<void>('updateConfig', updatedConfig);
       }
 
       return updatedConfig;
@@ -173,7 +173,7 @@ export class CrawlingService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      const config = await this.ipcService.getConfig();
+      const config = await this.ipcService.call<CrawlerConfig>('getConfig');
       this.currentConfig = config;
       return config;
     }, 'getConfig');
@@ -188,7 +188,7 @@ export class CrawlingService extends BaseService {
         throw new Error('IPC not available');
       }
 
-      const defaultConfig = await this.ipcService.resetConfig();
+      const defaultConfig = await this.ipcService.call<CrawlerConfig>('resetConfig');
       this.currentConfig = defaultConfig;
       return defaultConfig;
     }, 'resetConfig');
@@ -203,15 +203,28 @@ export class CrawlingService extends BaseService {
       return () => {};
     }
 
-    const success = this.ipcService.subscribeToCrawlingProgress(callback);
-    if (success) {
+    try {
+      // Call async method but don't await for subscription setup
+      this.ipcService.call<boolean>('subscribeToCrawlingProgress', callback)
+        .then((success) => {
+          if (!success) {
+            this.log('Failed to subscribe to crawling progress');
+          }
+        })
+        .catch((error) => {
+          this.logError('Error subscribing to crawling progress', error);
+        });
+
       const unsubscribe = () => {
         // 구독 해제 로직은 IPCService 내부에서 처리됨
       };
       this.eventSubscriptions.push(unsubscribe);
       return unsubscribe;
+    } catch (error) {
+      this.logError('Error setting up progress subscription', 
+        this.createError('SUBSCRIPTION_ERROR', 'Failed to set up progress subscription', error));
+      return () => {};
     }
-    return () => {};
   }
 
   /**
@@ -223,15 +236,28 @@ export class CrawlingService extends BaseService {
       return () => {};
     }
 
-    const success = this.ipcService.subscribeToCrawlingComplete(callback);
-    if (success) {
+    try {
+      // Call async method but don't await for subscription setup
+      this.ipcService.call<boolean>('subscribeToCrawlingComplete', callback)
+        .then((success) => {
+          if (!success) {
+            this.log('Failed to subscribe to crawling complete');
+          }
+        })
+        .catch((error) => {
+          this.logError('Error subscribing to crawling complete', error);
+        });
+
       const unsubscribe = () => {
         // 구독 해제 로직은 IPCService 내부에서 처리됨
       };
       this.eventSubscriptions.push(unsubscribe);
       return unsubscribe;
+    } catch (error) {
+      this.logError('Error setting up completion subscription', 
+        this.createError('SUBSCRIPTION_ERROR', 'Failed to set up completion subscription', error));
+      return () => {};
     }
-    return () => {};
   }
 
   /**
@@ -243,15 +269,28 @@ export class CrawlingService extends BaseService {
       return () => {};
     }
 
-    const success = this.ipcService.subscribeToCrawlingError(callback);
-    if (success) {
+    try {
+      // Call async method but don't await for subscription setup
+      this.ipcService.call<boolean>('subscribeToCrawlingError', callback)
+        .then((success) => {
+          if (!success) {
+            this.log('Failed to subscribe to crawling error');
+          }
+        })
+        .catch((error) => {
+          this.logError('Error subscribing to crawling error', error);
+        });
+
       const unsubscribe = () => {
         // 구독 해제 로직은 IPCService 내부에서 처리됨
       };
       this.eventSubscriptions.push(unsubscribe);
       return unsubscribe;
+    } catch (error) {
+      this.logError('Error setting up error subscription', 
+        this.createError('SUBSCRIPTION_ERROR', 'Failed to set up error subscription', error));
+      return () => {};
     }
-    return () => {};
   }
 
   /**
@@ -264,16 +303,29 @@ export class CrawlingService extends BaseService {
       return () => {};
     }
 
-    const success = this.ipcService.subscribeCrawlingStatusSummary(callback);
-    if (success) {
+    try {
+      // Call async method but don't await for subscription setup
+      this.ipcService.call<boolean>('subscribeCrawlingStatusSummary', callback)
+        .then((success) => {
+          if (!success) {
+            this.log('Failed to subscribe to crawling status summary');
+          }
+        })
+        .catch((error) => {
+          this.logError('Error subscribing to crawling status summary', error);
+        });
+
       const unsubscribeFunction = () => {
         // Create a proper unsubscribe function if needed
         // For now, return empty function as IPC service handles cleanup
       };
       this.eventSubscriptions.push(unsubscribeFunction);
       return unsubscribeFunction;
+    } catch (error) {
+      this.logError('Error setting up status summary subscription', 
+        this.createError('SUBSCRIPTION_ERROR', 'Failed to set up status summary subscription', error));
+      return () => {};
     }
-    return () => {};
   }
 
   /**

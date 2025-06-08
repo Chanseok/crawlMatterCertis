@@ -90,7 +90,7 @@ export class ExportService extends BaseService {
         ...options
       };
 
-      const result = await this.ipcService.exportToExcel(exportParams);
+      const result = await this.ipcService.call<ExportResult>('exportToExcel', exportParams);
       
       if (!result) {
         throw new Error('No response from export operation');
@@ -122,7 +122,7 @@ export class ExportService extends BaseService {
       };
 
       // CSV 내보내기는 Excel 내보내기와 동일한 IPC 메서드 사용
-      const result = await this.ipcService.exportToExcel(exportParams);
+      const result = await this.ipcService.call<ExportResult>('exportToExcel', exportParams);
       
       if (!result) {
         throw new Error('No response from export operation');
@@ -174,7 +174,7 @@ export class ExportService extends BaseService {
       }
 
       // 데이터베이스 요약 정보를 통해 예상 레코드 수 조회
-      const summaryResult = await this.ipcService.getDatabaseSummary();
+      const summaryResult = await this.ipcService.call<any>('getDatabaseSummary');
       
       if (!summaryResult) {
         throw new Error('Failed to get database summary');
