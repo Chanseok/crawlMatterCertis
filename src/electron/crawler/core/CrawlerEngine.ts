@@ -146,14 +146,16 @@ export class CrawlerEngine {
       const totalPagesToCrawl = startPage - endPage + 1;
       this.logger.info(`Total pages to crawl: ${totalPagesToCrawl}, from page ${startPage} to ${endPage}`);
 
-      // Define the enhanced progress callback
+      // Define the enhanced progress callback with batch support
       const enhancedProgressUpdater = (
         processedSuccessfully: number, 
         totalPagesInStage: number, 
         stage1PageStatuses: PageProcessingStatusItem[], 
         currentOverallRetryCountForStage: number, 
         stage1StartTime: number,
-        isStageComplete: boolean = false
+        isStageComplete: boolean = false,
+        currentBatch?: number,
+        totalBatches?: number
       ) => {
         updateProductListProgress(
           processedSuccessfully, 
@@ -162,7 +164,9 @@ export class CrawlerEngine {
           stage1PageStatuses, 
           currentOverallRetryCountForStage, 
           sessionConfig.productListRetryCount,
-          isStageComplete
+          isStageComplete,
+          undefined, // timeEstimate
+          currentBatch && totalBatches ? { currentBatch, totalBatches } : undefined // batchInfo
         );
       };
       
@@ -179,6 +183,21 @@ export class CrawlerEngine {
         totalBatches = Math.ceil(totalPagesToCrawl / batchSize);
         let currentPage = startPage;
         
+        // 배치 처리 시작 이벤트 - 전체 진행 상황 초기화
+        crawlerEvents.emit('crawlingProgress', {
+          stage: CRAWLING_STAGE.PRODUCT_LIST,
+          step: "배치 처리 시작",
+          message: `배치 처리 모드: 총 ${totalPagesToCrawl}페이지를 ${totalBatches}개 배치로 처리`,
+          currentPage: 0,
+          totalPages: totalPagesToCrawl,
+          processedItems: 0,
+          totalItems: 0,
+          percentage: 0,
+          status: 'running',
+          currentBatch: 1,
+          totalBatches: totalBatches
+        });
+        
         // 각 배치 처리
         for (let batch = 0; batch < totalBatches; batch++) {
           if (this.abortController.signal.aborted) {
@@ -189,16 +208,20 @@ export class CrawlerEngine {
           batchNumber = batch + 1;
           this.logger.info(`Processing batch ${batchNumber}/${totalBatches}`);
           
-          // 배치 정보 업데이트 (UI에 표시)
+          // 배치 정보 업데이트 (UI에 표시) - 전체 페이지 정보 포함
+          const currentPageOffset = (batchNumber - 1) * batchSize;
           crawlerEvents.emit('crawlingProgress', {
-            currentBatch: batchNumber,
-            totalBatches: totalBatches,
-            batchRetryCount: 0,
-            batchRetryLimit: batchRetryLimit,
+            stage: CRAWLING_STAGE.PRODUCT_LIST,
+            step: "1단계: 제품 목록 수집",
+            message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치 - 1단계: 제품 목록 수집`,
+            currentPage: currentPageOffset,
+            totalPages: totalPagesToCrawl,
+            processedItems: 0,
+            totalItems: 0,
+            percentage: (currentPageOffset / totalPagesToCrawl) * 100,
             status: 'running',
-            currentStage: 1,
-            currentStep: '1단계: 제품 목록 수집',
-            message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치 - 1단계: 제품 목록 수집`
+            currentBatch: batchNumber,
+            totalBatches: totalBatches
           });
           
           // 배치 범위 계산
@@ -220,11 +243,19 @@ export class CrawlerEngine {
                 
                 // 재시도 상태 업데이트
                 crawlerEvents.emit('crawlingProgress', {
+                  stage: CRAWLING_STAGE.PRODUCT_LIST,
+                  step: "1단계: 제품 목록 수집 재시도",
+                  message: `배치 ${batchNumber} 1단계 재시도 중 (${batchRetryCount}/${batchRetryLimit})`,
+                  currentPage: (batchNumber - 1) * batchSize,
+                  totalPages: totalPagesToCrawl,
+                  processedItems: 0,
+                  totalItems: 0,
+                  percentage: ((batchNumber - 1) / totalBatches) * 100,
+                  status: 'running',
                   currentBatch: batchNumber,
                   totalBatches: totalBatches,
                   batchRetryCount: batchRetryCount,
-                  batchRetryLimit: batchRetryLimit,
-                  message: `배치 ${batchNumber} 1단계 재시도 중 (${batchRetryCount}/${batchRetryLimit})`
+                  batchRetryLimit: batchRetryLimit
                 });
                 
                 // 재시도 전 잠시 대기 (지수 백오프 적용)
@@ -240,6 +271,9 @@ export class CrawlerEngine {
                 sessionConfig,
                 this.browserManager!
               );
+              
+              // 배치 정보 설정
+              batchCollector.setBatchInfo(batchNumber, totalBatches);
               
               batchCollector.setProgressCallback(enhancedProgressUpdater);
               
@@ -301,14 +335,17 @@ export class CrawlerEngine {
           if (batchSuccess && batchProducts.length > 0) {
             // 2단계: 제품 상세 정보 수집 및 DB 저장
             crawlerEvents.emit('crawlingProgress', {
-              currentBatch: batchNumber,
-              totalBatches: totalBatches,
-              batchRetryCount: 0,
-              batchRetryLimit: batchRetryLimit,
+              stage: CRAWLING_STAGE.PRODUCT_DETAIL,
+              step: '2단계: 제품 상세 정보 수집',
+              message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치 - 2단계: 제품 상세 정보 수집`,
+              currentPage: (batchNumber - 1) * batchSize,
+              totalPages: totalPagesToCrawl,
+              processedItems: 0,
+              totalItems: batchProducts.length,
+              percentage: ((batchNumber - 1) / totalBatches) * 100,
               status: 'running',
-              currentStage: 3,
-              currentStep: '3단계: 제품 상세 정보 수집',
-              message: `배치 처리 중: ${batchNumber}/${totalBatches} 배치 - 2단계: 제품 상세 정보 수집`
+              currentBatch: batchNumber,
+              totalBatches: totalBatches
             });
             
             this.logger.info(`Starting batch ${batchNumber} 2단계 (detail collection) with ${batchProducts.length} products`);

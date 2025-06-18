@@ -21,6 +21,12 @@ export class ProgressManager {
   private processedSuccessfully: number = 0;
   private totalPagesCount: number = 0;
   private stageStartTime: number = 0;
+  
+  // 배치 처리 정보 저장
+  private batchInfo?: {
+    currentBatch: number;
+    totalBatches: number;
+  } = undefined;
 
   /**
    * 진행 상황 관리자 생성
@@ -37,6 +43,13 @@ export class ProgressManager {
    */
   public setProgressCallback(callback: ProductListProgressCallback): void {
     this.progressCallback = callback;
+  }
+
+  /**
+   * 배치 처리 정보 설정
+   */
+  public setBatchInfo(currentBatch: number, totalBatches: number): void {
+    this.batchInfo = { currentBatch, totalBatches };
   }
 
   /**
@@ -164,7 +177,9 @@ export class ProgressManager {
         [...this.pageStatuses],
         this.retryCount,
         this.stageStartTime,
-        isStageComplete
+        isStageComplete,
+        this.batchInfo?.currentBatch,
+        this.batchInfo?.totalBatches
       );
     }
   }

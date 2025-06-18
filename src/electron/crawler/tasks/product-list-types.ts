@@ -18,7 +18,7 @@ export interface RawProductData {
 }
 
 /**
- * 제품 목록 수집 진행 상황 콜백 타입
+ * 제품 목록 수집 진행 상황 콜백 타입 (배치 처리 지원)
  */
 export type ProductListProgressCallback = (
   processedSuccessfully: number, // Successfully completed pages
@@ -26,7 +26,9 @@ export type ProductListProgressCallback = (
   stage1PageStatuses: PageProcessingStatusItem[],
   currentOverallRetryCountForStage: number, // Overall retries for stage 1
   stage1StartTime: number, // Start time of the current stage 1 processing
-  isStageComplete?: boolean
+  isStageComplete?: boolean,
+  currentBatch?: number, // 현재 배치 번호
+  totalBatches?: number  // 전체 배치 수
 ) => void;
 
 /**

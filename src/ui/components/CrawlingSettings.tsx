@@ -71,7 +71,7 @@ function CrawlingSettingsComponent() {
 
   const isDisabled = configurationViewModel.isConfigurationLocked;
 
-  const BATCH_THRESHOLD = 10;
+  const BATCH_THRESHOLD = 5;
 
   // 에러 메시지 섹션 렌더 함수
   const renderErrorMessage = () => {
@@ -227,7 +227,9 @@ function CrawlingSettingsComponent() {
 
   // 배치 처리 설정 섹션 렌더 함수
   const renderBatchProcessingSettings = () => {
-    if (configurationViewModel.getEffectiveValue('pageRangeLimit')! <= BATCH_THRESHOLD) {
+    // 페이지 범위가 3 이하인 경우에만 숨김 (거의 항상 표시)
+    const pageRangeLimit = configurationViewModel.getEffectiveValue('pageRangeLimit') || 0;
+    if (pageRangeLimit <= 3) {
       return null;
     }
     

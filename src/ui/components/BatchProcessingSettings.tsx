@@ -69,12 +69,12 @@ export const BatchProcessingSettings: React.FC<BatchProcessingSettingsProps> = R
             {/* 배치 크기 설정 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                배치 크기 (10~100)
+                배치 크기 (5~100)
               </label>
               <div className="flex items-center">
                 <input
                   type="range"
-                  min="10"
+                  min="5"
                   max="100"
                   value={batchSize}
                   onChange={(e) => setBatchSize(parseInt(e.target.value))}
@@ -83,12 +83,12 @@ export const BatchProcessingSettings: React.FC<BatchProcessingSettingsProps> = R
                 />
                 <input
                   type="number"
-                  min="10"
+                  min="5"
                   max="100"
                   value={batchSize}
                   onChange={(e) => {
                     const value = parseInt(e.target.value);
-                    if (!isNaN(value) && value >= 10 && value <= 100) {
+                    if (!isNaN(value) && value >= 5 && value <= 100) {
                       setBatchSize(value);
                     }
                   }}

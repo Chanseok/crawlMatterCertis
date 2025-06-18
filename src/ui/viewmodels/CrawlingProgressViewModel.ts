@@ -85,7 +85,7 @@ export class CrawlingProgressViewModel {
   }
 
   /**
-   * 현재 진행률 (가중치 기반)
+   * 현재 진행률 (가중치 기반, 배치 처리 고려)
    */
   @computed get progressPercentage(): number {
     if (!this.currentProgress || this.currentProgress.currentStage === undefined) return 0;
@@ -94,6 +94,17 @@ export class CrawlingProgressViewModel {
     if (!stageId) return 0;
     
     const stageWeight = STAGE_WEIGHTS[stageId];
+    
+    // 배치 처리 중인 경우
+    if (this.currentProgress.currentBatch && this.currentProgress.totalBatches) {
+      const batchProgress = (this.currentProgress.currentBatch - 1) / this.currentProgress.totalBatches;
+      const withinBatchProgress = this.currentProgress.progress || 0;
+      const totalProgress = (batchProgress * 100) + (withinBatchProgress / this.currentProgress.totalBatches);
+      
+      return Math.min(100, Math.max(0, stageWeight + (totalProgress * 0.01 * (100 - stageWeight))));
+    }
+    
+    // 일반 처리인 경우
     const stageProgress = this.currentProgress.progress || 0;
     
     // Use ProgressUtils for standardized stage progress calculation

@@ -35,14 +35,16 @@ import { ProgressManager } from './progress-manager.js';
 // 캐시 매니저 인스턴스 생성
 const sitePageInfoCache = new PageCacheManager<SitePageInfo>();
 
-// 진행 상황 콜백 타입 정의 (하위 호환성 유지)
+// 진행 상황 콜백 타입 정의 (배치 처리 지원 추가)
 export type EnhancedProgressCallback = (
   processedSuccessfully: number,
   totalPagesInStage: number,
   stage1PageStatuses: MutablePageProcessingStatusItem[],
   currentOverallRetryCountForStage: number,
   stage1StartTime: number,
-  isStageComplete?: boolean
+  isStageComplete?: boolean,
+  currentBatch?: number,
+  totalBatches?: number
 ) => void;
 
 export class ProductListCollector {
@@ -64,8 +66,11 @@ export class ProductListCollector {
   private currentStageRetryCount: number = 0; // Tracks the number of retry *cycles* for the stage
   // Track total number of pages to process
   
-  
-  
+  // 배치 처리 정보 저장
+  private batchInfo?: {
+    currentBatch: number;
+    totalBatches: number;
+  } = undefined;
 
   // Cached configuration values
   private pageTimeoutMs: number;
@@ -117,6 +122,17 @@ export class ProductListCollector {
   public setProgressCallback(callback: EnhancedProgressCallback): void {
     this.enhancedProgressCallback = callback;
     this.progressManager.setProgressCallback(callback);
+  }
+
+  /**
+   * 배치 처리 정보 설정
+   */
+  public setBatchInfo(currentBatch: number, totalBatches: number): void {
+    this.batchInfo = { currentBatch, totalBatches };
+    // ProgressManager에도 배치 정보 전달
+    if (this.progressManager && typeof this.progressManager.setBatchInfo === 'function') {
+      this.progressManager.setBatchInfo(currentBatch, totalBatches);
+    }
   }
   
   /**

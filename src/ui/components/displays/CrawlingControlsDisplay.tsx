@@ -96,24 +96,24 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
           </button>
 
           {/* Start/Stop Buttons */}
-          {status === 'running' ? (
+          {status === 'running' || status === 'initializing' ? (
             <button
               onClick={onStopCrawling}
-              disabled={isStopping}
+              disabled={isStopping || status === 'initializing'}
               className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-sm ${
-                isStopping 
+                isStopping || status === 'initializing'
                   ? 'bg-gray-400 text-gray-200 cursor-not-allowed animate-pulse'
                   : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-red-200 hover:shadow-red-300'
               }`}
             >
-              {isStopping ? '중지 중...' : '중지'}
+              {status === 'initializing' ? '초기화 중...' : (isStopping ? '중지 중...' : '중지')}
             </button>
           ) : (
             <button
               onClick={onStartCrawling}
-              disabled={status === 'running' || isStopping}
+              disabled={status === 'running' || status === 'initializing' || isStopping}
               className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-sm ${
-                status === 'running' || isStopping
+                status === 'running' || status === 'initializing' || isStopping
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-green-200 hover:shadow-green-300'
               }`}

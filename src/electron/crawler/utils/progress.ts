@@ -172,6 +172,10 @@ export function updateProductListProgress(
     timeEstimate?: { // 추가된 시간 예측 정보
         estimatedTotalTimeMs: number, // 예상 총 소요 시간
         remainingTimeMs: number // 예상 남은 시간
+    },
+    batchInfo?: { // 배치 처리 정보 추가
+        currentBatch: number,
+        totalBatches: number
     }
 ): void {
     const now = Date.now();
@@ -190,9 +194,16 @@ export function updateProductListProgress(
         remainingTime = (totalPages - processedPages) * avgTimePerPage;
     }
 
-    const message = isCompleted 
+    let message = isCompleted 
         ? `1단계 완료: ${totalPages}개 제품 목록 페이지 수집 완료`
         : `1단계: 제품 목록 페이지 ${processedPages}/${totalPages} 처리 중 (${percentage.toFixed(1)}%)`;
+
+    // 배치 처리 중인 경우 메시지에 배치 정보 추가
+    if (batchInfo) {
+        message = isCompleted 
+            ? `배치 ${batchInfo.currentBatch}/${batchInfo.totalBatches} - 1단계 완료: ${totalPages}개 제품 목록 페이지 수집 완료`
+            : `배치 ${batchInfo.currentBatch}/${batchInfo.totalBatches} - 1단계: 제품 목록 페이지 ${processedPages}/${totalPages} 처리 중 (${percentage.toFixed(1)}%)`;
+    }
 
     const progressData: CrawlingProgress = {
         current: processedPages, // Overall progress current value for stage 1
@@ -214,7 +225,12 @@ export function updateProductListProgress(
         message: message,
         retryCount: currentRetryCount,
         maxRetries: maxConfigRetries,
-        stage1PageStatuses: stage1PageStatuses
+        stage1PageStatuses: stage1PageStatuses,
+        // 배치 처리 정보 추가
+        ...(batchInfo && {
+            currentBatch: batchInfo.currentBatch,
+            totalBatches: batchInfo.totalBatches
+        })
     };
 
     crawlerEvents.emit('crawlingProgress', progressData);
