@@ -167,13 +167,6 @@ const AppLayout: React.FC<AppLayoutProps> = React.memo(({ activeTab, onTabChange
                     {children}
                 </div>
             </main>
-
-            {/* 개발자 모드 표시 */}
-            {isDevelopment && (
-                <div className="fixed bottom-4 right-4 bg-yellow-400 text-yellow-900 px-3 py-1 rounded-full text-xs font-semibold shadow-lg">
-                    🚧 DEV MODE
-                </div>
-            )}
         </div>
     );
 });

@@ -264,10 +264,14 @@ export class CrawlerState {
       ...data
     };
 
-    // 경과 시간 계산
+    // 경과 시간 계산 - 더 정확하고 안정적으로
     if (this.progressData.startTime) {
-      this.progressData.elapsedTime = Date.now() - this.progressData.startTime;
+      const currentTime = Date.now();
+      this.progressData.elapsedTime = currentTime - this.progressData.startTime;
       
+      // 현재 시간 기준으로 경과 시간과 남은 시간 재계산
+      this.updateElapsedAndRemainingTime();
+
       // 완료 상태 확인 - 강화된 조건
       const isCompleted = this.progressData.status === 'completed' || 
                          this.progressData.percentage >= 100 ||
@@ -281,15 +285,7 @@ export class CrawlerState {
         this.progressData.percentage = 100;
         logger.debug('Setting remaining time to 0 due to completion', 'CrawlerState');
       } else {
-        // 남은 시간 추정 (진행률에 기반)
-        if (this.progressData.total > 0 && this.progressData.current > 0) {
-          const percentComplete = this.progressData.current / this.progressData.total;
-          if (percentComplete > 0.1) { // 10% 이상 진행된 경우에만 예측
-            const totalEstimatedTime = this.progressData.elapsedTime / percentComplete;
-            this.progressData.remainingTime = Math.max(0, totalEstimatedTime - this.progressData.elapsedTime);
-          }
-          this.progressData.percentage = CrawlingUtils.safePercentage(this.progressData.current, this.progressData.total);
-        }
+        this.progressData.percentage = CrawlingUtils.safePercentage(this.progressData.current, this.progressData.total);
       }
     }
 
@@ -1086,5 +1082,61 @@ export class CrawlerState {
       newCount: this.detailStageNewCount,
       updatedCount: this.detailStageUpdatedCount
     });
+  }
+
+  /**
+   * 크롤링 시작 시간 설정 (정확한 타이밍 기록)
+   */
+  public setCrawlingStartTime(): void {
+    const startTime = Date.now();
+    this.progressData.startTime = startTime;
+    logger.info('Crawling start time set', 'CrawlerState');
+    
+    // 전역 시작 시간도 함께 설정
+    import('../utils/progress.js').then(({ setGlobalCrawlingStartTime }) => {
+      setGlobalCrawlingStartTime(startTime);
+    });
+  }
+
+  /**
+   * 현재 시간 기준으로 경과 시간과 남은 시간을 계산하여 업데이트
+   * 전체 크롤링 진행률을 기준으로 계산
+   */
+  private updateElapsedAndRemainingTime(): void {
+    const now = Date.now();
+    const startTime = this.progressData.startTime || now;
+    this.progressData.elapsedTime = now - startTime;
+    
+    // 전체 진행률 기반 남은 시간 계산
+    // 1단계(페이지 수집) + 2단계/3단계(제품 처리)를 모두 고려
+    const stage1Progress = this.progressData.currentPage || 0;
+    const stage1Total = this.progressData.totalPages || 0;
+    const stage2Progress = this.progressData.processedItems || 0;
+    const stage2Total = this.progressData.totalItems || 0;
+    
+    // 전체 작업량을 페이지 + 제품으로 계산
+    const totalWork = stage1Total + stage2Total;
+    const completedWork = stage1Progress + stage2Progress;
+    
+    if (totalWork > 0 && completedWork > 0) {
+      const overallProgressRatio = completedWork / totalWork;
+      
+      // 최소 5% 이상 진행되고 1분 이상 경과한 경우에만 예측 (전체 크롤링이므로 조건 완화)
+      if (overallProgressRatio > 0.05 && this.progressData.elapsedTime > 60000) {
+        const estimatedTotalTime = this.progressData.elapsedTime / overallProgressRatio;
+        this.progressData.remainingTime = Math.max(0, estimatedTotalTime - this.progressData.elapsedTime);
+        
+        logger.debug(`전체 진행률 기반 시간 예측: ${(overallProgressRatio * 100).toFixed(1)}% 완료, 예상 남은 시간: ${this.progressData.remainingTime}ms`, 'CrawlerState');
+      } else {
+        this.progressData.remainingTime = undefined; // 신뢰할 수 없는 예측은 표시하지 않음
+      }
+    } else {
+      this.progressData.remainingTime = undefined;
+    }
+    
+    // 완료된 경우 남은 시간을 0으로 설정
+    if (this.progressData.status === 'completed' || this.progressData.percentage >= 100) {
+      this.progressData.remainingTime = 0;
+    }
   }
 }

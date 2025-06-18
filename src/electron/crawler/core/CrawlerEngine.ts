@@ -90,6 +90,14 @@ export class CrawlerEngine {
     
     // 크롤러 상태(CrawlerState) 완전 초기화 - 카운터가 이전 세션에서 누적되지 않도록 함
     this.state.reset();
+    
+    // 크롤링 시작 시간 정확히 설정
+    this.state.setCrawlingStartTime();
+    
+    // 전역 크롤링 시작 시간도 설정하여 모든 진행률 업데이트에서 동일한 시작 시간 사용
+    const { setGlobalCrawlingStartTime } = await import('../utils/progress.js');
+    setGlobalCrawlingStartTime(Date.now());
+    
     this.logger.info('CrawlerState has been reset for new crawling session');
     
     // 명시적으로 상태 확인 (디버깅용)
@@ -107,6 +115,25 @@ export class CrawlerEngine {
 
     try {
       this.logger.info('Starting crawling process...');
+      
+      // 크롤링 시작 즉시 진행률 이벤트 발송 (시간 추적 시작을 위해)
+      const startTime = Date.now();
+      crawlerEvents.emit('crawlingProgress', {
+        status: 'running',
+        currentStage: CRAWLING_STAGE.INIT,
+        currentStep: '크롤링 시작',
+        message: '크롤링을 시작합니다...',
+        percentage: 0,
+        currentPage: 0,
+        totalPages: 0,
+        processedItems: 0,
+        totalItems: 0,
+        current: 0,
+        total: 0,
+        elapsedTime: 0,
+        startTime: startTime,
+        remainingTime: 0
+      });
       
       // 초기 크롤링 상태 이벤트
       initializeCrawlingProgress('크롤링 초기화', CRAWLING_STAGE.INIT);

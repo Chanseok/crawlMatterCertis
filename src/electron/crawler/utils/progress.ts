@@ -10,6 +10,23 @@ import type { RetryStatusInfo, RetryLogItem } from './types.js';
 // 크롤링 이벤트 이미터
 export const crawlerEvents = new EventEmitter();
 
+// 전체 크롤링 시작 시간 추적
+let globalCrawlingStartTime: number = 0;
+
+/**
+ * 전체 크롤링 시작 시간 설정
+ */
+export function setGlobalCrawlingStartTime(startTime: number): void {
+    globalCrawlingStartTime = startTime;
+}
+
+/**
+ * 전체 크롤링 시작 시간 조회
+ */
+export function getGlobalCrawlingStartTime(): number {
+    return globalCrawlingStartTime;
+}
+
 // 크롤링 단계 상수
 export const CRAWLING_PHASES = {
     PRODUCT_LIST: '제품 목록 수집',
@@ -133,6 +150,9 @@ export function logRetryError(
  * @param currentStage 현재 크롤링 단계 번호 (1=목록 수집, 2=상세 수집)
  */
 export function initializeCrawlingProgress(currentStep: string, currentStage: number = CRAWLING_STAGE.INIT): CrawlingProgress {
+    // 전역 크롤링 시작 시간이 설정되어 있으면 사용, 아니면 현재 시간 사용
+    const startTime = globalCrawlingStartTime > 0 ? globalCrawlingStartTime : Date.now();
+    
     const progress: CrawlingProgress = {
         // types.d.ts에서 필요한 필수 속성 추가
         current: 0,
@@ -142,7 +162,7 @@ export function initializeCrawlingProgress(currentStep: string, currentStage: nu
         totalPages: 0,
         processedItems: 0,
         totalItems: 0,
-        startTime: Date.now(),
+        startTime: startTime,
         estimatedEndTime: 0,
         newItems: 0,
         updatedItems: 0,
@@ -150,7 +170,7 @@ export function initializeCrawlingProgress(currentStep: string, currentStage: nu
         currentStep,
         currentStage, // 단계 정보 추가
         remainingTime: -1,
-        elapsedTime: 0,
+        elapsedTime: startTime === globalCrawlingStartTime ? 0 : Date.now() - startTime,
         message: `크롤링 초기화 중: ${currentStep}`, // 명확한 메시지 추가
         stage1PageStatuses: [] // Initialize with empty array
     };
@@ -178,8 +198,11 @@ export function updateProductListProgress(
         totalBatches: number
     }
 ): void {
+    // 전체 크롤링 시간을 사용 (설정된 경우), 그렇지 않으면 전달받은 startTime 사용
+    const actualStartTime = globalCrawlingStartTime > 0 ? globalCrawlingStartTime : startTime;
+    
     const now = Date.now();
-    const elapsedTime = now - startTime;
+    const elapsedTime = now - actualStartTime; // 전체 크롤링 시작부터의 경과 시간
     // processedPages는 성공적으로 완료된 페이지 기준
     const percentage = totalPages > 0 ? (processedPages / totalPages) * 100 : 0;
     let remainingTime: number | undefined = undefined;
@@ -188,21 +211,22 @@ export function updateProductListProgress(
     if (timeEstimate && timeEstimate.remainingTimeMs > 0) {
         remainingTime = timeEstimate.remainingTimeMs;
     } 
-    // 없으면 기존 방식으로 계산
-    else if (processedPages > 0 && processedPages > totalPages * 0.1) { // 10% 이상 진행 및 1페이지 이상 완료 시
+    // 없으면 기존 방식으로 계산 - 더 신뢰할 만한 조건 사용 (전체 크롤링 시간 기준)
+    else if (processedPages > 0 && processedPages >= Math.max(1, totalPages * 0.02) && elapsedTime > 30000) { 
+        // 최소 2% 이상 진행되고 30초 이상 경과한 경우에만 예측 (더 빠른 피드백)
         const avgTimePerPage = elapsedTime / processedPages;
         remainingTime = (totalPages - processedPages) * avgTimePerPage;
     }
 
     let message = isCompleted 
-        ? `1단계 완료: ${totalPages}개 제품 목록 페이지 수집 완료`
-        : `1단계: 제품 목록 페이지 ${processedPages}/${totalPages} 처리 중 (${percentage.toFixed(1)}%)`;
+        ? `제품 목록 페이지 수집 완료: ${totalPages}개 페이지 처리 완료`
+        : `제품 목록 페이지 ${processedPages}/${totalPages} 처리 중 (${percentage.toFixed(1)}%)`;
 
     // 배치 처리 중인 경우 메시지에 배치 정보 추가
     if (batchInfo) {
         message = isCompleted 
-            ? `배치 ${batchInfo.currentBatch}/${batchInfo.totalBatches} - 1단계 완료: ${totalPages}개 제품 목록 페이지 수집 완료`
-            : `배치 ${batchInfo.currentBatch}/${batchInfo.totalBatches} - 1단계: 제품 목록 페이지 ${processedPages}/${totalPages} 처리 중 (${percentage.toFixed(1)}%)`;
+            ? `배치 ${batchInfo.currentBatch}/${batchInfo.totalBatches} - 제품 목록 페이지 수집 완료: ${totalPages}개 페이지 처리 완료`
+            : `배치 ${batchInfo.currentBatch}/${batchInfo.totalBatches} - 제품 목록 페이지 ${processedPages}/${totalPages} 처리 중 (${percentage.toFixed(1)}%)`;
     }
 
     const progressData: CrawlingProgress = {
@@ -217,8 +241,8 @@ export function updateProductListProgress(
         currentStep: CRAWLING_PHASES.PRODUCT_LIST,
         currentStage: CRAWLING_STAGE.PRODUCT_LIST,
         remainingTime: isCompleted ? 0 : remainingTime,
-        elapsedTime,
-        startTime,
+        elapsedTime, // 전체 크롤링 시작부터의 경과 시간
+        startTime: actualStartTime, // 전체 크롤링 시작 시간
         estimatedEndTime: remainingTime && !isCompleted ? now + remainingTime : (isCompleted ? now : 0),
         newItems: 0, 
         updatedItems: 0,
@@ -253,12 +277,15 @@ export function updateProductDetailProgress(
     currentBatch?: number,
     totalBatches?: number
 ): void {
+    // 전체 크롤링 시간을 사용 (설정된 경우), 그렇지 않으면 전달받은 startTime 사용
+    const actualStartTime = globalCrawlingStartTime > 0 ? globalCrawlingStartTime : startTime;
+    
     // 안전 검사: 음수 값이나 비정상적인 값을 방지
     if (processedItems < 0) processedItems = 0;
     if (totalItems < 0) totalItems = 0;
     
     const now = Date.now();
-    const elapsedTime = now - startTime;
+    const elapsedTime = now - actualStartTime; // 전체 크롤링 시작부터의 경과 시간
     
     // 0으로 나누기 방지를 위한 안전 검사
     const safeTotal = Math.max(totalItems, 1);
@@ -269,18 +296,19 @@ export function updateProductDetailProgress(
     
     let remainingTime: number | undefined = undefined;
 
-    // 10% 이상 진행된 경우에만 남은 시간 예측
-    if (processedItems > totalItems * 0.1 && processedItems > 0) {
+    // 더 신뢰할 만한 조건으로 남은 시간 예측 (전체 크롤링 시간 기준)
+    if (processedItems >= Math.max(1, totalItems * 0.02) && processedItems > 0 && elapsedTime > 30000) {
+        // 최소 2% 이상 진행되고 30초 이상 경과한 경우에만 예측 (더 빠른 피드백)
         const avgTimePerItem = elapsedTime / processedItems;
         remainingTime = (totalItems - processedItems) * avgTimePerItem;
     }
 
     const message = isCompleted 
-        ? `2단계 완료: ${totalItems}개 제품 상세정보 수집 완료 (신규: ${newItems}, 업데이트: ${updatedItems})`
-        : `2단계: 제품 상세정보 ${processedItems}/${totalItems} 처리 중 (${safePercentage.toFixed(1)}%)`;
+        ? `크롤링 완료: ${totalItems}개 제품 처리 완료 (신규: ${newItems}, 업데이트: ${updatedItems})`
+        : `제품 상세정보 ${processedItems}/${totalItems} 처리 중 (${safePercentage.toFixed(1)}%)`;
 
     // 이벤트 발행 전에 로그로 확인
-    console.log(`[Progress] Emitting detail progress: ${processedItems}/${totalItems}, ${safePercentage.toFixed(1)}%, new: ${newItems}, updated: ${updatedItems}`);
+    console.log(`[Progress] Emitting detail progress with total crawling time: ${processedItems}/${totalItems}, ${safePercentage.toFixed(1)}%, elapsed: ${elapsedTime}ms, new: ${newItems}, updated: ${updatedItems}`);
     
     crawlerEvents.emit('crawlingProgress', {
         status: isCompleted ? 'completed' : 'running',
@@ -292,8 +320,8 @@ export function updateProductDetailProgress(
         currentStep: CRAWLING_PHASES.PRODUCT_DETAIL,
         currentStage: CRAWLING_STAGE.PRODUCT_DETAIL, // 단계 정보
         remainingTime: isCompleted ? 0 : remainingTime,
-        elapsedTime,
-        startTime,
+        elapsedTime, // 전체 크롤링 시작부터의 경과 시간
+        startTime: actualStartTime, // 전체 크롤링 시작 시간
         estimatedEndTime: remainingTime && !isCompleted ? now + remainingTime : (isCompleted ? now : 0),
         newItems,
         updatedItems,

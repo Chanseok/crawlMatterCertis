@@ -166,6 +166,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
   const [isSuccess, setIsSuccess] = useState(false);
   const [localTime, setLocalTime] = useState({ elapsedTime: 0, remainingTime: 0 });
   const [flipTimer, setFlipTimer] = useState(0);
+  const [crawlingStartTime, setCrawlingStartTime] = useState<number | null>(null);
   
   // === 누락 제품 수집 관련 상태 ===
   const [isMissingAnalyzing, setIsMissingAnalyzing] = useState(false);
@@ -520,63 +521,74 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
 
 
 
-    // === EFFECTS (Lifecycle Management) ===
-  
-  // Timer effect for elapsed/remaining time
+  // 크롤링 상태 변경 시 시작 시간 설정
+  useEffect(() => {
+    if (status === 'running' && !crawlingStartTime) {
+      // 크롤링이 시작되었고 아직 시작 시간이 설정되지 않은 경우
+      const startTime = Date.now();
+      setCrawlingStartTime(startTime);
+      setLocalTime({ elapsedTime: 0, remainingTime: 0 });
+      dashboardLogger.info('크롤링 시작 시간 설정', { startTime });
+    } else if (status !== 'running' && status !== 'initializing') {
+      // 크롤링이 완료되거나 중단된 경우
+      if (status === 'completed') {
+        setLocalTime(prev => ({ ...prev, remainingTime: 0 }));
+      }
+    }
+  }, [status, crawlingStartTime, dashboardLogger]);
+
+  // 안정적인 타이머 effect - 1초마다 정확히 업데이트
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
 
-    if (status === 'running') {
-      timer = setInterval(() => {
+    if (status === 'running' && crawlingStartTime) {
+      // 즉시 한 번 업데이트
+      const updateTimer = () => {
+        const now = Date.now();
+        const elapsedTime = now - crawlingStartTime;
+        
         setLocalTime(prev => {
-          const newElapsedTime = prev.elapsedTime + 1000;
-          const elapsedSeconds = newElapsedTime / 1000;
+          // 백엔드에서 제공하는 시간 정보와 로컬 계산 비교
+          let finalElapsedTime = elapsedTime;
+          let finalRemainingTime = 0;
           
-          let newRemainingTime = 0;
-          
-          if (viewModel.currentStage === 1) {
-            // 1단계: 페이지 기반 계산
-            let currentPage = progress.currentPage || 0;
-            let totalPages = progress.totalPages || 0;
-            
-            // concurrentTasks를 사용하여 올바른 값 확보
-            if (Array.isArray(concurrentTasks) && concurrentTasks.length > 0) {
-              const successfulPages = concurrentTasks.filter(task => task.status === 'success').length;
-              currentPage = Math.max(currentPage, successfulPages);
-              totalPages = Math.max(totalPages, concurrentTasks.length);
+          if (progress.elapsedTime !== undefined && progress.elapsedTime > 0) {
+            // 백엔드 시간이 있으면 참고하되, 로컬 시간이 더 안정적
+            const timeDiff = Math.abs(progress.elapsedTime - elapsedTime);
+            if (timeDiff < 3000) { // 3초 이내 차이면 백엔드 시간 우선
+              finalElapsedTime = progress.elapsedTime;
+              finalRemainingTime = progress.remainingTime || 0;
+            } else {
+              // 차이가 크면 로컬 계산 사용
+              finalElapsedTime = elapsedTime;
+              finalRemainingTime = calculateRemainingTime(elapsedTime);
             }
-            
-            // 진행률 기반 예상 남은 시간 계산
-            if (currentPage > 0 && totalPages > currentPage && elapsedSeconds > 0) {
-              const avgTimePerPage = elapsedSeconds / currentPage;
-              const remainingPages = totalPages - currentPage;
-              newRemainingTime = remainingPages * avgTimePerPage * 1000;
-            }
-          } else if (viewModel.currentStage === 2) {
-            // 2단계: 제품 기반 계산
-            const processedItems = progress.processedItems || 0;
-            const totalItems = progress.totalItems || 0;
-            
-            if (processedItems > 0 && totalItems > processedItems && elapsedSeconds > 0) {
-              const avgTimePerItem = elapsedSeconds / processedItems;
-              const remainingItems = totalItems - processedItems;
-              newRemainingTime = remainingItems * avgTimePerItem * 1000;
-            }
+          } else {
+            // 백엔드 시간이 없으면 로컬에서 계산
+            finalElapsedTime = elapsedTime;
+            finalRemainingTime = calculateRemainingTime(elapsedTime);
           }
 
           return {
-            elapsedTime: newElapsedTime,
-            remainingTime: Math.max(0, newRemainingTime)
+            elapsedTime: finalElapsedTime,
+            remainingTime: finalRemainingTime
           };
         });
+      };
 
-        setFlipTimer(prev => prev + 1);
-      }, 1000);
-    } else {
+      // 즉시 업데이트
+      updateTimer();
+      
+      // 1초마다 업데이트
+      timer = setInterval(updateTimer, 1000);
+      
+      setFlipTimer(prev => prev + 1);
+    } else if (status !== 'running' && crawlingStartTime) {
+      // 크롤링이 완료되었거나 중단된 경우 최종 시간 설정
+      const finalElapsedTime = progress.elapsedTime || (Date.now() - crawlingStartTime);
       setLocalTime(prev => ({
-        ...prev,
-        elapsedTime: progress.elapsedTime || prev.elapsedTime,
-        remainingTime: progress.remainingTime || 0
+        elapsedTime: finalElapsedTime,
+        remainingTime: status === 'completed' ? 0 : prev.remainingTime
       }));
     }
 
@@ -585,17 +597,39 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         clearInterval(timer);
       }
     };
-  }, [
-    status, 
-    progress.currentStage,
-    progress.currentPage, 
-    progress.processedItems, 
-    progress.totalItems,
-    progress.elapsedTime,
-    targetPageCount,
-    config.productsPerPage,
-    statusSummary?.siteProductCount
-  ]);
+  }, [status, crawlingStartTime, progress.elapsedTime, progress.remainingTime]);
+
+  // 남은 시간 계산 함수 - 더 안정적이고 신뢰할 만한 계산
+  const calculateRemainingTime = useCallback((elapsedTime: number): number => {
+    const elapsedSeconds = elapsedTime / 1000;
+    
+    // 최소 30초 경과 후에만 예측 시작 (더 빠른 피드백)
+    if (elapsedSeconds < 30) return 0;
+    
+    // 전체 진행률 기반 계산
+    const stage1Progress = progress.currentPage || 0;
+    const stage1Total = progress.totalPages || 0;
+    const stage2Progress = progress.processedItems || 0;
+    const stage2Total = progress.totalItems || 0;
+    
+    const totalWork = stage1Total + stage2Total;
+    const completedWork = stage1Progress + stage2Progress;
+    
+    if (totalWork > 0 && completedWork > 0) {
+      const progressRatio = completedWork / totalWork;
+      
+      // 최소 2% 이상 진행된 경우에만 예측 (더 빠른 예측)
+      if (progressRatio > 0.02) {
+        const estimatedTotalTime = elapsedSeconds / progressRatio;
+        const remainingSeconds = Math.max(0, estimatedTotalTime - elapsedSeconds);
+        
+        // 급격한 변화를 방지하기 위한 스무딩
+        return Math.round(remainingSeconds * 1000);
+      }
+    }
+    
+    return 0;
+  }, [progress.currentPage, progress.totalPages, progress.processedItems, progress.totalItems]);
 
   // Enhanced completion status handling with robust auto-refresh
   const lastProcessedCompletion = useRef<string | null>(null);
@@ -1020,6 +1054,20 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     }
   }, [isManualCrawling, status, configurationViewModel.config, handleCheckStatus]);
 
+  // === 크롤링 시작 시 시간 초기화 ===
+  useEffect(() => {
+    if (status === 'running' && localTime.elapsedTime === 0) {
+      // 크롤링이 시작되었지만 localTime이 아직 초기화되지 않은 경우
+      dashboardLogger.info('크롤링 시작 - 시간 추적 초기화');
+      setLocalTime({ elapsedTime: 0, remainingTime: 0 });
+    } else if (status === 'completed' || status === 'error' || status === 'idle') {
+      // 크롤링이 완료되거나 중단된 경우 타이머 정지 (남은 시간은 0으로)
+      if (status === 'completed' || status === 'error') {
+        setLocalTime(prev => ({ ...prev, remainingTime: 0 }));
+      }
+    }
+  }, [status, localTime.elapsedTime, dashboardLogger]);
+
   // === RENDER ===
   return (
     <>
@@ -1053,13 +1101,12 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
           animatedDigits={animatedDigits}
         />
 
-        {/* Time Information Display */}
+        {/* Time Information Display - 전체 크롤링 시간 표시 */}
         <TimeDisplay 
           localTime={localTime}
           formatDuration={TimeUtils.formatDuration}
           isBeforeStatusCheck={isBeforeStatusCheck}
           isAfterStatusCheck={isAfterStatusCheck}
-          currentStage={viewModel.currentStage}
         />
 
         {/* Redesigned Batch Progress Section */}
