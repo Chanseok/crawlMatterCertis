@@ -90,9 +90,10 @@ export class ProgressManager {
    * @param data 전송할 데이터
    */
   private sendImmediately(channel: string, data: any): void {
-    // progressCallback이 있으면 그것을 사용
-    if (this.progressCallback && channel === 'crawlingProgress') {
+    // progressCallback이 있으면 그것을 사용 (crawlingProgress 관련 채널들)
+    if (this.progressCallback && (channel === 'crawlingProgress' || channel === 'crawling:progress')) {
       try {
+        console.log(`[ProgressManager] 🔄 Calling progress callback with channel: ${channel}`);
         this.progressCallback(data);
       } catch (err) {
         console.error(`[ProgressManager] 🔄 Error calling progress callback:`, err);
@@ -107,6 +108,7 @@ export class ProgressManager {
     }
 
     try {
+      console.log(`[ProgressManager] 🔄 Sending to webContents channel: ${channel}`);
       this.mainWindow.webContents.send(channel, data);
     } catch (err) {
       console.error(`[ProgressManager] 🔄 Error sending message to channel ${channel}:`, err);

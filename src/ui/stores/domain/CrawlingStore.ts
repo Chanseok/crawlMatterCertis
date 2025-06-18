@@ -680,6 +680,10 @@ export class CrawlingStore {
     
     // CrawlingProgressViewModel 정리
     crawlingProgressViewModel.reset();
+    
+    // 이벤트 구독 다시 설정
+    console.log('[CrawlingStore] Re-subscribing to events after cleanup');
+    this.subscribeToEvents();
   }
 
   /**

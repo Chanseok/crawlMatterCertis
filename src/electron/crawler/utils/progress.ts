@@ -356,3 +356,34 @@ export function handleCrawlingError(error: unknown): void {
         details: errorMessage
     });
 }
+
+/**
+ * 크롤링 진행 상태 데이터 검증 및 정규화
+ */
+export function validateAndNormalizeProgress(progress: Partial<CrawlingProgress>): CrawlingProgress {
+    return {
+        current: progress.current ?? 0,
+        total: progress.total ?? 0,
+        percentage: progress.percentage ?? 0,
+        status: progress.status ?? 'idle',
+        currentStep: progress.currentStep ?? '대기 중...',
+        elapsedTime: progress.elapsedTime ?? 0,
+        startTime: progress.startTime ?? Date.now(),
+        message: progress.message ?? '대기 중...',
+        currentStage: progress.currentStage ?? 0,
+    };
+}
+
+/**
+ * 안전한 크롤링 진행 상태 발송
+ */
+export function emitSafeProgress(progress: Partial<CrawlingProgress>): void {
+    const normalizedProgress = validateAndNormalizeProgress(progress);
+    console.log(`[Progress] Emitting safe progress:`, {
+        stage: normalizedProgress.currentStage,
+        step: normalizedProgress.currentStep,
+        status: normalizedProgress.status,
+        progress: `${normalizedProgress.current}/${normalizedProgress.total}`
+    });
+    crawlerEvents.emit('crawlingProgress', normalizedProgress);
+}

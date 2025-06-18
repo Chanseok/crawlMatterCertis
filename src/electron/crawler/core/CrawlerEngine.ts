@@ -54,6 +54,14 @@ export class CrawlerEngine {
   }
 
   /**
+   * 세션 설정을 무효화하여 다음 작업 시 최신 설정을 사용하도록 함
+   */
+  public invalidateSessionConfig(): void {
+    this.sessionConfig = null;
+    this.logger.info('Session config invalidated - will use latest config for next operation');
+  }
+
+  /**
    * 크롤링 작업을 시작
    * @param config 세션 전체에 사용할 크롤러 설정 (UI에서 전달)
    */
@@ -118,14 +126,82 @@ export class CrawlerEngine {
         return false;
       }
 
+      // 브라우저 초기화 완료 후 상태 업데이트
+      crawlerEvents.emit('crawlingProgress', {
+        status: 'running',
+        currentStage: CRAWLING_STAGE.INIT,
+        currentStep: '브라우저 초기화 완료',
+        message: '브라우저 초기화가 완료되었습니다. 페이지 정보를 수집하는 중...',
+        percentage: 5,
+        currentPage: 0,
+        totalPages: 0,
+        processedItems: 0,
+        totalItems: 0,
+        current: 0,
+        total: 0,
+        elapsedTime: 0,
+        startTime: Date.now()
+      });
+
+      // 브라우저 초기화 완료 상태 업데이트
+      crawlerEvents.emit('crawlingProgress', {
+        status: 'running',
+        currentStage: CRAWLING_STAGE.INIT,
+        currentStep: '브라우저 초기화 완료',
+        message: '브라우저 초기화가 완료되었습니다. 페이지 정보를 가져오는 중...',
+        percentage: 5,
+        currentPage: 0,
+        totalPages: 0,
+        processedItems: 0,
+        totalItems: 0,
+        current: 0,
+        total: 0,
+        elapsedTime: Date.now() - Date.now(),
+        startTime: Date.now()
+      });
+
       // 사용자 설정 가져오기 (CRAWL-RANGE-001) - from the session config
       const userPageLimit = sessionConfig.pageRangeLimit;
       
       // 제품 목록 수집기 생성 (1단계) - Pass the session config for consistency
       const productListCollector = new ProductListCollector(this.state, this.abortController, sessionConfig, this.browserManager!);
       
+      // 페이지 정보 수집 중 상태 업데이트
+      crawlerEvents.emit('crawlingProgress', {
+        status: 'running',
+        currentStage: CRAWLING_STAGE.INIT,
+        currentStep: '페이지 정보 수집 중',
+        message: '사이트의 총 페이지 수를 확인하고 있습니다...',
+        percentage: 10,
+        currentPage: 0,
+        totalPages: 0,
+        processedItems: 0,
+        totalItems: 0,
+        current: 0,
+        total: 0,
+        elapsedTime: Date.now() - Date.now(),
+        startTime: Date.now()
+      });
+      
       // totalPages와 lastPageProductCount 정보 가져오기
       const { totalPages: totalPagesFromCache, lastPageProductCount } = await productListCollector.fetchTotalPagesCached(true);
+      
+      // 크롤링 범위 계산 중 상태 업데이트
+      crawlerEvents.emit('crawlingProgress', {
+        status: 'running',
+        currentStage: CRAWLING_STAGE.INIT,
+        currentStep: '크롤링 범위 계산 중',
+        message: '크롤링할 페이지 범위를 계산하고 있습니다...',
+        percentage: 15,
+        currentPage: 0,
+        totalPages: totalPagesFromCache,
+        processedItems: 0,
+        totalItems: 0,
+        current: 0,
+        total: totalPagesFromCache,
+        elapsedTime: Date.now() - Date.now(),
+        startTime: Date.now()
+      });
       
       // 크롤링 범위 계산
       const { startPage, endPage } = await PageIndexManager.calculateCrawlingRange(
@@ -135,17 +211,52 @@ export class CrawlerEngine {
         sessionConfig // 세션 설정을 명시적으로 전달
       );
       
-      // 크롤링할 페이지가 없는 경우 종료
-      if (startPage <= 0 || endPage <= 0 || startPage < endPage) {
-        this.logger.info('No pages to crawl.');
-        this.isCrawling = false;
-        return true;
-      }
-      
       // 총 크롤링할 페이지 수 계산
       const totalPagesToCrawl = startPage - endPage + 1;
       this.logger.info(`Total pages to crawl: ${totalPagesToCrawl}, from page ${startPage} to ${endPage}`);
 
+      // 크롤링 시작 준비 완료 상태 업데이트
+      crawlerEvents.emit('crawlingProgress', {
+        status: 'running',
+        currentStage: CRAWLING_STAGE.PRODUCT_LIST,
+        currentStep: '크롤링 시작 준비',
+        message: `${totalPagesToCrawl}개 페이지 크롤링을 시작합니다...`,
+        percentage: 20,
+        currentPage: 0,
+        totalPages: totalPagesToCrawl,
+        processedItems: 0,
+        totalItems: totalPagesToCrawl,
+        current: 0,
+        total: totalPagesToCrawl,
+        elapsedTime: 0,
+        startTime: Date.now()
+      });
+      
+      // 크롤링할 페이지가 없는 경우 종료
+      if (startPage <= 0 || endPage <= 0 || startPage < endPage) {
+        this.logger.info('No pages to crawl.');
+        this.isCrawling = false;
+        
+        // 크롤링할 페이지가 없음을 알림
+        crawlerEvents.emit('crawlingProgress', {
+          status: 'completed',
+          currentStage: CRAWLING_STAGE.COMPLETE,
+          currentStep: '크롤링 완료',
+          message: '크롤링할 새로운 페이지가 없습니다.',
+          percentage: 100,
+          currentPage: 0,
+          totalPages: 0,
+          processedItems: 0,
+          totalItems: 0,
+          current: 0,
+          total: 0,
+          elapsedTime: Date.now() - Date.now(),
+          startTime: Date.now()
+        });
+        
+        return true;
+      }
+      
       // Define the enhanced progress callback with batch support
       const enhancedProgressUpdater = (
         processedSuccessfully: number, 
@@ -729,12 +840,32 @@ export class CrawlerEngine {
       this.handleCrawlingError(error);
       return false;
     } finally {
+      // 크롤링 상태 정리
+      this.isCrawling = false;
+      
+      // 실패한 경우 UI 상태 업데이트
+      if (!this.isCrawling && this.state.getStage() !== 'completed') {
+        crawlerEvents.emit('crawlingProgress', {
+          status: 'idle',
+          currentStage: CRAWLING_STAGE.INIT,
+          currentStep: '크롤링 중지됨',
+          message: '크롤링이 중지되었습니다.',
+          percentage: 0,
+          currentPage: 0,
+          totalPages: 0,
+          processedItems: 0,
+          totalItems: 0,
+          current: 0,
+          total: 0,
+          elapsedTime: 0,
+          startTime: Date.now()
+        });
+      }
+      
       if (this.browserManager) {
         await this.browserManager.cleanupResources(); // Cleanup BrowserManager
         this.browserManager = null;
       }
-      // 모든 작업이 완료되었을 때만 크롤링 상태 변경
-      this.isCrawling = false;
 
       // 이 시점에서 명시적으로 정리 - 리소스 누수 방지
       if (this.abortController && !this.abortController.signal.aborted) {
@@ -765,9 +896,10 @@ export class CrawlerEngine {
    * 크롤링 상태 체크 요약 정보 반환
    */
   public async checkCrawlingStatus(): Promise<CrawlingSummary> {
-    // 현재 세션의 설정이 있으면 사용하고, 없으면 최신 설정 가져옴
-    const sessionConfig = this.sessionConfig || configManager.getConfig();
-    this.logger.info('checkCrawlingStatus called with config:', { data: JSON.stringify(sessionConfig) });
+    // 항상 최신 설정을 사용하여 설정 변경사항이 즉시 반영되도록 함
+    // 크롤링 중이 아닐 때는 세션 설정보다 최신 설정이 우선됨
+    const sessionConfig = configManager.getConfig();
+    this.logger.info('checkCrawlingStatus called with latest config:', { data: JSON.stringify(sessionConfig) });
     
     let tempBrowserManager: BrowserManager | null = null;
     let createdTempBrowserManager = false;
@@ -1051,6 +1183,24 @@ export class CrawlerEngine {
 
     this.state.reportCriticalFailure(`크롤링 과정에서 오류가 발생했습니다: ${errorMessage}`);
 
+    // UI에 오류 상태 업데이트
+    crawlerEvents.emit('crawlingProgress', {
+      status: 'error',
+      currentStage: CRAWLING_STAGE.INIT,
+      currentStep: '크롤링 오류',
+      message: `오류 발생: ${errorMessage}`,
+      percentage: 0,
+      currentPage: 0,
+      totalPages: 0,
+      processedItems: 0,
+      totalItems: 0,
+      current: 0,
+      total: 0,
+      elapsedTime: 0,
+      startTime: Date.now(),
+      criticalError: errorMessage
+    });
+
     crawlerEvents.emit('crawlingError', {
       message: 'Crawling process failed',
       details: errorMessage
@@ -1128,12 +1278,27 @@ export class CrawlerEngine {
       ...progressData,
       percentage: 100,
       status: 'completed',
-      currentStage: 0, // 명시적으로 완료 상태(0)로 설정
+      currentStage: CRAWLING_STAGE.COMPLETE, // UI 완료 조건에 맞게 설정 (4)
       stage: 'complete', // UI에서 사용하는 완료 상태 설정
       elapsedTime: progressData.startTime ? Date.now() - progressData.startTime : 0,
       remainingTime: 0, // 완료 시 남은 시간은 0
       message: '크롤링이 성공적으로 완료되었습니다.'
     });
+    
+    // 완료 이벤트 명확히 전달
+    crawlerEvents.emit('crawlingProgress', {
+      status: 'completed',
+      currentStage: CRAWLING_STAGE.COMPLETE,
+      percentage: 100,
+      currentPage: progressData.totalItems || 0,
+      totalPages: progressData.totalItems || 0,
+      processedItems: progressData.totalItems || 0,
+      totalItems: progressData.totalItems || 0,
+      message: '크롤링이 성공적으로 완료되었습니다.',
+      elapsedTime: progressData.startTime ? Date.now() - progressData.startTime : 0,
+      remainingTime: 0
+    });
+    
     // 완료 이벤트 명확히 전달
     crawlerEvents.emit('crawlingComplete', {
       message: '크롤링이 성공적으로 완료되었습니다.',

@@ -168,12 +168,14 @@ class IPCService {
         }
       };
       
-      // Electron API를 통한 구독
-      window.electron.on('crawlingProgress', wrappedHandler);
+      // 전용 구독 함수 사용 (preload에서 제공)
+      const unsubscribeFromPreload = window.electron.subscribeCrawlingProgress(wrappedHandler);
       
       // 구독 해제 함수 생성
       const unsubscribe: IPCUnsubscribeFunction = () => {
-        window.electron?.removeAllListeners?.('crawlingProgress');
+        if (unsubscribeFromPreload) {
+          unsubscribeFromPreload();
+        }
         this.subscriptions.set(channelKey, false);
         this.unsubscribeFunctions.delete(channelKey);
       };

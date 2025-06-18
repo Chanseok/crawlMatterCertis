@@ -48,6 +48,13 @@ export function isRunning(): boolean {
 }
 
 /**
+ * 세션 설정을 무효화하여 다음 작업 시 최신 설정을 사용하도록 함
+ */
+export function invalidateSessionConfig(): void {
+  return crawler.invalidateSessionConfig();
+}
+
+/**
  * 현재 크롤러 설정 가져오기
  */
 export function getCrawlerConfig(): CrawlerConfig {

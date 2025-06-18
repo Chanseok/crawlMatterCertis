@@ -11,7 +11,7 @@ import type {
   CrawlingProgress,
   CrawlingStatus
 } from '../../../../types.d.ts';
-import { crawlerEvents } from '../utils/progress.js';
+import { crawlerEvents, emitSafeProgress } from '../utils/progress.js';
 import { PageValidator, type PageValidationResult } from '../utils/page-validator.js';
 import { logger } from '../../../shared/utils/Logger.js';
 import { CrawlingUtils } from '../../../shared/utils/CrawlingUtils.js';
@@ -241,56 +241,64 @@ export class CrawlerState {
     // 이벤트 발행
     crawlerEvents.emit('crawlingStageChanged', stage, message);
     
-    // 기존 progress 이벤트도 발행하여 일관성 유지
-    crawlerEvents.emit('crawlingProgress', {...this.progressData});
+    // 기존 progress 이벤트도 발행하여 일관성 유지 (안전한 방식 사용)
+    emitSafeProgress(this.progressData);
     
     logger.info(`Stage changed to: ${stage} - ${message}`, 'CrawlerState');
   }
-/**
- * 진행 상태 업데이트
- */
-public updateProgress(data: Partial<CrawlingProgress>): void {
-  // 현재 상태 업데이트
-  this.progressData = {
-    ...this.progressData,
-    ...data
-  };
 
-  // 경과 시간 계산
-  if (this.progressData.startTime) {
-    this.progressData.elapsedTime = Date.now() - this.progressData.startTime;
-    
-    // 완료 상태 확인 - 강화된 조건
-    const isCompleted = this.progressData.status === 'completed' || 
-                       this.progressData.percentage >= 100 ||
-                       data.stage === 'complete' ||
-                       data.status === 'completed' ||
-                       (this.progressData.total > 0 && this.progressData.current >= this.progressData.total);
-    
-    if (isCompleted) {
-      // 완료된 경우 남은 시간을 0으로 설정
-      this.progressData.remainingTime = 0;
-      this.progressData.percentage = 100;
-      logger.debug('Setting remaining time to 0 due to completion', 'CrawlerState');
-    } else {
-      // 남은 시간 추정 (진행률에 기반)
-      if (this.progressData.total > 0 && this.progressData.current > 0) {
-        const percentComplete = this.progressData.current / this.progressData.total;
-        if (percentComplete > 0.1) { // 10% 이상 진행된 경우에만 예측
-          const totalEstimatedTime = this.progressData.elapsedTime / percentComplete;
-          this.progressData.remainingTime = Math.max(0, totalEstimatedTime - this.progressData.elapsedTime);
-        }
-        this.progressData.percentage = CrawlingUtils.safePercentage(this.progressData.current, this.progressData.total);
-      }
-    }
+  /**
+   * 현재 단계를 반환
+   */
+  public getStage(): CrawlingStage {
+    return this.currentStage;
   }
 
-  // 명시적 디버그 로깅 추가
-  logger.debug(`Progress updated: ${this.progressData.current}/${this.progressData.total} (${CrawlingUtils.safePercentage(this.progressData.current || 0, this.progressData.total || 1).toFixed(1)}%)`, 'CrawlerState');
+  /**
+   * 진행 상태 업데이트
+   */
+  public updateProgress(data: Partial<CrawlingProgress>): void {
+    // 현재 상태 업데이트
+    this.progressData = {
+      ...this.progressData,
+      ...data
+    };
 
-  // 헬퍼 메서드를 사용하여 이벤트 발행 (일관성 유지)
-  this.emitProgressUpdate();
-}
+    // 경과 시간 계산
+    if (this.progressData.startTime) {
+      this.progressData.elapsedTime = Date.now() - this.progressData.startTime;
+      
+      // 완료 상태 확인 - 강화된 조건
+      const isCompleted = this.progressData.status === 'completed' || 
+                         this.progressData.percentage >= 100 ||
+                         data.stage === 'complete' ||
+                         data.status === 'completed' ||
+                         (this.progressData.total > 0 && this.progressData.current >= this.progressData.total);
+      
+      if (isCompleted) {
+        // 완료된 경우 남은 시간을 0으로 설정
+        this.progressData.remainingTime = 0;
+        this.progressData.percentage = 100;
+        logger.debug('Setting remaining time to 0 due to completion', 'CrawlerState');
+      } else {
+        // 남은 시간 추정 (진행률에 기반)
+        if (this.progressData.total > 0 && this.progressData.current > 0) {
+          const percentComplete = this.progressData.current / this.progressData.total;
+          if (percentComplete > 0.1) { // 10% 이상 진행된 경우에만 예측
+            const totalEstimatedTime = this.progressData.elapsedTime / percentComplete;
+            this.progressData.remainingTime = Math.max(0, totalEstimatedTime - this.progressData.elapsedTime);
+          }
+          this.progressData.percentage = CrawlingUtils.safePercentage(this.progressData.current, this.progressData.total);
+        }
+      }
+    }
+
+    // 명시적 디버그 로깅 추가
+    logger.debug(`Progress updated: ${this.progressData.current}/${this.progressData.total} (${CrawlingUtils.safePercentage(this.progressData.current || 0, this.progressData.total || 1).toFixed(1)}%)`, 'CrawlerState');
+
+    // 헬퍼 메서드를 사용하여 이벤트 발행 (일관성 유지)
+    this.emitProgressUpdate();
+  }
 
   /**
    * 병렬 작업 상태 업데이트
@@ -527,7 +535,7 @@ public updateProgress(data: Partial<CrawlingProgress>): void {
   private emitProgressUpdate(): void {
     // The actual update to this.progressData happens in updateProgress or setStage
     console.log(`[CrawlerState] Emitting 'crawlingProgress'. currentStage: ${this.progressData.currentStage}, currentStep: "${this.progressData.currentStep}", status: ${this.progressData.status}, total: ${this.progressData.total}, completed: ${this.progressData.current}, message: ${this.progressData.message}`);
-    crawlerEvents.emit('crawlingProgress', { ...this.progressData }); // Send a copy
+    emitSafeProgress(this.progressData); // Send validated and normalized progress
   }
 
   /**

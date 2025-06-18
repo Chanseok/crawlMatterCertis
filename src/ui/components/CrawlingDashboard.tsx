@@ -604,15 +604,17 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
   useEffect(() => {
     // Enhanced completion detection - check multiple conditions
     const isReallyCompleted = status === 'completed' || 
-                             (status === 'idle' && viewModel.currentStage === 2 && progress.percentage >= 100);
+                             (status === 'idle' && viewModel.currentStage >= 2 && progress.percentage >= 100) ||
+                             (progress.status === 'completed' && progress.percentage >= 100);
     
     // Create a unique completion ID without timestamp to prevent duplicate processing
-    const completionId = `${status}-${viewModel.currentStage}-${Math.floor(progress.percentage)}`;
+    const completionId = `${status}-${viewModel.currentStage}-${Math.floor(progress.percentage)}-${progress.status}`;
     
     dashboardLogger.debug('Completion check', {
       status,
       currentStage: viewModel.currentStage,
       percentage: progress.percentage,
+      progressStatus: progress.status,
       isReallyCompleted,
       completionId,
       lastProcessedCompletion: lastProcessedCompletion.current,
@@ -631,7 +633,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       
       const totalItems = progress.totalItems || statusSummary?.siteProductCount || (targetPageCount * (config.productsPerPage || 12));
       const processedItems = progress.processedItems || 0;
-      const isCompleteSuccess = processedItems >= totalItems;
+      const isCompleteSuccess = processedItems >= totalItems * 0.9; // 90% 이상 수집하면 성공으로 간주
 
       setIsSuccess(isCompleteSuccess);
       setShowCompletion(true);
@@ -641,7 +643,9 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         completionId,
         isCompleteSuccess,
         processedItems,
-        totalItems
+        totalItems,
+        progressStatus: progress.status,
+        currentStage: viewModel.currentStage
       });
       
       // Trigger automatic status check to refresh site-local comparison section
@@ -687,13 +691,19 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       completionTimerRef.current = window.setTimeout(() => {
         setShowCompletion(false);
         completionTimerRef.current = null;
+        // 완료 애니메이션 종료 후 상태 초기화
+        completionProcessedRef.current = false;
+        lastProcessedCompletion.current = null;
       }, isCompleteSuccess ? 10000 : 5000);
     } else {
-      setShowCompletion(false);
-      // Reset completion tracking when not completed
-      if (status === 'running' || status === 'initializing') {
-        lastProcessedCompletion.current = null;
-        completionProcessedRef.current = false;
+      // 크롤링이 진행 중이거나 초기 상태일 때만 completion 상태 초기화
+      if (status === 'running' || status === 'initializing' || status === 'idle') {
+        setShowCompletion(false);
+        // Reset completion tracking when not completed
+        if (status === 'running' || status === 'initializing') {
+          lastProcessedCompletion.current = null;
+          completionProcessedRef.current = false;
+        }
       }
     }
 
@@ -749,7 +759,8 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     viewModel.startValueAnimation();
 
     return () => {
-      viewModel.cleanup();
+      // cleanup 호출하지 않음 - 이벤트 구독 유지
+      // viewModel.cleanup();
     };
   }, [
     progress.percentage, 

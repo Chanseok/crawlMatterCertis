@@ -778,6 +778,15 @@ app.on('ready', async () => {
             // 설정 업데이트 수행
             const updatedConfig = configManager.updateConfig(partialConfig);
             
+            // 크롤러 엔진의 세션 설정 무효화 (설정 변경사항이 즉시 반영되도록)
+            try {
+                const { invalidateSessionConfig } = await import('./crawler/index.js');
+                invalidateSessionConfig();
+                log.info('[IPC] Crawler session config invalidated due to config update');
+            } catch (importError) {
+                log.warn('[IPC] Could not invalidate crawler session config:', importError);
+            }
+            
             // 업데이트 후 설정 로깅
             log.info('[IPC] Config updated successfully:', JSON.stringify(updatedConfig, null, 2));
             
@@ -1158,6 +1167,12 @@ function setupCrawlerEvents(mainWindow: BrowserWindow): void {
     // 진행 관리자 인스턴스 생성
     const progressManager = new ProgressManager((progress: CrawlingProgress) => {
         if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+            console.log(`[MAIN] Sending crawlingProgress to renderer:`, {
+                stage: progress.currentStage, 
+                step: progress.currentStep, 
+                message: progress.message, 
+                progress: `${progress.current}/${progress.total}`
+            });
             mainWindow.webContents.send('crawlingProgress', progress);
         }
     });
@@ -1168,7 +1183,7 @@ function setupCrawlerEvents(mainWindow: BrowserWindow): void {
         log.info(logMessage);
         console.log(logMessage); // 콘솔에도 출력
         
-        // ProgressManager를 통한 업데이트 전송
+        // ProgressManager를 통한 업데이트 전송 (throttling 적용)
         progressManager.throttledSend('crawlingProgress', progress);
     });
     
