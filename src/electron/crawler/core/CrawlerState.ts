@@ -16,6 +16,7 @@ import { PageValidator, type PageValidationResult } from '../utils/page-validato
 import { logger } from '../../../shared/utils/Logger.js';
 import { CrawlingUtils } from '../../../shared/utils/CrawlingUtils.js';
 import type { CrawlingStage } from '../../../../types.js';
+import { timeEstimationService } from '../services/TimeEstimationService.js';
 
 // Mutable version of CrawlingProgress for internal state management
 type MutableCrawlingProgress = {
@@ -257,7 +258,7 @@ export class CrawlerState {
   /**
    * 진행 상태 업데이트
    */
-  public updateProgress(data: Partial<CrawlingProgress>): void {
+  public async updateProgress(data: Partial<CrawlingProgress>): Promise<void> {
     // 현재 상태 업데이트
     this.progressData = {
       ...this.progressData,
@@ -269,8 +270,36 @@ export class CrawlerState {
       const currentTime = Date.now();
       this.progressData.elapsedTime = currentTime - this.progressData.startTime;
       
-      // 현재 시간 기준으로 경과 시간과 남은 시간 재계산
-      this.updateElapsedAndRemainingTime();
+      // Clean Architecture: 새로운 시간 예측 시스템 사용
+      try {
+        console.log('🔍 [CrawlerState] updateAdaptiveTimeEstimation 호출:', {
+          stage: data.currentStage?.toString() || 'unknown',
+          percentage: this.progressData.percentage || 0,
+          totalItems: this.progressData.totalItems || this.progressData.totalPages || 100,
+          completedItems: this.progressData.processedItems || this.progressData.currentPage || 0
+        });
+
+        await this.updateAdaptiveTimeEstimation(
+          data.currentStage?.toString() || 'unknown',
+          this.progressData.percentage || 0,
+          0, // 재시도 횟수는 별도 관리
+          this.progressData.totalItems || this.progressData.totalPages || 100,
+          this.progressData.processedItems || this.progressData.currentPage || 0
+        );
+
+        console.log('✅ [CrawlerState] updateAdaptiveTimeEstimation 성공:', {
+          remainingTimeMs: this.progressData.remainingTime,
+          remainingTimeSeconds: this.progressData.remainingTimeSeconds,
+          confidence: this.progressData.confidence
+        });
+      } catch (error) {
+        console.error('❌ [CrawlerState] 시간 예측 업데이트 실패, 기본 계산 사용:', error);
+        // 백업으로 기존 로직 사용
+        if (this.progressData.percentage > 5 && this.progressData.elapsedTime > 60000) {
+          const estimatedTotal = this.progressData.elapsedTime / (this.progressData.percentage / 100);
+          this.progressData.remainingTime = Math.max(0, estimatedTotal - this.progressData.elapsedTime);
+        }
+      }
 
       // 완료 상태 확인 - 강화된 조건
       const isCompleted = this.progressData.status === 'completed' || 
@@ -583,7 +612,7 @@ export class CrawlerState {
    * 이 값은 1단계에서 수집된 총 제품 수로 설정되어야 합니다.
    * @param count 총 제품 수
    */
-  public setDetailStageProductCount(count: number): void {
+  public async setDetailStageProductCount(count: number): Promise<void> {
     if (count < 0) {
       logger.warn(`Invalid negative count ${count} passed to setDetailStageProductCount, ignoring.`, 'CrawlerState');
       return;
@@ -594,7 +623,7 @@ export class CrawlerState {
     
     // Stage 3에 있는 경우, UI를 위해 progressData.totalItems 및 total도 업데이트
     if ((typeof this.currentStage === 'string' && this.currentStage.startsWith('productDetail')) || this.currentStage === 'completed') {
-      this.updateProgress({ 
+      await this.updateProgress({ 
         total: count,
         totalItems: count 
       });
@@ -618,7 +647,7 @@ export class CrawlerState {
    * - 현재 UI 상태도 함께 업데이트하여 실시간 정확성 보장
    * - 중복 처리 방지 메커니즘 추가
    */
-  public recordDetailItemProcessed(isNewItem: boolean, productUrl?: string): void {
+  public async recordDetailItemProcessed(isNewItem: boolean, productUrl?: string): Promise<void> {
     // 중복 처리 방지를 위한 검증
     if (productUrl && this.processedProductUrls.has(productUrl)) {
       console.warn(`[CrawlerState] Duplicate processing detected for: ${productUrl.substring(0, 50)}...`);
@@ -673,7 +702,7 @@ export class CrawlerState {
     }
     
     // 정확한 상태 업데이트를 위한 전체 필드 설정
-    this.updateProgress({
+    await this.updateProgress({
       current: this.detailStageProcessedCount,
       total: totalItems,
       processedItems: this.detailStageProcessedCount,
@@ -1046,7 +1075,7 @@ export class CrawlerState {
    * 진행률을 강제로 동기화하는 메소드
    * UI와 실제 처리 상태가 불일치할 때 사용
    */
-  public forceProgressSync(processed: number, total: number): void {
+  public async forceProgressSync(processed: number, total: number): Promise<void> {
     console.log(`[CrawlerState] Forcing progress sync: ${processed}/${total}`);
     
     // 모든 관련 상태 변수를 동기화
@@ -1054,7 +1083,7 @@ export class CrawlerState {
     this.detailStageTotalProductCount = total;
     
     // 모든 UI 관련 속성 업데이트
-    this.updateProgress({
+    await this.updateProgress({
       currentPage: processed,
       totalPages: total,
       percentage: CrawlingUtils.safePercentage(processed, total),
@@ -1099,44 +1128,60 @@ export class CrawlerState {
   }
 
   /**
-   * 현재 시간 기준으로 경과 시간과 남은 시간을 계산하여 업데이트
-   * 전체 크롤링 진행률을 기준으로 계산
+   * 크롤링 시작 시간 설정 및 초기 시간 예측 (Clean Architecture)
    */
-  private updateElapsedAndRemainingTime(): void {
-    const now = Date.now();
-    const startTime = this.progressData.startTime || now;
-    this.progressData.elapsedTime = now - startTime;
+  public async setCrawlingStartTimeWithEstimation(totalPages: number, estimatedProducts: number): Promise<void> {
+    const startTime = Date.now();
+    this.progressData.startTime = startTime;
+    logger.info('Crawling start time set with estimation', 'CrawlerState');
     
-    // 전체 진행률 기반 남은 시간 계산
-    // 1단계(페이지 수집) + 2단계/3단계(제품 처리)를 모두 고려
-    const stage1Progress = this.progressData.currentPage || 0;
-    const stage1Total = this.progressData.totalPages || 0;
-    const stage2Progress = this.progressData.processedItems || 0;
-    const stage2Total = this.progressData.totalItems || 0;
-    
-    // 전체 작업량을 페이지 + 제품으로 계산
-    const totalWork = stage1Total + stage2Total;
-    const completedWork = stage1Progress + stage2Progress;
-    
-    if (totalWork > 0 && completedWork > 0) {
-      const overallProgressRatio = completedWork / totalWork;
-      
-      // 최소 5% 이상 진행되고 1분 이상 경과한 경우에만 예측 (전체 크롤링이므로 조건 완화)
-      if (overallProgressRatio > 0.05 && this.progressData.elapsedTime > 60000) {
-        const estimatedTotalTime = this.progressData.elapsedTime / overallProgressRatio;
-        this.progressData.remainingTime = Math.max(0, estimatedTotalTime - this.progressData.elapsedTime);
-        
-        logger.debug(`전체 진행률 기반 시간 예측: ${(overallProgressRatio * 100).toFixed(1)}% 완료, 예상 남은 시간: ${this.progressData.remainingTime}ms`, 'CrawlerState');
-      } else {
-        this.progressData.remainingTime = undefined; // 신뢰할 수 없는 예측은 표시하지 않음
-      }
-    } else {
-      this.progressData.remainingTime = undefined;
+    // Clean Architecture: 시간 예측 서비스 활용
+    try {
+      const initialEstimate = await timeEstimationService.estimateInitialTime(totalPages, estimatedProducts);
+      this.progressData.remainingTime = initialEstimate.seconds;
+      logger.info(`초기 예상 시간 설정: ${initialEstimate.toString()}`, 'CrawlerState');
+    } catch (error) {
+      logger.error('초기 시간 예측 실패', error, 'CrawlerState');
     }
     
-    // 완료된 경우 남은 시간을 0으로 설정
-    if (this.progressData.status === 'completed' || this.progressData.percentage >= 100) {
-      this.progressData.remainingTime = 0;
+    // 전역 시간도 함께 설정
+    import('../utils/progress.js').then(({ setGlobalCrawlingStartTime }) => {
+      setGlobalCrawlingStartTime(startTime);
+    });
+  }
+
+  /**
+   * 적응적 시간 예측 업데이트 (Clean Architecture)
+   */
+  public async updateAdaptiveTimeEstimation(
+    stageId: string,
+    progressPercentage: number,
+    retryCount: number = 0,
+    totalItems: number,
+    completedItems: number
+  ): Promise<void> {
+    if (!this.progressData.startTime) return;
+
+    try {
+      const elapsedTimeMs = Date.now() - this.progressData.startTime;
+      const estimation = await timeEstimationService.updateEstimation(
+        stageId,
+        progressPercentage,
+        elapsedTimeMs,
+        retryCount,
+        totalItems,
+        completedItems
+      );
+
+      // Clean Architecture 결과를 progressData에 적용
+      this.progressData.elapsedTime = estimation.elapsedTime.milliseconds; // ms로 저장 (기존 호환성)
+      this.progressData.remainingTime = estimation.remainingTime.milliseconds; // ms로 저장 (기존 호환성)
+      this.progressData.remainingTimeSeconds = estimation.remainingTime.seconds; // UI용 초 단위
+      this.progressData.confidence = estimation.confidence; // 신뢰도 추가
+      
+      logger.info(`🔄 [CrawlerState] 시간 예측 업데이트 - 단계: ${stageId}, 진행률: ${progressPercentage}%, 남은시간: ${estimation.remainingTime.toString()}, 신뢰도: ${estimation.confidence}`, 'CrawlerState');
+    } catch (error) {
+      logger.error('적응적 시간 예측 업데이트 실패', error, 'CrawlerState');
     }
   }
 }

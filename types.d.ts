@@ -177,6 +177,8 @@ export interface CrawlingProgress {
     // Status and timing
     readonly status?: CrawlingStatus;
     readonly remainingTime?: number;
+    readonly remainingTimeSeconds?: number; // Clean Architecture: 초 단위 남은 시간
+    readonly confidence?: 'low' | 'medium' | 'high'; // Clean Architecture: 예측 신뢰도
     readonly startTime?: number;
     readonly estimatedEndTime?: number;
     

@@ -8,7 +8,7 @@ import type { CrawlingStatusSummary, MissingDataAnalysis } from '../../../types'
 import { CrawlingStageDisplay } from './displays/CrawlingStageDisplay';
 import { CrawlingControlsDisplay } from './displays/CrawlingControlsDisplay';
 import { CrawlingMetricsDisplay } from './displays/CrawlingMetricsDisplay';
-import { TimeDisplay } from './displays/TimeDisplay';
+import { TimeEstimationDisplay } from './displays/TimeEstimationDisplay';
 
 // Legacy Components (to be migrated)
 import { ExpandableSection } from './ExpandableSection';
@@ -31,7 +31,7 @@ import { StatusTabViewModel } from '../viewmodels/StatusTabViewModel';
 import { useConfigurationViewModel } from '../providers/ViewModelProvider';
 
 // Centralized Logging and Utilities
-import { Logger, TimeUtils } from '../../shared/utils';
+import { Logger } from '../../shared/utils';
 
 import { format } from 'date-fns';
 
@@ -285,16 +285,6 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     targetPageCount, 
     concurrentTasks?.length
   ]);
-
-  const isBeforeStatusCheck = useMemo(() => 
-    status === 'idle' && !statusSummary?.dbLastUpdated, 
-    [status, statusSummary?.dbLastUpdated]
-  );
-
-  const isAfterStatusCheck = useMemo(() => 
-    status === 'idle' && !!statusSummary?.dbLastUpdated, 
-    [status, statusSummary?.dbLastUpdated]
-  );
   
   // 디버그 정보를 한번만 로깅하기 위한 변수
   const hasLoggedDebugInfo = useRef(false);
@@ -547,7 +537,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         const now = Date.now();
         const elapsedTime = now - crawlingStartTime;
         
-        setLocalTime(prev => {
+        setLocalTime(() => {
           // 백엔드에서 제공하는 시간 정보와 로컬 계산 비교
           let finalElapsedTime = elapsedTime;
           let finalRemainingTime = 0;
@@ -579,8 +569,8 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       // 즉시 업데이트
       updateTimer();
       
-      // 1초마다 업데이트
-      timer = setInterval(updateTimer, 1000);
+      // 500ms마다 업데이트 (더 빈번한 UI 업데이트)
+      timer = setInterval(updateTimer, 500);
       
       setFlipTimer(prev => prev + 1);
     } else if (status !== 'running' && crawlingStartTime) {
@@ -1101,12 +1091,14 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
           animatedDigits={animatedDigits}
         />
 
-        {/* Time Information Display - 전체 크롤링 시간 표시 */}
-        <TimeDisplay 
-          localTime={localTime}
-          formatDuration={TimeUtils.formatDuration}
-          isBeforeStatusCheck={isBeforeStatusCheck}
-          isAfterStatusCheck={isAfterStatusCheck}
+        {/* Clean Architecture: Time Estimation Display */}
+        <TimeEstimationDisplay
+          elapsedTimeSeconds={Math.floor(localTime.elapsedTime / 1000)}
+          remainingTimeSeconds={progress.remainingTimeSeconds || 0}
+          confidence={progress.confidence || 'low'}
+          isRunning={status === 'running'}
+          showConfidenceIndicator={true}
+          className="mb-6"
         />
 
         {/* Redesigned Batch Progress Section */}

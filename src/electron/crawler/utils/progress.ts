@@ -181,7 +181,7 @@ export function initializeCrawlingProgress(currentStep: string, currentStage: nu
 /**
  * 1/2단계: 제품 목록 수집 상태 업데이트
  */
-export function updateProductListProgress(
+export async function updateProductListProgress(
     processedPages: number, // 성공적으로 완료된 페이지 수
     totalPages: number,     // 1단계의 총 페이지 수
     startTime: number,      // 1단계 시작 시간
@@ -197,7 +197,7 @@ export function updateProductListProgress(
         currentBatch: number,
         totalBatches: number
     }
-): void {
+): Promise<void> {
     // 전체 크롤링 시간을 사용 (설정된 경우), 그렇지 않으면 전달받은 startTime 사용
     const actualStartTime = globalCrawlingStartTime > 0 ? globalCrawlingStartTime : startTime;
     
@@ -206,16 +206,87 @@ export function updateProductListProgress(
     // processedPages는 성공적으로 완료된 페이지 기준
     const percentage = totalPages > 0 ? (processedPages / totalPages) * 100 : 0;
     let remainingTime: number | undefined = undefined;
+    let confidence: 'low' | 'medium' | 'high' = 'low';
 
-    // 크롤러에서 제공한 시간 추정치가 있으면 사용
-    if (timeEstimate && timeEstimate.remainingTimeMs > 0) {
-        remainingTime = timeEstimate.remainingTimeMs;
-    } 
-    // 없으면 기존 방식으로 계산 - 더 신뢰할 만한 조건 사용 (전체 크롤링 시간 기준)
-    else if (processedPages > 0 && processedPages >= Math.max(1, totalPages * 0.02) && elapsedTime > 30000) { 
-        // 최소 2% 이상 진행되고 30초 이상 경과한 경우에만 예측 (더 빠른 피드백)
-        const avgTimePerPage = elapsedTime / processedPages;
-        remainingTime = (totalPages - processedPages) * avgTimePerPage;
+    // Clean Architecture: 시간 예측 서비스 활용
+    try {
+        console.log('🔍 [Progress] TimeEstimationService 호출 시도:', {
+            processedPages,
+            totalPages,
+            percentage,
+            elapsedTime,
+            currentRetryCount
+        });
+
+        const { timeEstimationService } = await import('../services/TimeEstimationService.js');
+        const stageId = batchInfo ? `stage1_batch_${batchInfo.currentBatch}` : 'stage1_product_list';
+        
+        const estimation = await timeEstimationService.updateEstimation(
+            stageId,
+            percentage,
+            elapsedTime,
+            currentRetryCount,
+            totalPages,
+            processedPages
+        );
+        
+        remainingTime = estimation.remainingTime.seconds * 1000; // ms로 변환
+        confidence = estimation.confidence;
+
+        console.log('✅ [Progress] TimeEstimationService 성공:', {
+            remainingTimeMs: remainingTime,
+            remainingTimeSeconds: estimation.remainingTime.seconds,
+            confidence
+        });
+    } catch (error) {
+        console.error('❌ [Progress] Clean Architecture 시간 예측 실패, 레거시 방식 사용:', error);
+        
+        // 레거시 백업: 크롤러에서 제공한 시간 추정치가 있으면 사용
+        if (timeEstimate && timeEstimate.remainingTimeMs > 0) {
+            remainingTime = timeEstimate.remainingTimeMs;
+        } 
+        // 없으면 기존 방식으로 계산 - 더 신뢰할 만한 조건 사용 (전체 크롤링 시간 기준)
+        else if (processedPages > 0 && processedPages >= Math.max(1, totalPages * 0.02) && elapsedTime > 30000) { 
+            // 최소 2% 이상 진행되고 30초 이상 경과한 경우에만 예측 (더 빠른 피드백)
+            const avgTimePerPage = elapsedTime / processedPages;
+            remainingTime = (totalPages - processedPages) * avgTimePerPage;
+        }
+        // 위 조건들도 만족하지 않으면 기본값 설정 (안전한 fallback)
+        else {
+            // 진행률 기반 동적 계산 - 더 보수적으로 설정
+            if (percentage > 0) {
+                const estimatedTotalTime = elapsedTime / (percentage / 100);
+                remainingTime = Math.max(600000, estimatedTotalTime - elapsedTime); // 최소 10분
+            } else {
+                // 초기 단계에서는 페이지 수 기반 추정
+                const estimatedTimePerPage = 30000; // 30초/페이지 보수적 추정
+                remainingTime = Math.max(1200000, totalPages * estimatedTimePerPage); // 최소 20분
+            }
+            console.warn('🔄 [Progress] 모든 조건 실패, 보수적 기본값 사용:', {
+                remainingTimeMs: remainingTime,
+                remainingTimeSeconds: Math.floor(remainingTime / 1000),
+                percentage,
+                elapsedTime,
+                totalPages
+            });
+        }
+    }
+
+    // 안전성 검사: remainingTime이 여전히 undefined이거나 0이면 기본값 설정
+    if (remainingTime === undefined || remainingTime === null || remainingTime <= 0) {
+        if (percentage > 0) {
+            const estimatedTotalTime = elapsedTime / (percentage / 100);
+            remainingTime = Math.max(600000, estimatedTotalTime - elapsedTime);
+        } else {
+            remainingTime = Math.max(1200000, totalPages * 30000); // 30초/페이지 * 페이지 수, 최소 20분
+        }
+        console.warn('🚨 [Progress] remainingTime이 invalid, 강화된 안전 기본값 설정:', {
+            remainingTimeMs: remainingTime,
+            remainingTimeSeconds: Math.floor(remainingTime / 1000),
+            percentage,
+            elapsedTime,
+            totalPages
+        });
     }
 
     let message = isCompleted 
@@ -240,7 +311,9 @@ export function updateProductListProgress(
         percentage,
         currentStep: CRAWLING_PHASES.PRODUCT_LIST,
         currentStage: CRAWLING_STAGE.PRODUCT_LIST,
-        remainingTime: isCompleted ? 0 : remainingTime,
+        remainingTime: isCompleted ? 0 : (remainingTime || 0),
+        remainingTimeSeconds: isCompleted ? 0 : (remainingTime ? Math.floor(remainingTime / 1000) : 0),
+        confidence, // Clean Architecture: 신뢰도 정보 추가
         elapsedTime, // 전체 크롤링 시작부터의 경과 시간
         startTime: actualStartTime, // 전체 크롤링 시작 시간
         estimatedEndTime: remainingTime && !isCompleted ? now + remainingTime : (isCompleted ? now : 0),
@@ -266,8 +339,10 @@ export function updateProductListProgress(
  * 2025-05-24 수정: UI 표시 문제 해결
  * - 문제: UI에 표시되는 총 제품 수와 처리된 제품 수의 불일치
  * - 해결: 명시적으로 totalItems 값을 항상 전달하고, 일관된 값 사용 보장
+ * 
+ * Clean Architecture 통합: 시간 예측 서비스 활용
  */
-export function updateProductDetailProgress(
+export async function updateProductDetailProgress(
     processedItems: number,
     totalItems: number,
     startTime: number,
@@ -276,7 +351,7 @@ export function updateProductDetailProgress(
     updatedItems: number = 0,
     currentBatch?: number,
     totalBatches?: number
-): void {
+): Promise<void> {
     // 전체 크롤링 시간을 사용 (설정된 경우), 그렇지 않으면 전달받은 startTime 사용
     const actualStartTime = globalCrawlingStartTime > 0 ? globalCrawlingStartTime : startTime;
     
@@ -295,12 +370,67 @@ export function updateProductDetailProgress(
     const safePercentage = Math.min(Math.max(percentage, 0), 100);
     
     let remainingTime: number | undefined = undefined;
+    let confidence: 'low' | 'medium' | 'high' = 'low';
 
-    // 더 신뢰할 만한 조건으로 남은 시간 예측 (전체 크롤링 시간 기준)
-    if (processedItems >= Math.max(1, totalItems * 0.02) && processedItems > 0 && elapsedTime > 30000) {
-        // 최소 2% 이상 진행되고 30초 이상 경과한 경우에만 예측 (더 빠른 피드백)
-        const avgTimePerItem = elapsedTime / processedItems;
-        remainingTime = (totalItems - processedItems) * avgTimePerItem;
+    // Clean Architecture: 시간 예측 서비스 활용
+    try {
+        const { timeEstimationService } = await import('../services/TimeEstimationService.js');
+        const stageId = currentBatch ? `stage3_batch_${currentBatch}` : '3'; // stage3 또는 숫자 3 사용
+        
+        const estimation = await timeEstimationService.updateEstimation(
+            stageId,
+            safePercentage,
+            elapsedTime,
+            0, // 3단계에서는 재시도 횟수를 별도 관리하지 않음
+            totalItems,
+            processedItems
+        );
+        
+        remainingTime = estimation.remainingTime.seconds * 1000; // ms로 변환
+        confidence = estimation.confidence;
+    } catch (error) {
+        console.warn('[Progress] Clean Architecture 시간 예측 실패, 강화된 레거시 방식 사용:', error);
+        
+        // 강화된 fallback 로직 - 항상 동적 계산 제공
+        if (processedItems >= Math.max(1, totalItems * 0.005) && processedItems > 0 && elapsedTime > 5000) {
+            // 최소 0.5% 이상 진행되고 5초 이상 경과한 경우 예측 (훨씬 더 빠른 피드백)
+            const avgTimePerItem = elapsedTime / processedItems;
+            remainingTime = (totalItems - processedItems) * avgTimePerItem * 1.1; // 10% 여유시간
+        } else if (safePercentage > 0) {
+            // 진행률 기반 동적 계산
+            const estimatedTotalTime = elapsedTime / (safePercentage / 100);
+            remainingTime = Math.max(300000, (estimatedTotalTime - elapsedTime) * 1.1); // 최소 5분, 10% 여유시간
+        } else {
+            // 초기 단계에서는 아이템 수 기반 추정
+            const estimatedTimePerItem = 6000; // 6초/아이템 보수적 추정
+            remainingTime = Math.max(600000, totalItems * estimatedTimePerItem); // 최소 10분
+        }
+        
+        console.warn('🔄 [Progress] 강화된 fallback 시간 예측 사용 (Stage 3):', {
+            remainingTimeMs: remainingTime,
+            remainingTimeSeconds: Math.floor(remainingTime / 1000),
+            percentage: safePercentage,
+            elapsedTime,
+            totalItems,
+            processedItems
+        });
+    }
+
+    // 안전성 검사: remainingTime이 여전히 undefined이거나 0이면 기본값 설정
+    if (remainingTime === undefined || remainingTime === null || remainingTime <= 0) {
+        if (safePercentage > 0) {
+            const estimatedTotalTime = elapsedTime / (safePercentage / 100);
+            remainingTime = Math.max(600000, (estimatedTotalTime - elapsedTime) * 1.1); // 최소 10분, 10% 여유시간
+        } else {
+            remainingTime = Math.max(900000, totalItems * 8000); // 8초/아이템 * 아이템 수, 최소 15분
+        }
+        console.warn('🚨 [Progress] remainingTime이 invalid, 강화된 안전 기본값 설정 (Stage 3):', {
+            remainingTimeMs: remainingTime,
+            remainingTimeSeconds: Math.floor(remainingTime / 1000),
+            percentage: safePercentage,
+            elapsedTime,
+            totalItems
+        });
     }
 
     const message = isCompleted 
@@ -319,7 +449,9 @@ export function updateProductDetailProgress(
         percentage: safePercentage,  // 계산된 안전한 퍼센트 값
         currentStep: CRAWLING_PHASES.PRODUCT_DETAIL,
         currentStage: CRAWLING_STAGE.PRODUCT_DETAIL, // 단계 정보
-        remainingTime: isCompleted ? 0 : remainingTime,
+        remainingTime: isCompleted ? 0 : (remainingTime || 0),
+        remainingTimeSeconds: isCompleted ? 0 : (remainingTime ? Math.floor(remainingTime / 1000) : 0),
+        confidence, // Clean Architecture: 신뢰도 정보 추가
         elapsedTime, // 전체 크롤링 시작부터의 경과 시간
         startTime: actualStartTime, // 전체 크롤링 시작 시간
         estimatedEndTime: remainingTime && !isCompleted ? now + remainingTime : (isCompleted ? now : 0),

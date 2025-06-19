@@ -285,7 +285,7 @@ export class CrawlerEngine {
       }
       
       // Define the enhanced progress callback with batch support
-      const enhancedProgressUpdater = (
+      const enhancedProgressUpdater = async (
         processedSuccessfully: number, 
         totalPagesInStage: number, 
         stage1PageStatuses: PageProcessingStatusItem[], 
@@ -295,7 +295,7 @@ export class CrawlerEngine {
         currentBatch?: number,
         totalBatches?: number
       ) => {
-        updateProductListProgress(
+        await updateProductListProgress(
           processedSuccessfully, 
           totalPagesInStage, 
           stage1StartTime,
@@ -492,7 +492,7 @@ export class CrawlerEngine {
             const detailStartTime = Date.now();
             
             // 2단계 진행 상황 초기화
-            updateProductDetailProgress(0, batchProducts.length, detailStartTime, false, 0, 0, batchNumber, totalBatches);
+            await updateProductDetailProgress(0, batchProducts.length, detailStartTime, false, 0, 0, batchNumber, totalBatches);
             
             // 2단계 상세 정보 수집기 생성
             const batchDetailCollector = new ProductDetailCollector(
@@ -509,7 +509,7 @@ export class CrawlerEngine {
               const batchMatterProducts = await batchDetailCollector.collect(batchProducts);
               
               // 2단계 완료 이벤트
-              updateProductDetailProgress(
+              await updateProductDetailProgress(
                 batchProducts.length, 
                 batchProducts.length, 
                 detailStartTime, 
@@ -697,7 +697,7 @@ export class CrawlerEngine {
         this.logger.info('크롤링 범위 권장사항:', { data: recommendations });
         
         // 진행 상태에 권장사항 추가
-        this.state.updateProgress({
+        await this.state.updateProgress({
           rangeRecommendations: recommendations
         });
       }
@@ -730,7 +730,7 @@ export class CrawlerEngine {
 
       if (products.length === 0) {
         this.logger.info('No products found to process. Crawling complete.');
-        this.finalizeSession(); // 세션 최종화 호출
+        await this.finalizeSession(); // 세션 최종화 호출
         return true;
       }
       
@@ -740,7 +740,7 @@ export class CrawlerEngine {
       if (productsForDetailStage.length === 0) {
         this.logger.info('No new products to process after validation. Skipping detail stage.');
         this.state.setStage('completed', '새로운 제품이 없습니다. 크롤링이 완료되었습니다.');
-        this.finalizeSession(); // 세션 최종화 호출
+        await this.finalizeSession(); // 세션 최종화 호출
         return true;
       }
       
@@ -800,7 +800,7 @@ export class CrawlerEngine {
 
         // Update the main progress state for the beginning of Stage 3.
         // This resets processed counts and sets the overall total for this stage.
-        this.state.updateProgress({
+        await this.state.updateProgress({
             currentStage: CRAWLING_STAGE.PRODUCT_DETAIL, // Mark current stage as Product Detail (Stage 3)
             totalItems: productsForDetailStage.length,   // Total items to process in Stage 3
             processedItems: 0,                           // Reset processed items for Stage 3
@@ -817,7 +817,7 @@ export class CrawlerEngine {
 
         // 2/2단계: 제품 상세 정보 수집 시작 알림
         const detailStartTime = Date.now();
-        updateProductDetailProgress(0, productsForDetailStage.length, detailStartTime, false, 0, 0, undefined, undefined);
+        await updateProductDetailProgress(0, productsForDetailStage.length, detailStartTime, false, 0, 0, undefined, undefined);
         
         logger.info(`Found ${productsForDetailStage.length} new products to process. Starting detail collection...`);
         
@@ -828,7 +828,7 @@ export class CrawlerEngine {
         const matterProducts = await productDetailCollector.collect(productsForDetailStage);
 
         // 2단계 완료 이벤트
-        updateProductDetailProgress(
+        await updateProductDetailProgress(
           productsForDetailStage.length, 
           productsForDetailStage.length, 
           detailStartTime, 
@@ -861,7 +861,7 @@ export class CrawlerEngine {
       }
 
       this.logger.info('Crawling process completed successfully');
-      this.finalizeSession(); // 세션 최종화 호출
+      await this.finalizeSession(); // 세션 최종화 호출
       return true;
     } catch (error) {
       this.handleCrawlingError(error);
@@ -1290,7 +1290,7 @@ export class CrawlerEngine {
    * 크롤링 세션을 최종화하고 일관된 완료 상태를 보장
    * 이 메서드는 모든 데이터 수집이 완료된 후 호출되어야 함
    */
-  private finalizeSession(): void {
+  private async finalizeSession(): Promise<void> {
     this.logger.info('Finalizing crawling session...');
     // 상태를 완료로 설정
     this.state.setStage('completed', '크롤링이 성공적으로 완료되었습니다.');
@@ -1299,9 +1299,9 @@ export class CrawlerEngine {
     const progressData = this.state.getProgressData();
     
     // forceProgressSync를 사용하여 완료 상태 동기화
-    this.state.forceProgressSync(progressData.totalItems || 0, progressData.totalItems || 0);
+    await this.state.forceProgressSync(progressData.totalItems || 0, progressData.totalItems || 0);
     
-    this.state.updateProgress({
+    await this.state.updateProgress({
       ...progressData,
       percentage: 100,
       status: 'completed',
@@ -1580,7 +1580,7 @@ export class CrawlerEngine {
       
       if (allCollectedProducts.length === 0) {
         this.logger.info('No products found in missing page ranges');
-        this.finalizeSession();
+        await this.finalizeSession();
         return true;
       }
       
@@ -1617,7 +1617,7 @@ export class CrawlerEngine {
       }
       
       // 완료 처리
-      this.finalizeSession();
+      await this.finalizeSession();
       return true;
       
     } catch (error) {
