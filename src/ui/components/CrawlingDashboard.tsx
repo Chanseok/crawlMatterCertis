@@ -167,6 +167,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
   const [localTime, setLocalTime] = useState({ elapsedTime: 0, remainingTime: 0 });
   const [flipTimer, setFlipTimer] = useState(0);
   const [crawlingStartTime, setCrawlingStartTime] = useState<number | null>(null);
+  const [initialDbProductCount, setInitialDbProductCount] = useState<number | null>(null);
   
   // === 누락 제품 수집 관련 상태 ===
   const [isMissingAnalyzing, setIsMissingAnalyzing] = useState(false);
@@ -520,7 +521,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       setLocalTime({ elapsedTime: 0, remainingTime: 0 });
       dashboardLogger.info('크롤링 시작 시간 설정', { startTime });
     } else if (status !== 'running' && status !== 'initializing') {
-      // 크롤링이 완료되거나 중단된 경우
+      // 크롤링이 완료되었거나 중단된 경우
       if (status === 'completed') {
         setLocalTime(prev => ({ ...prev, remainingTime: 0 }));
       }
@@ -620,6 +621,23 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     
     return 0;
   }, [progress.currentPage, progress.totalPages, progress.processedItems, progress.totalItems]);
+
+  // Track crawling start and store initial dbProductCount
+  useEffect(() => {
+    // 크롤링이 시작될 때 초기 dbProductCount 저장
+    if (status === 'running' && initialDbProductCount === null && statusSummary?.dbProductCount !== undefined) {
+      setInitialDbProductCount(statusSummary.dbProductCount);
+      dashboardLogger.info('Crawling started - storing initial dbProductCount', {
+        initialDbProductCount: statusSummary.dbProductCount
+      });
+    }
+    
+    // 크롤링이 idle로 돌아갔을 때 초기화
+    if (status === 'idle' && initialDbProductCount !== null) {
+      setInitialDbProductCount(null);
+      dashboardLogger.info('Crawling session ended - reset initial dbProductCount');
+    }
+  }, [status, statusSummary?.dbProductCount, initialDbProductCount]);
 
   // Enhanced completion status handling with robust auto-refresh
   const lastProcessedCompletion = useRef<string | null>(null);
@@ -1051,7 +1069,7 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
       dashboardLogger.info('크롤링 시작 - 시간 추적 초기화');
       setLocalTime({ elapsedTime: 0, remainingTime: 0 });
     } else if (status === 'completed' || status === 'error' || status === 'idle') {
-      // 크롤링이 완료되거나 중단된 경우 타이머 정지 (남은 시간은 0으로)
+      // 크롤링이 완료되었거나 중단된 경우 타이머 정지 (남은 시간은 0으로)
       if (status === 'completed' || status === 'error') {
         setLocalTime(prev => ({ ...prev, remainingTime: 0 }));
       }
@@ -1575,12 +1593,53 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
               </div>
               <div className="mt-4 inline-block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
                 <div className="text-lg font-bold">
-                  {Math.round(progress.processedItems || 0)} / {
-                    progress.totalItems ||
-                    statusSummary?.siteProductCount ||
-                    (targetPageCount * (config.productsPerPage || 12))
-                  } 제품 수집 완료
+                  {(() => {
+                    // Calculate total products collected across all batches
+                    // Use dbProductCount difference if available (most accurate for cross-batch totals)
+                    const currentDbCount = statusSummary?.dbProductCount || 0;
+                    const totalCollectedAcrossBatches = initialDbProductCount !== null && currentDbCount > 0 
+                      ? Math.max(0, currentDbCount - initialDbProductCount)
+                      : Math.round(progress.processedItems || 0);
+                    
+                    // Calculate correct target count - priority order:
+                    // 1. progress.totalItems (most accurate - actual items to process)
+                    // 2. If progress is available, calculate based on percentage
+                    // 3. statusSummary.estimatedProductCount (from crawler config)
+                    // 4. Fall back to page-based calculation only as last resort
+                    let actualTargetCount = 0;
+                    
+                    if (progress.totalItems && progress.totalItems > 0) {
+                      // Use the actual totalItems from progress (most reliable)
+                      actualTargetCount = progress.totalItems;
+                    } else if ((progress.processedItems || 0) > 0 && progress.percentage > 0) {
+                      // Calculate based on current progress percentage
+                      actualTargetCount = Math.round((progress.processedItems || 0) / (progress.percentage / 100));
+                    } else if (statusSummary?.estimatedProductCount && statusSummary.estimatedProductCount > 0) {
+                      // Use estimated product count from status summary
+                      actualTargetCount = statusSummary.estimatedProductCount;
+                    } else {
+                      // Last resort: use page-based calculation
+                      actualTargetCount = targetPageCount * (config.productsPerPage || 12);
+                    }
+                    
+                    // CRITICAL FIX: Ensure denominator is never smaller than numerator
+                    // This prevents cases like "72 / 12" where we collected more than expected
+                    if (totalCollectedAcrossBatches > actualTargetCount) {
+                      // If we collected more than expected, use the collected amount as the target
+                      // This can happen when multiple batches are processed or when estimates were low
+                      actualTargetCount = totalCollectedAcrossBatches;
+                    }
+                    
+                    return `${totalCollectedAcrossBatches.toLocaleString()} / ${actualTargetCount.toLocaleString()} 제품 수집 완료`;
+                  })()}
                 </div>
+                
+                {/* Show additional batch information if available */}
+                {initialDbProductCount !== null && statusSummary?.dbProductCount && (
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    전체 배치 누적: {(statusSummary.dbProductCount - initialDbProductCount).toLocaleString()}개 신규 수집
+                  </div>
+                )}
                 
                 {progress.currentStage === 2 && (progress.newItems !== undefined || progress.updatedItems !== undefined) && (
                   <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
