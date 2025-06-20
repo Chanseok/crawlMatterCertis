@@ -182,6 +182,11 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
       console.log(`LocalDBTab: Deleting records from pageId ${startPageId} to ${endPageId}`);
       await deleteRecordsByPageRange(startPageId, endPageId);
       console.log(`LocalDBTab: Successfully deleted records`);
+      
+      // Mark that LocalDB data has been changed
+      console.log('[LocalDBTab] Setting localDB-data-changed flag');
+      sessionStorage.setItem('localDB-data-changed', 'true');
+      
       closeDeleteModal();
       // Reload data to reflect changes
       await loadProducts();
@@ -214,6 +219,10 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
       
       if (result.success) {
         console.log(`LocalDBTab: Excel import completed successfully - imported ${result.importedCount} products`);
+        
+        // Mark that LocalDB data has been changed
+        console.log('[LocalDBTab] Setting localDB-data-changed flag after Excel import');
+        sessionStorage.setItem('localDB-data-changed', 'true');
         
         // 데이터 재로드
         await loadProducts();

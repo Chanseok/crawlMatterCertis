@@ -44,10 +44,63 @@ const AppContent: React.FC = observer(() => {
     logViewModel.addLog('App component loaded successfully with ViewModel pattern!', 'info', 'APP');
   }, [logViewModel]);
   
-  // Tab change handler
+  // Tab change handler with LocalDB change detection
   const handleTabChange = (tab: string) => {
     console.log(`[App] handleTabChange called with: ${tab}`);
     console.log(`[App] Current activeTab before change: ${uiStateViewModel.activeTab}`);
+    
+    const previousTab = uiStateViewModel.activeTab;
+    
+    // Check for LocalDB to Status tab transition
+    if (previousTab === 'localDB' && tab === 'status') {
+      console.log('[App] LocalDB → Status tab transition detected');
+      
+      // Check if LocalDB data has been changed
+      const hasLocalDBChanged = sessionStorage.getItem('localDB-data-changed') === 'true';
+      console.log('[App] LocalDB data changed flag:', hasLocalDBChanged);
+      
+      if (hasLocalDBChanged) {
+        // Clear the flag
+        sessionStorage.removeItem('localDB-data-changed');
+        
+        console.log('[App] Starting refresh due to LocalDB changes...');
+        
+        // Use direct IPC calls to refresh status
+        const refreshStatus = async () => {
+          try {
+            // Use platform API to check status
+            const { getPlatformApi } = await import('./platform/api');
+            const platformApi = getPlatformApi();
+            
+            console.log('[App] Calling checkCrawlingStatus...');
+            const statusResult = await platformApi.invokeMethod('checkCrawlingStatus');
+            
+            if (statusResult.success) {
+              console.log('[App] Status check completed, updated dbProductCount:', statusResult.status?.dbProductCount);
+              
+              // Trigger page range recalculation after a delay
+              setTimeout(() => {
+                console.log('[App] Triggering page range recalculation...');
+                // Force a re-render by updating UI state
+                logViewModel.addLog('탭 전환: 로컬DB 변경사항을 반영하여 크롤링 범위를 재계산했습니다.', 'info');
+              }, 1000);
+            } else {
+              console.error('[App] Status check failed:', statusResult.error);
+              logViewModel.addLog('탭 전환: 상태 갱신 중 오류가 발생했습니다.', 'error');
+            }
+          } catch (error) {
+            console.error('[App] Error refreshing status after LocalDB tab change:', error);
+            logViewModel.addLog('탭 전환: 상태 갱신 중 오류가 발생했습니다.', 'error');
+          }
+        };
+        
+        refreshStatus();
+      } else {
+        console.log('[App] No LocalDB changes detected, skipping refresh');
+        logViewModel.addLog('탭 전환: 로컬DB에서 상태 & 제어 탭으로 전환했습니다.', 'info');
+      }
+    }
+    
     uiStateViewModel.setActiveTab(tab);
     console.log(`[App] Current activeTab after change: ${uiStateViewModel.activeTab}`);
     logViewModel.addLog(`Switched to tab: ${tab}`, 'info', 'APP');
