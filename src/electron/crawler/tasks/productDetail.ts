@@ -37,6 +37,19 @@ import {
   logRetryError
 } from '../utils/progress.js';
 
+// 진행 상황 업데이트 콜백 타입 정의
+export type ProductDetailProgressCallback = (
+  processedItems: number,
+  totalItems: number,
+  startTime: number,
+  isCompleted: boolean,
+  newItems: number,
+  updatedItems: number,
+  currentBatch?: number,
+  totalBatches?: number,
+  retryCount?: number
+) => Promise<void>;
+
 export class ProductDetailCollector {
   private state: CrawlerState;
   private abortController: AbortController;
@@ -44,6 +57,8 @@ export class ProductDetailCollector {
   private browserManager: BrowserManager;
   private currentBatch?: number;
   private totalBatches?: number;
+  private progressCallback?: ProductDetailProgressCallback;
+  private retryCount: number = 0; // 재시도 횟수 추적
 
   constructor(
     state: CrawlerState,
@@ -1638,6 +1653,29 @@ export class ProductDetailCollector {
 
         matterProducts.push(detailProduct);
         
+        // 시간 추정 업데이트 빈도를 줄임 - 5개마다 1회만 업데이트 (성공 케이스)
+        if (this.progressCallback) {
+          const currentProcessedItems = this.state.getDetailStageProcessedCount();
+          // 처음 2개는 빠른 학습, 이후는 5개마다 업데이트
+          if (currentProcessedItems <= 2 || currentProcessedItems % 5 === 0) {
+            const totalItems = this.state.getDetailStageTotalProductCount();
+            const newItems = this.state.getDetailStageNewCount();
+            const updatedItems = this.state.getDetailStageUpdatedCount();
+            
+            await this.progressCallback(
+              currentProcessedItems,
+              totalItems,
+              Date.now(),
+              false,
+              newItems,
+              updatedItems,
+              this.currentBatch,
+              this.totalBatches,
+              this.retryCount
+            );
+          }
+        }
+        
         // 성공적인 결과 반환 - DetailCrawlResult 타입에 맞게 수정
         return {
           url: product.url,
@@ -1673,6 +1711,29 @@ export class ProductDetailCollector {
 
       const attemptPrefix = attempt > 1 ? `Attempt ${attempt}: ` : '';
       failedProductErrors[product.url].push(`${attemptPrefix}${errorMsg}`);
+
+      // 시간 추정 업데이트 빈도를 줄임 - 5개마다 1회만 업데이트 (실패 케이스)
+      if (this.progressCallback) {
+        const currentProcessedItems = this.state.getDetailStageProcessedCount();
+        // 처음 2개는 빠른 학습, 이후는 5개마다 업데이트
+        if (currentProcessedItems <= 2 || currentProcessedItems % 5 === 0) {
+          const totalItems = this.state.getDetailStageTotalProductCount();
+          const newItems = this.state.getDetailStageNewCount();
+          const updatedItems = this.state.getDetailStageUpdatedCount();
+          
+          await this.progressCallback(
+            currentProcessedItems,
+            totalItems,
+            Date.now(),
+            false,
+            newItems,
+            updatedItems,
+            this.currentBatch,
+            this.totalBatches,
+            this.retryCount
+          );
+        }
+      }
 
       // 실패한 경우에도 DetailCrawlResult 타입에 맞게 반환
       return { 
@@ -1725,7 +1786,7 @@ export class ProductDetailCollector {
       status: 'running',            // 상태
       newItems: 0,                  // 새 항목 수
       updatedItems: 0,              // 업데이트된 항목 수
-      message: `3단계: 제품 상세 정보 수집 시작 (0/${totalItems})`
+           message: `3단계: 제품 상세 정보 수집 시작 (0/${totalItems})`
     });
     
     // 초기 진행 이벤트 발행 - UI 업데이트를 위한 중요한 단계
@@ -2139,5 +2200,13 @@ export class ProductDetailCollector {
     }
 
     return { isComplete, status, message };
+  }
+
+  /**
+   * 진행상황 업데이트 콜백 설정
+   * @param callback 진행상황 업데이트 콜백 함수
+   */
+  public setProgressCallback(callback: ProductDetailProgressCallback): void {
+    this.progressCallback = callback;
   }
 }

@@ -74,9 +74,19 @@ export class ProgressManager {
   public updatePageStatus(pageNumber: number, status: PageProcessingStatusValue, attempt?: number): void {
     const pageStatus = this.pageStatuses.find(p => p.pageNumber === pageNumber);
     if (pageStatus) {
+      const previousStatus = pageStatus.status;
       pageStatus.status = status;
       if (attempt !== undefined) {
         pageStatus.attempt = attempt;
+      }
+      
+      // 시간 추정 업데이트 빈도를 대폭 줄임 - 10개마다 1회만 업데이트
+      if (status === 'success' && previousStatus !== 'success') {
+        const currentSuccessCount = this.pageStatuses.filter(p => p.status === 'success').length;
+        // 처음 3개는 빠른 학습을 위해 업데이트, 이후는 10개마다 업데이트
+        if (currentSuccessCount <= 3 || currentSuccessCount % 10 === 0) {
+          this.sendProgressUpdate(false);
+        }
       }
     }
   }

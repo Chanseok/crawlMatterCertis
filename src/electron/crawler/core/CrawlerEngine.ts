@@ -304,7 +304,11 @@ export class CrawlerEngine {
           sessionConfig.productListRetryCount,
           isStageComplete,
           undefined, // timeEstimate
-          currentBatch && totalBatches ? { currentBatch, totalBatches } : undefined // batchInfo
+          currentBatch && totalBatches ? { 
+            currentBatch, 
+            totalBatches,
+            globalTotalPages: totalPagesToCrawl // 전체 크롤링 페이지 수 전달
+          } : undefined // batchInfo
         );
       };
       
@@ -492,7 +496,7 @@ export class CrawlerEngine {
             const detailStartTime = Date.now();
             
             // 2단계 진행 상황 초기화
-            await updateProductDetailProgress(0, batchProducts.length, detailStartTime, false, 0, 0, batchNumber, totalBatches);
+            await updateProductDetailProgress(0, batchProducts.length, detailStartTime, false, 0, 0, batchNumber, totalBatches, 0);
             
             // 2단계 상세 정보 수집기 생성
             const batchDetailCollector = new ProductDetailCollector(
@@ -503,6 +507,21 @@ export class CrawlerEngine {
               batchNumber,
               totalBatches
             );
+            
+            // 진행 상황 업데이트 콜백 설정
+            batchDetailCollector.setProgressCallback(async (processedItems, totalItems, startTime, isCompleted, newItems, updatedItems, currentBatch, totalBatches, retryCount = 0) => {
+              await updateProductDetailProgress(
+                processedItems,
+                totalItems,
+                detailStartTime, // 실제 시작 시간 사용
+                isCompleted,
+                newItems,
+                updatedItems,
+                currentBatch,
+                totalBatches,
+                retryCount
+              );
+            });
             
             try {
               // 이 배치의 제품 상세 정보 수집
@@ -517,7 +536,8 @@ export class CrawlerEngine {
                 0,
                 0,
                 batchNumber,
-                totalBatches
+                totalBatches,
+                0
               );
               
               // DB 저장 단계
@@ -817,12 +837,27 @@ export class CrawlerEngine {
 
         // 2/2단계: 제품 상세 정보 수집 시작 알림
         const detailStartTime = Date.now();
-        await updateProductDetailProgress(0, productsForDetailStage.length, detailStartTime, false, 0, 0, undefined, undefined);
+        await updateProductDetailProgress(0, productsForDetailStage.length, detailStartTime, false, 0, 0, undefined, undefined, 0);
         
         logger.info(`Found ${productsForDetailStage.length} new products to process. Starting detail collection...`);
         
         // 제품 상세 정보 수집기 생성 (2단계)
         const productDetailCollector = new ProductDetailCollector(this.state, this.abortController!, sessionConfig, this.browserManager!); // Pass session config for consistency
+        
+        // 진행 상황 업데이트 콜백 설정
+        productDetailCollector.setProgressCallback(async (processedItems, totalItems, startTime, isCompleted, newItems, updatedItems, currentBatch, totalBatches, retryCount = 0) => {
+          await updateProductDetailProgress(
+            processedItems,
+            totalItems,
+            detailStartTime, // 실제 시작 시간 사용
+            isCompleted,
+            newItems,
+            updatedItems,
+            currentBatch,
+            totalBatches,
+            retryCount
+          );
+        });
         
         // 제품 상세 정보 수집 실행
         const matterProducts = await productDetailCollector.collect(productsForDetailStage);
@@ -836,7 +871,8 @@ export class CrawlerEngine {
           0,
           0,
           undefined,
-          undefined
+          undefined,
+          0
         );
 
         // 중복 제거 및 정렬

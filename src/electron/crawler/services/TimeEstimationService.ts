@@ -66,7 +66,12 @@ export class TimeEstimationService {
     elapsedTimeMs: number,
     retryCount: number = 0,
     totalItems: number,
-    completedItems: number
+    completedItems: number,
+    globalContext?: {
+      totalPages: number;
+      totalBatches: number;
+      currentBatch: number;
+    }
   ): Promise<TimeEstimationResult> {
     try {
       this.logger.info('🔍 [TimeEstimationService] updateEstimation 호출됨', {
@@ -84,7 +89,8 @@ export class TimeEstimationService {
         elapsedTimeMs,
         retryCount,
         totalItems,
-        completedItems
+        completedItems,
+        globalContext
       };
 
       const result = await this.updateTimeEstimationUseCase.execute(request);

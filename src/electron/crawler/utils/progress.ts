@@ -195,7 +195,8 @@ export async function updateProductListProgress(
     },
     batchInfo?: { // 배치 처리 정보 추가
         currentBatch: number,
-        totalBatches: number
+        totalBatches: number,
+        globalTotalPages?: number // 전체 크롤링 페이지 수 (모든 배치 포함)
     }
 ): Promise<void> {
     // 전체 크롤링 시간을 사용 (설정된 경우), 그렇지 않으면 전달받은 startTime 사용
@@ -221,13 +222,21 @@ export async function updateProductListProgress(
         const { timeEstimationService } = await import('../services/TimeEstimationService.js');
         const stageId = batchInfo ? `stage1_batch_${batchInfo.currentBatch}` : 'stage1_product_list';
         
+        // Batch 모드일 때 global context 전달
+        const globalContext = batchInfo ? {
+            totalPages: batchInfo.globalTotalPages || (totalPages * batchInfo.totalBatches), // 정확한 전체 페이지 수 또는 추정치
+            totalBatches: batchInfo.totalBatches,
+            currentBatch: batchInfo.currentBatch
+        } : undefined;
+        
         const estimation = await timeEstimationService.updateEstimation(
             stageId,
             percentage,
             elapsedTime,
             currentRetryCount,
-            totalPages,
-            processedPages
+            totalPages, // 현재 배치 내 totalPages (기존 호환성)
+            processedPages, // 현재 배치 내 processedPages (기존 호환성)
+            globalContext
         );
         
         remainingTime = estimation.remainingTime.seconds * 1000; // ms로 변환
@@ -350,7 +359,8 @@ export async function updateProductDetailProgress(
     newItems: number = 0,
     updatedItems: number = 0,
     currentBatch?: number,
-    totalBatches?: number
+    totalBatches?: number,
+    retryCount: number = 0 // 재시도 횟수 파라미터 추가
 ): Promise<void> {
     // 전체 크롤링 시간을 사용 (설정된 경우), 그렇지 않으면 전달받은 startTime 사용
     const actualStartTime = globalCrawlingStartTime > 0 ? globalCrawlingStartTime : startTime;
@@ -375,15 +385,23 @@ export async function updateProductDetailProgress(
     // Clean Architecture: 시간 예측 서비스 활용
     try {
         const { timeEstimationService } = await import('../services/TimeEstimationService.js');
-        const stageId = currentBatch ? `stage3_batch_${currentBatch}` : '3'; // stage3 또는 숫자 3 사용
+        const stageId = currentBatch ? `stage3_batch_${currentBatch}` : 'PRODUCT_DETAIL'; // stage3 또는 PRODUCT_DETAIL 사용
+        
+        // Batch 모드일 때 global context 전달 (stage 3에서는 제품 수 기반)
+        const globalContext = (currentBatch && totalBatches) ? {
+            totalPages: totalItems, // stage 3에서는 totalItems가 전체 제품 수
+            totalBatches: totalBatches,
+            currentBatch: currentBatch
+        } : undefined;
         
         const estimation = await timeEstimationService.updateEstimation(
             stageId,
             safePercentage,
             elapsedTime,
-            0, // 3단계에서는 재시도 횟수를 별도 관리하지 않음
+            retryCount, // 3단계에서도 재시도 횟수 전달
             totalItems,
-            processedItems
+            processedItems,
+            globalContext
         );
         
         remainingTime = estimation.remainingTime.seconds * 1000; // ms로 변환
