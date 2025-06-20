@@ -17,14 +17,12 @@ interface CrawlingControlsDisplayProps {
   onStartCrawling: () => void;
   onStopCrawling: () => void;
   // 누락 제품 수집 관련 props
-  hasMissingProducts?: boolean;
   isMissingProductCrawling?: boolean;
   isMissingAnalyzing?: boolean;
   onStartMissingProductCrawling?: () => void;
   onAnalyzeMissingProducts?: () => void;
   // Manual crawling props
   totalSitePages?: number;
-  isManualCrawling?: boolean;
   onStartManualCrawling?: (ranges: Array<{
     startPage: number;
     endPage: number;
@@ -38,6 +36,7 @@ interface CrawlingControlsDisplayProps {
     siteProductCount?: number;
     diff?: number;
     needCrawling?: boolean;
+    selectedPageCount?: number;
   };
   missingProductsInfo?: {
     missingCount: number;
@@ -56,14 +55,12 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
   onStartCrawling,
   onStopCrawling,
   // 누락 제품 수집 관련 props with defaults
-  hasMissingProducts = false,
   isMissingProductCrawling = false,
   isMissingAnalyzing = false,
   onStartMissingProductCrawling,
   onAnalyzeMissingProducts,
   // Manual crawling props
   totalSitePages,
-  isManualCrawling = false,
   onStartManualCrawling,
   // Missing data analysis props
   statusSummary,
@@ -77,8 +74,61 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
   const toggleMissingAnalysis = () => {
     setIsMissingAnalysisExpanded(!isMissingAnalysisExpanded);
   };
+
+  // 크롤링 완료 후 차이가 있는 상황인지 확인
+  const hasDataDiscrepancy = statusSummary && 
+    statusSummary.dbProductCount !== undefined && 
+    statusSummary.siteProductCount !== undefined && 
+    statusSummary.diff !== undefined && 
+    Math.abs(statusSummary.diff) > 0 && 
+    (
+      !statusSummary.needCrawling || // 더 이상 크롤링할 페이지가 없거나
+      (statusSummary.selectedPageCount && statusSummary.selectedPageCount <= 3) // 크롤링할 페이지가 3페이지 이하
+    );
+
+  // 크롤링 시작 전 Missing Data Analysis 추천
+  const handleStartCrawling = () => {
+    if (hasDataDiscrepancy) {
+      const confirmMessage = `Missing Data Analysis를 먼저 사용하는 것이 더 효율적일 수 있습니다.\n그래도 전체 크롤링을 시작하시겠습니까?`;
+      if (window.confirm(confirmMessage)) {
+        onStartCrawling();
+      }
+    } else {
+      onStartCrawling();
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Data Discrepancy Warning */}
+      {hasDataDiscrepancy && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                데이터 차이 감지
+              </h3>
+              <div className="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                <p>사이트 제품수({statusSummary!.siteProductCount!.toLocaleString()}개)와 로컬 DB 제품수({statusSummary!.dbProductCount!.toLocaleString()}개) 간에 {Math.abs(statusSummary!.diff!)}개의 차이가 있습니다.</p>
+              </div>
+              <div className="mt-3">
+                <button
+                  onClick={() => setIsMissingAnalysisExpanded(true)}
+                  className="text-sm bg-amber-100 hover:bg-amber-200 dark:bg-amber-800 dark:hover:bg-amber-700 text-amber-800 dark:text-amber-200 px-3 py-1 rounded-md transition-colors duration-200"
+                >
+                  Missing Data Analysis 사용하기 →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Control Buttons */}
       <div className="space-y-4">
         <div className="flex space-x-2 mb-4">
@@ -110,7 +160,7 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
             </button>
           ) : (
             <button
-              onClick={onStartCrawling}
+              onClick={handleStartCrawling}
               disabled={status === 'running' || status === 'initializing' || isStopping}
               className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-sm ${
                 status === 'running' || status === 'initializing' || isStopping
@@ -129,79 +179,29 @@ export const CrawlingControlsDisplay: React.FC<CrawlingControlsDisplayProps> = (
         <ManualCrawlingControlsDisplay
           status={status}
           totalSitePages={totalSitePages}
-          isManualCrawling={isManualCrawling}
           onStartManualCrawling={onStartManualCrawling}
         />
       )}
 
-      {/* Enhanced Missing Data Analysis Section */}
-      <ExpandableSection
-        title="⚠️ Missing Data Analysis"
+      {/* Missing Data Analysis Section */}
+      <ExpandableSection 
+        title="Missing Data Analysis" 
         isExpanded={isMissingAnalysisExpanded}
         onToggle={toggleMissingAnalysis}
-        additionalClasses="border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20"
+        additionalClasses="bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800"
+        headerTextColor="text-orange-700 dark:text-orange-300"
       >
         <EnhancedMissingDataDisplay
+          isMissingProductCrawling={isMissingProductCrawling}
+          isMissingAnalyzing={isMissingAnalyzing}
+          onStartMissingProductCrawling={onStartMissingProductCrawling}
+          onAnalyzeMissingProducts={onAnalyzeMissingProducts}
           statusSummary={statusSummary}
           missingProductsInfo={missingProductsInfo}
-          isMissingAnalyzing={isMissingAnalyzing}
-          isMissingProductCrawling={isMissingProductCrawling}
-          onAnalyzeMissingProducts={onAnalyzeMissingProducts}
-          onStartMissingProductCrawling={onStartMissingProductCrawling}
           onStartTargetedCrawling={onStartTargetedCrawling}
           onAutoRefresh={onAutoRefreshMissingData}
         />
       </ExpandableSection>
-
-      {/* Legacy Missing Product Collection Section (for backwards compatibility) */}
-      {(hasMissingProducts || onAnalyzeMissingProducts) && !statusSummary && (
-        <div className="border-t pt-4">
-          <div className="flex items-center space-x-2 mb-2">
-            <svg className="w-5 h-5 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">누락 제품 수집</h3>
-          </div>
-          
-          <div className="flex space-x-2">
-            {/* Analyze Missing Products Button */}
-            {onAnalyzeMissingProducts && (
-              <button
-                onClick={onAnalyzeMissingProducts}
-                disabled={status === 'running' || isMissingProductCrawling || isMissingAnalyzing}
-                className={`px-3 py-2 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm ${
-                  status === 'running' || isMissingProductCrawling || isMissingAnalyzing
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-orange-200 hover:shadow-orange-300'
-                }`}
-              >
-                {isMissingAnalyzing ? '분석 중...' : '누락 데이터 분석'}
-              </button>
-            )}
-
-            {/* Start Missing Product Crawling Button */}
-            {hasMissingProducts && onStartMissingProductCrawling && (
-              <button
-                onClick={onStartMissingProductCrawling}
-                disabled={status === 'running' || isMissingProductCrawling}
-                className={`px-3 py-2 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm ${
-                  status === 'running' || isMissingProductCrawling
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-purple-200 hover:shadow-purple-300'
-                }`}
-              >
-                {isMissingProductCrawling ? '누락 제품 수집 중...' : '누락 제품 수집 시작'}
-              </button>
-            )}
-          </div>
-          
-          {hasMissingProducts && (
-            <p className="mt-2 text-xs text-orange-600 dark:text-orange-400">
-              ⚠️ 사이트와 로컬 DB 간에 누락된 제품이 발견되었습니다.
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 };
