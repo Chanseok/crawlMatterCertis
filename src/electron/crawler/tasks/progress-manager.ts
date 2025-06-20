@@ -80,11 +80,11 @@ export class ProgressManager {
         pageStatus.attempt = attempt;
       }
       
-      // 시간 추정 업데이트 빈도를 대폭 줄임 - 10개마다 1회만 업데이트
+      // 시간 추정 업데이트 빈도를 더욱 줄임 - 20개마다 1회만 업데이트
       if (status === 'success' && previousStatus !== 'success') {
         const currentSuccessCount = this.pageStatuses.filter(p => p.status === 'success').length;
-        // 처음 3개는 빠른 학습을 위해 업데이트, 이후는 10개마다 업데이트
-        if (currentSuccessCount <= 3 || currentSuccessCount % 10 === 0) {
+        // 처음 5개는 빠른 학습을 위해 업데이트, 이후는 20개마다 업데이트
+        if (currentSuccessCount <= 5 || currentSuccessCount % 20 === 0) {
           this.sendProgressUpdate(false);
         }
       }

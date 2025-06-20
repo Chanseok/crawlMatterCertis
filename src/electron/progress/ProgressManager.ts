@@ -14,8 +14,8 @@ import { CrawlingProgress, CrawlingSessionProgress, StageProgress } from '../../
  */
 export class ProgressManager {
   private lastUpdateTime: Map<string, number> = new Map();
-  private readonly UPDATE_THROTTLE = 100; // ms - 기본 스로틀링
-  private readonly BATCH_UPDATE_THROTTLE = 250; // ms - 배치 업데이트용 스로틀링 (더 느림)
+  private readonly UPDATE_THROTTLE = 500; // ms - 기본 스로틀링 (100ms -> 500ms로 증가)
+  private readonly BATCH_UPDATE_THROTTLE = 1000; // ms - 배치 업데이트용 스로틀링 (250ms -> 1000ms로 증가)
   private pendingUpdates: Map<string, any> = new Map();
   private updateTimeout: number | null = null;
   private mainWindow: BrowserWindow | null = null;

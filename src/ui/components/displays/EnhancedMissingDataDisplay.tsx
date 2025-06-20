@@ -196,6 +196,11 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
 
   // Re-crawl Incomplete Pages 함수 - 실제 크롤링 인터페이스로 전달
   const handleReCrawlIncompletePages = useCallback(() => {
+    console.log('handleReCrawlIncompletePages called');
+    console.log('analysisData:', analysisData);
+    console.log('analysisData?.incompletePages:', analysisData?.incompletePages);
+    console.log('onStartTargetedCrawling:', !!onStartTargetedCrawling);
+    
     if (!analysisData?.incompletePages || analysisData.incompletePages.length === 0) {
       console.error('No incomplete pages to re-crawl');
       return;
@@ -206,15 +211,34 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
       return;
     }
 
-    // Convert pageIds to page numbers for targeted crawling
-    const pageIds = analysisData.incompletePages.map(page => page.pageId);
-    console.log('Starting targeted crawling for incomplete pages:', pageIds);
+    // Convert pageIds to actual site page numbers for targeted crawling
+    // pageId to site page conversion: sitePageNumber = 464 - pageId
+    const sitePageNumbers = analysisData.incompletePages.map(page => {
+      const sitePageNumber = 464 - page.pageId;
+      console.log(`Converting pageId ${page.pageId} to site page ${sitePageNumber}`);
+      return sitePageNumber;
+    });
     
-    // Call the targeted crawling function with incomplete page IDs
-    onStartTargetedCrawling(pageIds);
+    console.log('Starting targeted crawling for incomplete site pages:', sitePageNumbers);
+    console.log('Original pageIds were:', analysisData.incompletePages.map(page => page.pageId));
+    
+    // Call the targeted crawling function with actual site page numbers
+    onStartTargetedCrawling(sitePageNumbers);
   }, [analysisData, onStartTargetedCrawling]);
 
-
+  // Debug logging for button display conditions
+  console.log('[EnhancedMissingDataDisplay] Render conditions:', {
+    analysisData: !!analysisData,
+    totalIncompletePages: analysisData?.totalIncompletePages,
+    showIncompleteButton: analysisData?.totalIncompletePages && analysisData.totalIncompletePages > 0,
+    missingProductsInfo,
+    hasMissingProducts,
+    incompletePageDetails: analysisData?.incompletePages?.map(page => ({
+      pageId: page.pageId,
+      sitePageNumber: 464 - page.pageId,
+      missingCount: page.missingIndices?.length || 0
+    }))
+  });
 
   // Priority color mapping
   const getPriorityColor = (priority: 'high' | 'medium' | 'low') => {
@@ -415,7 +439,7 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
                   ) : (
                     <>
                       <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2h-5a2 2 0 01-2-2z" />
                       </svg>
                       Collect Missing Details ({analysisData.totalMissingDetails})
                     </>
@@ -503,7 +527,9 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
                     <div className="bg-white dark:bg-gray-800 rounded border p-2 max-h-32 overflow-y-auto">
                       {analysisData.missingDetails.slice(0, 5).map((detail, index) => (
                         <div key={index} className="text-xs text-gray-600 dark:text-gray-400 py-1 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
-                          <span className="font-mono text-blue-600 dark:text-blue-400">Page {detail.pageId}</span>
+                          <span className="font-mono text-blue-600 dark:text-blue-400">
+                            DB Page ID: {detail.pageId} (Site Page: {464 - detail.pageId})
+                          </span>
                           <span className="mx-2">•</span>
                           <span className="font-mono text-purple-600 dark:text-purple-400">Index {detail.indexInPage}</span>
                           <span className="mx-2">•</span>
@@ -545,7 +571,9 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
                     <div className="bg-white dark:bg-gray-800 rounded border p-2 max-h-32 overflow-y-auto">
                       {analysisData.incompletePages.slice(0, 5).map((page, index) => (
                         <div key={index} className="text-xs text-gray-600 dark:text-gray-400 py-1 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
-                          <span className="font-mono text-purple-600 dark:text-purple-400">Page {page.pageId}</span>
+                          <span className="font-mono text-purple-600 dark:text-purple-400">
+                            DB Page ID: {page.pageId} (Site Page: {464 - page.pageId})
+                          </span>
                           <span className="mx-2">•</span>
                           <span className="text-red-600 dark:text-red-400">{page.missingIndices.length} missing</span>
                           <span className="mx-2">•</span>
