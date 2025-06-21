@@ -285,6 +285,7 @@ export class DatabaseStore {
     try {
       const result = await this.databaseService.deleteRecordsByPageRange(startPageId, endPageId);
       if (result.success) {
+        console.log(`[DatabaseStore] Successfully deleted records from page ${startPageId} to ${endPageId}`);
         // Refresh data after successful deletion
         await this.loadSummary();
         await this.loadProducts(this.searchQuery, 1); // Reset to page 1 after deletion, no limit
@@ -292,7 +293,9 @@ export class DatabaseStore {
           this.currentPage = 1;
         });
       } else {
-        throw new Error(result.error?.message || 'Failed to delete records');
+        const errorMessage = result.error?.message || 'Failed to delete records';
+        console.error(`[DatabaseStore] Delete operation failed: ${errorMessage}`);
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error('Failed to delete records by page range:', error);

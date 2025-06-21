@@ -202,29 +202,61 @@ export class AxiosCrawlerStrategy implements ICrawlerStrategy {
         }
 
         let lastPageProductCount = 0;
+        let actualLastPage = totalPages;
+        
         if (totalPages > 0) {
-          const lastPageUrl = `${this.matterFilterUrl}&paged=${totalPages}`;
-          debugLog(`[AxiosCrawlerStrategy] Requesting last page: ${lastPageUrl} (Attempt ${attempt})`);
+          // 마지막 페이지부터 역순으로 확인하여 실제 제품이 있는 마지막 페이지 찾기
+          let foundValidLastPage = false;
           
-          const lastPageResponse = await axios.get(lastPageUrl, {
-            timeout: this.pageTimeoutMs,
-            headers: this.getEnhancedHeaders()
-          });
+          for (let pageToCheck = totalPages; pageToCheck >= Math.max(1, totalPages - 2); pageToCheck--) {
+            const pageUrl = `${this.matterFilterUrl}&paged=${pageToCheck}`;
+            debugLog(`[AxiosCrawlerStrategy] Checking page ${pageToCheck}: ${pageUrl} (Attempt ${attempt})`);
+            
+            try {
+              const pageResponse = await axios.get(pageUrl, {
+                timeout: this.pageTimeoutMs,
+                headers: this.getEnhancedHeaders()
+              });
 
-          if (lastPageResponse.status !== 200) {
-            throw new PageNavigationError(`Failed to load last page: Status ${lastPageResponse.status}`, totalPages, attempt);
-          }
+              if (pageResponse.status !== 200) {
+                debugLog(`[AxiosCrawlerStrategy] Page ${pageToCheck} returned status ${pageResponse.status}, trying previous page`);
+                continue;
+              }
 
-          const lastPageHtml = lastPageResponse.data;
-          const lastPage$ = cheerio.load(lastPageHtml);
-          
-          try {
-            lastPageProductCount = lastPage$('div.post-feed article').length;
-          } catch (evalError: any) {
-            throw new PageContentExtractionError(`Failed to count products on last page ${totalPages} (Attempt ${attempt}): ${evalError?.message || String(evalError)}`, totalPages, attempt);
+              const pageHtml = pageResponse.data;
+              const page$ = cheerio.load(pageHtml);
+              
+              const productCountOnPage = page$('div.post-feed article').length;
+              debugLog(`[AxiosCrawlerStrategy] Page ${pageToCheck} has ${productCountOnPage} products (Attempt ${attempt})`);
+              
+              if (productCountOnPage > 0) {
+                actualLastPage = pageToCheck;
+                lastPageProductCount = productCountOnPage;
+                foundValidLastPage = true;
+                debugLog(`[AxiosCrawlerStrategy] Found valid last page: ${actualLastPage} with ${lastPageProductCount} products (Attempt ${attempt})`);
+                break;
+              } else if (pageToCheck === totalPages) {
+                // 원래 감지된 마지막 페이지가 비어있으면 이전 페이지들도 확인
+                debugLog(`[AxiosCrawlerStrategy] Detected last page ${totalPages} is empty, checking previous pages (Attempt ${attempt})`);
+              }
+            } catch (pageError: any) {
+              debugLog(`[AxiosCrawlerStrategy] Error checking page ${pageToCheck}: ${pageError.message}, trying previous page (Attempt ${attempt})`);
+              continue;
+            }
           }
           
-          debugLog(`[AxiosCrawlerStrategy] Last page ${totalPages} has ${lastPageProductCount} products (Attempt ${attempt}).`);
+          if (!foundValidLastPage) {
+            debugLog(`[AxiosCrawlerStrategy] No valid last page found in range ${Math.max(1, totalPages - 2)} to ${totalPages}, using original detected values (Attempt ${attempt})`);
+            // Fallback: 원래 감지된 값을 사용하되 경고 로그 출력
+            actualLastPage = totalPages;
+            lastPageProductCount = 0;
+          }
+          
+          // 실제 마지막 페이지가 원래 감지된 것과 다르면 총 페이지 수 업데이트
+          if (actualLastPage !== totalPages) {
+            debugLog(`[AxiosCrawlerStrategy] Updating total pages from ${totalPages} to ${actualLastPage} based on actual content (Attempt ${attempt})`);
+            totalPages = actualLastPage;
+          }
         } else {
           debugLog(`[AxiosCrawlerStrategy] No pagination elements found or totalPages is 0. Checking current page for products (Attempt ${attempt}).`);
           

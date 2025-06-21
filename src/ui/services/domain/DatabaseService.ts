@@ -238,7 +238,7 @@ export class DatabaseService extends BaseService {
   async deleteRecordsByPageRange(startPage: number, endPage: number): Promise<ServiceResult<{ deletedCount: number }>> {
     console.log(`[DatabaseService] deleteRecordsByPageRange called with startPage: ${startPage}, endPage: ${endPage}`);
     
-    // 기본 파라미터 검증 (0-based 인덱스이므로 >= 0이면 유효)
+    // 기본 파라미터 검증
     if (typeof startPage !== 'number' || typeof endPage !== 'number' || startPage < 0 || endPage < 0) {
       console.log(`[DatabaseService] Validation failed - startPage: ${startPage} (type: ${typeof startPage}), endPage: ${endPage} (type: ${typeof endPage})`);
       return this.createFailure(
@@ -246,11 +246,11 @@ export class DatabaseService extends BaseService {
       );
     }
     
-    // 범위 검증 (endPage가 startPage보다 크지 않게)
-    if (endPage > startPage) {
-      console.log(`[DatabaseService] Validation failed - endPage (${endPage}) is greater than startPage (${startPage})`);
+    // 범위 검증 수정: startPage가 endPage보다 클 수 없음 (정상적인 범위)
+    if (startPage > endPage) {
+      console.log(`[DatabaseService] Validation failed - startPage (${startPage}) is greater than endPage (${endPage})`);
       return this.createFailure(
-        this.createError('INVALID_PARAMS', 'End page must be less than or equal to start page')
+        this.createError('INVALID_PARAMS', 'Start page must be less than or equal to end page')
       );
     }
     
@@ -270,10 +270,10 @@ export class DatabaseService extends BaseService {
         const maxPageId = summary.lastPageId;
         
         // 요청된 페이지 ID가 DB에 존재하는 최대 페이지 ID를 초과하는지 확인
-        if (startPage > maxPageId) {
-          console.log(`[DatabaseService] Validation failed - requested startPage (${startPage}) exceeds maxPageId (${maxPageId})`);
+        if (startPage > maxPageId || endPage > maxPageId) {
+          console.log(`[DatabaseService] Validation failed - requested range (${startPage}-${endPage}) exceeds maxPageId (${maxPageId})`);
           return this.createFailure(
-            this.createError('INVALID_PARAMS', `Start page (${startPage}) exceeds maximum available page ID (${maxPageId})`)
+            this.createError('INVALID_PARAMS', `Page range (${startPage}-${endPage}) exceeds maximum available page ID (${maxPageId})`)
           );
         }
       }

@@ -1018,6 +1018,33 @@ export class CrawlerEngine {
       const siteProductCount = totalPages > 0 
         ? ((totalPages - 1) * sessionConfig.productsPerPage) + lastPageProductCount 
         : 0;
+
+      // DB 데이터 기반 검증 로직 추가
+      const dbBasedValidation = this.validateSiteDataWithDB(
+        totalPages, 
+        lastPageProductCount, 
+        siteProductCount, 
+        dbSummary.productCount, 
+        sessionConfig.productsPerPage
+      );
+
+      // 검증 결과에 따라 값 조정
+      const validatedSiteProductCount = dbBasedValidation.adjustedSiteProductCount;
+      const validatedTotalPages = dbBasedValidation.adjustedTotalPages;
+      const validatedLastPageProductCount = dbBasedValidation.adjustedLastPageProductCount;
+      
+      this.logger.info('Site data validation completed', {
+        data: JSON.stringify({
+          original: { totalPages, lastPageProductCount, siteProductCount },
+          validated: { 
+            totalPages: validatedTotalPages, 
+            lastPageProductCount: validatedLastPageProductCount, 
+            siteProductCount: validatedSiteProductCount 
+          },
+          dbProductCount: dbSummary.productCount,
+          warnings: dbBasedValidation.warnings
+        })
+      });
       
       const userPageLimit = sessionConfig.pageRangeLimit;
 
@@ -1067,17 +1094,18 @@ export class CrawlerEngine {
       return {
         dbLastUpdated: safeDbSummary.lastUpdated,
         dbProductCount: safeDbSummary.productCount,
-        siteTotalPages: totalPages,
-        siteProductCount,
-        diff: siteProductCount - dbSummary.productCount,
-        needCrawling: siteProductCount > dbSummary.productCount && selectedPageCount > 0,
+        siteTotalPages: validatedTotalPages,
+        siteProductCount: validatedSiteProductCount,
+        diff: validatedSiteProductCount - dbSummary.productCount,
+        needCrawling: validatedSiteProductCount > dbSummary.productCount && selectedPageCount > 0,
         crawlingRange,
         selectedPageCount,
         actualTargetPageCountForStage1, // 추가된 필드
         estimatedProductCount,
         estimatedTotalTime,
         userPageLimit: userPageLimit > 0 ? userPageLimit : undefined,
-        lastPageProductCount
+        lastPageProductCount: validatedLastPageProductCount,
+        validationWarnings: dbBasedValidation.warnings // 검증 경고 추가
       };
     } catch (error) {
       const generalErrorMessage = error instanceof Error ? error.message : String(error);
@@ -1668,5 +1696,76 @@ export class CrawlerEngine {
       }
       this.isCrawling = false;
     }
+  }
+
+  /**
+   * DB 데이터를 기반으로 사이트 데이터의 유효성을 검증하고 조정
+   */
+  private validateSiteDataWithDB(
+    siteTotalPages: number,
+    siteLastPageProductCount: number,
+    siteTotalProductCount: number,
+    dbProductCount: number,
+    productsPerPage: number
+  ): {
+    adjustedTotalPages: number;
+    adjustedLastPageProductCount: number;
+    adjustedSiteProductCount: number;
+    warnings: string[];
+  } {
+    const warnings: string[] = [];
+    let adjustedTotalPages = siteTotalPages;
+    let adjustedLastPageProductCount = siteLastPageProductCount;
+    let adjustedSiteProductCount = siteTotalProductCount;
+
+    // 1. 마지막 페이지 제품 수가 0인 경우 검증
+    if (siteLastPageProductCount === 0 && siteTotalPages > 0) {
+      warnings.push(`Detected last page (${siteTotalPages}) has 0 products`);
+      
+      // DB 데이터 기반으로 실제 총 페이지 수와 마지막 페이지 제품 수 추정
+      const dbBasedTotalPages = Math.ceil(dbProductCount / productsPerPage);
+      const dbBasedLastPageProducts = dbProductCount % productsPerPage || productsPerPage;
+      
+      if (dbBasedTotalPages > 0 && dbBasedTotalPages < siteTotalPages) {
+        adjustedTotalPages = dbBasedTotalPages;
+        adjustedLastPageProductCount = dbBasedLastPageProducts;
+        adjustedSiteProductCount = dbProductCount;
+        
+        warnings.push(`Adjusted to DB-based values: ${adjustedTotalPages} pages, ${adjustedLastPageProductCount} products on last page`);
+      }
+    }
+
+    // 2. 사이트와 DB 제품 수 차이가 비정상적으로 큰 경우
+    const productDiff = Math.abs(siteTotalProductCount - dbProductCount);
+    const diffPercentage = dbProductCount > 0 ? (productDiff / dbProductCount) * 100 : 0;
+    
+    if (diffPercentage > 5) { // 5% 이상 차이나는 경우
+      warnings.push(`Large discrepancy detected: Site ${siteTotalProductCount} vs DB ${dbProductCount} (${diffPercentage.toFixed(1)}% difference)`);
+      
+      // DB 기반 값이 더 신뢰할 만한 경우 조정
+      if (siteLastPageProductCount === 0 || siteTotalPages - Math.ceil(dbProductCount / productsPerPage) > 2) {
+        const dbBasedTotalPages = Math.ceil(dbProductCount / productsPerPage);
+        const dbBasedLastPageProducts = dbProductCount % productsPerPage || productsPerPage;
+        
+        adjustedTotalPages = dbBasedTotalPages;
+        adjustedLastPageProductCount = dbBasedLastPageProducts;
+        adjustedSiteProductCount = dbProductCount;
+        
+        warnings.push(`Using DB-based values due to large discrepancy`);
+      }
+    }
+
+    // 3. 페이지 수 일관성 검증
+    const calculatedPages = Math.ceil(dbProductCount / productsPerPage);
+    if (Math.abs(siteTotalPages - calculatedPages) > 1) {
+      warnings.push(`Page count inconsistency: Site reports ${siteTotalPages} pages, DB suggests ${calculatedPages} pages`);
+    }
+
+    return {
+      adjustedTotalPages,
+      adjustedLastPageProductCount,
+      adjustedSiteProductCount,
+      warnings
+    };
   }
 }

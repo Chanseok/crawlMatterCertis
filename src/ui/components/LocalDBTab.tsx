@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useDatabaseStore } from '../hooks';
+import { useCrawlingStore } from '../hooks/useCrawlingStore';
 import { IPCService } from '../services/infrastructure/IPCService';
 import type { MatterProduct } from '../../../types';
 import { format } from 'date-fns';
@@ -19,6 +20,9 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
     deleteRecordsByPageRange,
     clearError
   } = useDatabaseStore();
+
+  // Crawling Store for status summary
+  const { statusSummary } = useCrawlingStore();
 
   // Local state - 전체 조회 최적화
   const [allProducts, setAllProducts] = useState<MatterProduct[]>([]);
@@ -70,7 +74,7 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
       setAllProducts(sortedProducts);
       setCurrentPage(1); // 첫 페이지로 리셋
 
-      // 삭제 범위 초기화
+      // 삭제 범위 초기화 - 마지막 페이지를 기본값으로 설정
       if (sortedProducts.length > 0) {
         const maxId = Math.max(...sortedProducts.map(p => p.pageId ?? 0));
         setDeleteRange({ startPageId: maxId, endPageId: maxId });
@@ -160,14 +164,21 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
 
   // 삭제 모달 관련 핸들러
   const openDeleteModal = useCallback(() => {
-    // UI 페이지네이션의 최대값으로 삭제 범위 초기화
-    const uiMaxPage = totalPages - 1; // 0-based index
-    setDeleteRange({ 
-      startPageId: uiMaxPage, 
-      endPageId: uiMaxPage 
-    });
+    // 실제 데이터베이스의 최대 페이지 ID를 사용하여 초기화
+    if (allProducts.length > 0) {
+      const maxPageId = Math.max(...allProducts.map(p => p.pageId ?? 0));
+      
+      // 기본값: 마지막 페이지만 삭제하도록 설정 (사용자에게는 1-based로 표시)
+      setDeleteRange({ 
+        startPageId: maxPageId, 
+        endPageId: maxPageId 
+      });
+    } else {
+      // 제품이 없는 경우 기본값
+      setDeleteRange({ startPageId: 0, endPageId: 0 });
+    }
     setDeleteModalVisible(true);
-  }, [totalPages]);
+  }, [allProducts]);
 
   const closeDeleteModal = useCallback(() => {
     setDeleteModalVisible(false);
@@ -176,12 +187,46 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
   // 레코드 삭제 핸들러
   const handleDelete = useCallback(async () => {
     const { startPageId, endPageId } = deleteRange;
+    
+    // 현재 최대 페이지 ID 계산
+    const currentMaxPageId = allProducts.length > 0 ? Math.max(...allProducts.map(p => p.pageId ?? 0)) : 0;
+    
+    // 입력 유효성 검사
+    if (startPageId < 0 || endPageId < 0) {
+      alert('페이지 ID는 0 이상이어야 합니다.');
+      return;
+    }
+    
+    if (startPageId > endPageId) {
+      alert('시작 페이지는 종료 페이지보다 작거나 같아야 합니다.');
+      return;
+    }
+    
+    if (endPageId > currentMaxPageId) {
+      alert(`입력한 종료 페이지(${endPageId + 1})가 로컬 DB의 최대 페이지(${currentMaxPageId + 1})를 초과합니다.\n\n현재 로컬 DB에는 1~${currentMaxPageId + 1}페이지의 데이터만 있습니다.`);
+      return;
+    }
+    
+    // 사용자 확인
+    const pageCount = endPageId - startPageId + 1;
+    const userStartPage = startPageId + 1; // 1-based for user display
+    const userEndPage = endPageId + 1; // 1-based for user display
+    const confirmMessage = `정말로 페이지 ${userStartPage}부터 ${userEndPage}까지 ${pageCount}개 페이지의 모든 레코드를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`;
+    
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+    
     try {
-      // Note: UI shows page X, but database uses pageId X-1 (0-based)
-      // We need to pass the actual pageIds to the backend
-      console.log(`LocalDBTab: Deleting records from pageId ${startPageId} to ${endPageId}`);
-      await deleteRecordsByPageRange(startPageId, endPageId);
-      console.log(`LocalDBTab: Successfully deleted records`);
+      console.log(`[LocalDBTab] Deleting records from pageId ${startPageId} to ${endPageId} (user pages ${userStartPage}-${userEndPage}, ${pageCount} pages)`);
+      
+      // 백엔드가 내림차순을 기대하므로 더 큰 값을 startPageId로, 더 작은 값을 endPageId로 전달
+      const backendStartPageId = Math.max(startPageId, endPageId);
+      const backendEndPageId = Math.min(startPageId, endPageId);
+      
+      console.log(`[LocalDBTab] Backend API call with backendStartPageId: ${backendStartPageId}, backendEndPageId: ${backendEndPageId}`);
+      await deleteRecordsByPageRange(backendStartPageId, backendEndPageId);
+      console.log(`[LocalDBTab] Successfully deleted records from ${pageCount} pages (user pages ${userStartPage}-${userEndPage})`);
       
       // Mark that LocalDB data has been changed
       console.log('[LocalDBTab] Setting localDB-data-changed flag');
@@ -191,11 +236,14 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
       // Reload data to reflect changes
       await loadProducts();
       await loadSummary();
+      
+      alert(`성공적으로 페이지 ${userStartPage}~${userEndPage} (${pageCount}개 페이지)의 레코드를 삭제했습니다.`);
     } catch (error) {
       console.error('LocalDBTab: Failed to delete records:', error);
+      alert(`레코드 삭제 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`);
       closeDeleteModal();
     }
-  }, [deleteRange, deleteRecordsByPageRange, closeDeleteModal, loadProducts, loadSummary]);
+  }, [deleteRange, allProducts, deleteRecordsByPageRange, closeDeleteModal, loadProducts, loadSummary]);
 
   // 엑셀 내보내기 핸들러
   const handleExportToExcel = useCallback(async () => {
@@ -245,10 +293,27 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
     }
   }, [loadProducts, loadSummary]);
 
-  // 최대 페이지 ID 계산 - UI 페이지네이션과 일치
+  // 최대 페이지 ID 계산 - 실제 데이터베이스의 최대 페이지 ID
   const maxPageId = useMemo(() => {
-    return totalPages > 0 ? totalPages - 1 : 0; // 0-based index로 UI와 일치
-  }, [totalPages]);
+    if (allProducts.length === 0) return 0;
+    const max = Math.max(...allProducts.map(p => p.pageId ?? 0));
+    
+    // 상태 비교 정보 (필요시 디버깅용)
+    if (statusSummary && process.env.NODE_ENV === 'development') {
+      const actualMaxPage = max + 1; // 1-based
+      const expectedPages = Math.ceil(allProducts.length / 12);
+      
+      console.log(`[LocalDBTab] Page Analysis:`, {
+        localMaxPage: actualMaxPage,
+        localProductCount: allProducts.length,
+        expectedPages: expectedPages,
+        siteTotalPages: statusSummary.siteTotalPages,
+        diff: statusSummary.diff
+      });
+    }
+    
+    return max;
+  }, [allProducts, statusSummary]);
 
   // 🚀 최적화 5: 효율적인 페이지네이션 렌더링
   const renderPagination = useCallback(() => {
@@ -409,25 +474,53 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
                   </div>
                 </div>
                 
-                <div className="flex space-x-2">
-                  <button
-                    onClick={openDeleteModal}
-                    className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 text-white rounded transition-colors duration-200"
-                  >
-                  레코드 삭제
-                  </button>
-                  <button
-                    onClick={handleExportToExcel}
-                    className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded transition-colors duration-200"
-                  >
-                  엑셀 내보내기
-                  </button>
-                  <button
-                    onClick={handleImportFromExcel}
-                    className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors duration-200"
-                  >
-                  엑셀 가져오기
-                  </button>
+                <div className="flex flex-col space-y-2">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={openDeleteModal}
+                      className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 text-white rounded transition-colors duration-200"
+                    >
+                    레코드 삭제
+                    </button>
+                    <button
+                      onClick={handleExportToExcel}
+                      className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded transition-colors duration-200"
+                    >
+                    엑셀 내보내기
+                    </button>
+                    <button
+                      onClick={handleImportFromExcel}
+                      className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors duration-200"
+                    >
+                    엑셀 가져오기
+                    </button>
+                  </div>
+                  {(() => {
+                    const siteTotalPages = statusSummary?.siteTotalPages || 466;
+                    const localProductCount = allProducts.length;
+                    const localMaxPage = maxPageId + 1;
+                    const expectedPages = Math.ceil(localProductCount / 12);
+                    
+                    // 예상 페이지 수와 실제 최대 페이지가 다르면 누락 페이지가 있음
+                    if (expectedPages > localMaxPage) {
+                      return (
+                        <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
+                          🚨 누락된 페이지: 예상 {expectedPages}페이지 vs 실제 {localMaxPage}페이지 (누락: {expectedPages - localMaxPage}페이지)
+                        </div>
+                      );
+                    }
+                    
+                    // 사이트와 로컬 DB 페이지 수 비교
+                    if (siteTotalPages > localMaxPage) {
+                      return (
+                        <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded">
+                          ⚠️ 사이트 대비 부족: 사이트 {siteTotalPages}페이지 vs 로컬 DB {localMaxPage}페이지
+                        </div>
+                      );
+                    }
+                    
+                    return null;
+                  })()}
                 </div>
               </div>
             </div>
@@ -552,7 +645,11 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
             <div className="flex flex-col md:flex-row justify-between items-center mt-4">
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-2 md:mb-0">
                 {searchQuery ? `검색된 ${filteredProducts.length}개 중 ` : `총 ${allProducts.length}개 중 `}
-                {displayProducts.length}개 표시 (페이지 {currentPage}/{totalPages})
+                {displayProducts.length}개 표시 (UI 페이지 {currentPage}/{totalPages})
+                <br />
+                <span className="text-xs text-blue-600 dark:text-blue-400">
+                  데이터 페이지 ID 범위: 1~{maxPageId + 1}
+                </span>
               </div>
               {renderPagination()}
             </div>
@@ -566,46 +663,81 @@ export const LocalDBTab: React.FC = React.memo(observer(() => {
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">레코드 삭제</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              삭제할 페이지 범위를 선택하세요 (내림차순, 연속적인 페이지만 선택 가능)
+              삭제할 페이지 범위를 선택하세요. 시작 페이지부터 종료 페이지까지의 모든 레코드가 삭제됩니다.
+              <br />
+              <span className="text-sm text-blue-600 dark:text-blue-400">
+                📊 현재 로컬 DB 실제 범위: 1 ~ {maxPageId + 1} 페이지 (총 {allProducts.length}개 제품)
+              </span>
+              <br />
+              <span className="text-sm text-green-600 dark:text-green-400">
+                💡 예상 페이지 수: {Math.ceil(allProducts.length / 12)}페이지 ({allProducts.length}개 ÷ 12개/페이지)
+              </span>
+              <br />
+              <span className="text-sm text-amber-600 dark:text-amber-400">
+                🌐 사이트 총 페이지: {statusSummary?.siteTotalPages || '?'}페이지
+              </span>
+              <br />
+              <span className="text-sm text-red-600 dark:text-red-400">
+                ⚠️ 이 작업은 되돌릴 수 없습니다!
+              </span>
             </p>
 
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  시작 페이지 (최신)
+                  시작 페이지 (1부터 시작)
                 </label>
                 <input
                   type="number"
                   value={deleteRange.startPageId + 1}
                   onChange={(e) => {
-                    const value = Number(e.target.value) - 1;
-                    if (value >= 0 && value >= deleteRange.endPageId && value <= maxPageId) {
-                      setDeleteRange(prev => ({ ...prev, startPageId: value }));
+                    const userValue = Number(e.target.value);
+                    const pageId = userValue - 1; // Convert to 0-based
+                    if (pageId >= 0 && pageId <= maxPageId) {
+                      setDeleteRange(prev => ({ 
+                        ...prev, 
+                        startPageId: pageId,
+                        // 시작 페이지가 종료 페이지보다 크면 종료 페이지도 조정
+                        endPageId: Math.max(pageId, prev.endPageId)
+                      }));
                     }
                   }}
-                  min={Math.max(1, deleteRange.endPageId + 1)}
+                  min={1}
                   max={maxPageId + 1}
+                  placeholder={`1 ~ ${maxPageId + 1}`}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  종료 페이지 (오래된)
+                  종료 페이지 (1부터 시작)
                 </label>
                 <input
                   type="number"
                   value={deleteRange.endPageId + 1}
                   onChange={(e) => {
-                    const value = Number(e.target.value) - 1;
-                    if (value >= 0 && value <= deleteRange.startPageId) {
-                      setDeleteRange(prev => ({ ...prev, endPageId: value }));
+                    const userValue = Number(e.target.value);
+                    const pageId = userValue - 1; // Convert to 0-based
+                    if (pageId >= 0 && pageId <= maxPageId) {
+                      setDeleteRange(prev => ({ 
+                        ...prev, 
+                        endPageId: pageId,
+                        // 종료 페이지가 시작 페이지보다 작으면 시작 페이지도 조정
+                        startPageId: Math.min(pageId, prev.startPageId)
+                      }));
                     }
                   }}
-                  min={0}
-                  max={deleteRange.startPageId + 1}
+                  min={1}
+                  max={maxPageId + 1}
+                  placeholder={`1 ~ ${maxPageId + 1}`}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                 />
+              </div>
+
+              <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 p-2 rounded">
+                선택된 범위: 페이지 {deleteRange.startPageId + 1} ~ {deleteRange.endPageId + 1}
+                ({deleteRange.endPageId - deleteRange.startPageId + 1}개 페이지)
               </div>
             </div>
 
