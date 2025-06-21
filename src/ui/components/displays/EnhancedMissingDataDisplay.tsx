@@ -10,6 +10,7 @@ import { useCrawlingStore } from '../../hooks/useCrawlingStore';
 interface MissingDataDetails {
   totalMissingDetails: number;
   totalIncompletePages: number;
+  totalPages?: number; // 실제 총 페이지 수
   missingDetails?: Array<{
     url: string;
     pageId: number;
@@ -194,7 +195,7 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
     }
   }, []);
 
-  // Re-crawl Incomplete Pages 함수 - 실제 크롤링 인터페이스로 전달
+  // Re-crawl Incomplete Pages 함수 - 원본 pageId를 백엔드로 전달
   const handleReCrawlIncompletePages = useCallback(() => {
     console.log('handleReCrawlIncompletePages called');
     console.log('analysisData:', analysisData);
@@ -211,19 +212,15 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
       return;
     }
 
-    // Convert pageIds to actual site page numbers for targeted crawling
-    // pageId to site page conversion: sitePageNumber = 464 - pageId
-    const sitePageNumbers = analysisData.incompletePages.map(page => {
-      const sitePageNumber = 464 - page.pageId;
-      console.log(`Converting pageId ${page.pageId} to site page ${sitePageNumber}`);
-      return sitePageNumber;
-    });
+    // 원본 pageId를 그대로 백엔드로 전달 (변환하지 않음)
+    const pageIds = analysisData.incompletePages.map(page => page.pageId);
     
-    console.log('Starting targeted crawling for incomplete site pages:', sitePageNumbers);
-    console.log('Original pageIds were:', analysisData.incompletePages.map(page => page.pageId));
+    console.log('Starting targeted crawling for incomplete pages:');
+    console.log('- Sending original pageIds to backend:', pageIds);
+    console.log('- Backend will handle pageId to site page conversion');
     
-    // Call the targeted crawling function with actual site page numbers
-    onStartTargetedCrawling(sitePageNumbers);
+    // 원본 pageId를 그대로 전달
+    onStartTargetedCrawling(pageIds);
   }, [analysisData, onStartTargetedCrawling]);
 
   // Debug logging for button display conditions
@@ -528,7 +525,7 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
                       {analysisData.missingDetails.slice(0, 5).map((detail, index) => (
                         <div key={index} className="text-xs text-gray-600 dark:text-gray-400 py-1 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
                           <span className="font-mono text-blue-600 dark:text-blue-400">
-                            DB Page ID: {detail.pageId} (Site Page: {464 - detail.pageId})
+                            DB Page ID: {detail.pageId} (Site Page: {(analysisData.totalPages || 466) - detail.pageId})
                           </span>
                           <span className="mx-2">•</span>
                           <span className="font-mono text-purple-600 dark:text-purple-400">Index {detail.indexInPage}</span>
@@ -572,7 +569,7 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
                       {analysisData.incompletePages.slice(0, 5).map((page, index) => (
                         <div key={index} className="text-xs text-gray-600 dark:text-gray-400 py-1 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
                           <span className="font-mono text-purple-600 dark:text-purple-400">
-                            DB Page ID: {page.pageId} (Site Page: {464 - page.pageId})
+                            DB Page ID: {page.pageId} (Site Page: {(analysisData.totalPages || 466) - page.pageId})
                           </span>
                           <span className="mx-2">•</span>
                           <span className="text-red-600 dark:text-red-400">{page.missingIndices.length} missing</span>

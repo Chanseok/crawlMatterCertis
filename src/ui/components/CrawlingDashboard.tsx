@@ -986,21 +986,21 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
     }
   }, [isManualCrawling, status, configurationViewModel.config, handleCheckStatus]);
 
-  const handleStartTargetedCrawling = useCallback(async (pages: number[]) => {
+  const handleStartTargetedCrawling = useCallback(async (pageIds: number[]) => {
     if (isManualCrawling || status === 'running') return;
     setIsManualCrawling(true);
     try {
-      dashboardLogger.info('Starting targeted page crawling', pages);
+      dashboardLogger.info('Starting targeted page crawling with pageIds', pageIds);
       
-      // Convert site page numbers to pageId-based incompletePages structure
-      // For targeted crawling, use site page numbers directly
+      // pageIds는 이제 원본 DB pageId 값들임 (UI에서 변환하지 않고 전달)
+      // 이 pageId들을 그대로 사용하여 incompletePages 구조 생성
       const pageIdSet = new Set<number>();
-      pages.forEach(sitePage => {
-        pageIdSet.add(sitePage); // Use site page number directly
+      pageIds.forEach(pageId => {
+        pageIdSet.add(pageId); // 원본 pageId 사용
       });
       
-      dashboardLogger.debug('Targeted crawling conversion', { 
-        sitePages: pages.length, 
+      dashboardLogger.debug('Targeted crawling with original pageIds', { 
+        originalPageIds: pageIds,
         uniquePageIds: pageIdSet.size 
       });
       
@@ -1010,13 +1010,16 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
         expectedCount: number;
         actualCount: number;
       }> = Array.from(pageIdSet).map(pageId => ({
-        pageId,
+        pageId, // 원본 pageId 사용
         missingIndices: Array.from({ length: configurationViewModel.config.productsPerPage || 12 }, (_, i) => i),
         expectedCount: configurationViewModel.config.productsPerPage || 12,
         actualCount: 0
       }));
       
-      dashboardLogger.debug('Generated targeted incompletePages', { pageCount: incompletePages.length });
+      dashboardLogger.debug('Generated targeted incompletePages from pageIds', { 
+        pageCount: incompletePages.length,
+        pageIds: incompletePages.map(p => p.pageId)
+      });
       
       // Create proper analysis result structure for Stage 1-3 workflow
       const analysisResult = {

@@ -746,6 +746,7 @@ export interface MissingDataAnalysis {
     readonly incompletePages: readonly IncompletePage[];
     readonly totalMissingDetails: number;
     readonly totalIncompletePages: number;
+    readonly totalPages?: number; // 실제 총 페이지 수
     readonly summary: {
         readonly productsCount: number;
         readonly productDetailsCount: number;

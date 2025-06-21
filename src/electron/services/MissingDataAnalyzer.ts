@@ -26,9 +26,10 @@ export class MissingDataAnalyzer {
   /**
    * products와 products_details 테이블 간 차이 분석
    */
-  async analyzeTableDifferences(): Promise<MissingDataAnalysis> {
+  async analyzeTableDifferences(totalPages: number = 466): Promise<MissingDataAnalysis> {
     try {
       logger.info("[MissingDataAnalyzer] Starting missing data analysis", "MissingDataAnalyzer");
+      logger.info(`[MissingDataAnalyzer] Using total pages: ${totalPages}`, "MissingDataAnalyzer");
 
       // 병렬로 모든 분석 실행
       const [missingDetails, incompletePages, summary] = await Promise.all([
@@ -42,7 +43,8 @@ export class MissingDataAnalyzer {
         incompletePages: [...incompletePages], // Convert readonly to mutable array
         totalMissingDetails: missingDetails.length,
         totalIncompletePages: incompletePages.length,
-        summary
+        summary,
+        totalPages // 실제 총 페이지 수 포함
       };
 
       logger.info(

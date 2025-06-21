@@ -954,12 +954,20 @@ app.on('ready', async () => {
         log.info('[IPC] analyzeMissingProducts called');
         try {
             const { MissingDataAnalyzer } = await import('./services/MissingDataAnalyzer.js');
+            const { CrawlerEngine } = await import('./crawler/core/CrawlerEngine.js');
             
             log.info('[IPC] Starting missing product analysis...');
             
-            // 누락 데이터 분석 실행 - 올바른 메서드명 사용
+            // 실제 총 페이지 수 가져오기
+            const crawlerEngine = new CrawlerEngine();
+            const statusSummary = await crawlerEngine.checkCrawlingStatus();
+            const totalPages = statusSummary.siteTotalPages || 466; // 기본값 466
+            
+            log.info(`[IPC] Using total pages: ${totalPages} for missing data analysis`);
+            
+            // 누락 데이터 분석 실행 - 실제 총 페이지 수 전달
             const analyzer = new MissingDataAnalyzer();
-            const analysis = await analyzer.analyzeTableDifferences();
+            const analysis = await analyzer.analyzeTableDifferences(totalPages);
             
             log.info(`[IPC] Missing product analysis complete - Total missing details: ${analysis.totalMissingDetails}, Total incomplete pages: ${analysis.totalIncompletePages}`);
             

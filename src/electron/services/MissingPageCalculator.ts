@@ -93,18 +93,18 @@ export class MissingPageCalculator {
 
   /**
    * pageId를 실제 사이트 페이지 번호로 변환
-   * 464페이지 시스템에서 역순 매핑: 사이트페이지 = 464 - pageId
-   * 예시: pageId 198 → 사이트 페이지 266 (464 - 198 = 266)
+   * 총 페이지 수에서 역순 매핑: 사이트페이지 = totalPages - pageId
+   * 예시: pageId 465, totalPages 466 → 사이트 페이지 1 (466 - 465 = 1)
    */
-  pageIdToPageNumber(pageId: number, totalPages: number = 464): number {
+  pageIdToPageNumber(pageId: number, totalPages: number = 466): number {
     return totalPages - pageId;
   }
 
   /**
    * 실제 사이트 페이지 번호를 pageId로 변환
-   * 464페이지 시스템에서 역순 매핑: pageId = 464 - 사이트페이지
+   * 총 페이지 수에서 역순 매핑: pageId = totalPages - 사이트페이지
    */
-  pageNumberToPageId(pageNumber: number, totalPages: number = 464): number {
+  pageNumberToPageId(pageNumber: number, totalPages: number = 466): number {
     return totalPages - pageNumber;
   }
 
@@ -314,7 +314,7 @@ export class MissingPageCalculator {
   /**
    * PageId 배열을 모든 사이트 페이지 번호 배열로 변환
    */
-  pageIdsToSitePages(pageIds: number[], totalPages: number = 464): number[] {
+  pageIdsToSitePages(pageIds: number[], totalPages: number = 466): number[] {
     const sitePages: number[] = [];
     pageIds.forEach(pageId => {
       const sitePagesForId = this.pageIdToSitePages(pageId, totalPages);
