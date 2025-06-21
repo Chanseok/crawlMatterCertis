@@ -70,12 +70,6 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
   onAutoRefresh
 }) => {
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
-  const [pageRangeData, setPageRangeData] = useState<any>(null);
-  const [isCalculatingRanges, setIsCalculatingRanges] = useState(false);
-  const [showPageRanges, setShowPageRanges] = useState(false);
-
-  // Legacy state for backward compatibility
-  const [selectedPages] = useState<Set<number>>(new Set());
 
   // Hook into crawling store for auto-refresh functionality
   const { status } = useCrawlingStore();
@@ -161,39 +155,7 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
   // Get analysis data
   const analysisData = missingProductsInfo?.analysisResult;
 
-  const handlePageSelection = useCallback((pageNumber: number, selected: boolean) => {
-    // Legacy functionality - maintained for backward compatibility
-  }, []);
-
-  const handleSelectAll = useCallback(() => {
-    // Legacy functionality - maintained for backward compatibility
-  }, []);
-
-  const handleClearSelection = useCallback(() => {
-    // Legacy functionality - maintained for backward compatibility
-  }, []);
-
-  const handleStartTargetedCrawling = useCallback(() => {
-    // Legacy functionality - maintained for backward compatibility
-  }, [selectedPages, onStartTargetedCrawling]);
-
-  // 페이지 범위 계산 함수
-  const handleCalculatePageRanges = useCallback(async () => {
-    setIsCalculatingRanges(true);
-    try {
-      const result = await window.electron.calculatePageRanges();
-      if (result.success) {
-        setPageRangeData(result.data);
-        setShowPageRanges(true);
-      } else {
-        console.error('Failed to calculate page ranges:', result.error);
-      }
-    } catch (error) {
-      console.error('Error calculating page ranges:', error);
-    } finally {
-      setIsCalculatingRanges(false);
-    }
-  }, []);
+  // Legacy handlers removed - no longer used in current implementation
 
   // Re-crawl Incomplete Pages 함수 - 원본 pageId를 백엔드로 전달
   const handleReCrawlIncompletePages = useCallback(() => {
@@ -237,16 +199,6 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
     }))
   });
 
-  // Priority color mapping
-  const getPriorityColor = (priority: 'high' | 'medium' | 'low') => {
-    switch (priority) {
-      case 'high': return 'text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30';
-      case 'medium': return 'text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/30';
-      case 'low': return 'text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30';
-      default: return 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-900/30';
-    }
-  };
-
   if (!hasMissingProducts && !missingProductsInfo) {
     return null; // Don't render if no missing data detected
   }
@@ -287,17 +239,18 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
             <div className="text-center p-3 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-600">
               <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
                 {(() => {
-                  const siteTotalPages = statusSummary.siteTotalPages || 0;
+                  const siteProductCount = statusSummary.siteProductCount || 0;
                   const dbProductCount = statusSummary.dbProductCount || 0;
                   const productsPerPage = 12; // Standard products per page
+                  const siteExpectedPages = Math.ceil(siteProductCount / productsPerPage);
                   const localDbPages = Math.ceil(dbProductCount / productsPerPage);
-                  const missingPages = Math.max(0, siteTotalPages - localDbPages);
+                  const missingPages = Math.max(0, siteExpectedPages - localDbPages);
                   return missingPages;
                 })()}
               </div>
               <div className="text-xs text-gray-600 dark:text-gray-400">Missing Pages</div>
               <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                Site: {statusSummary.siteTotalPages || 0} vs Local: {Math.ceil((statusSummary.dbProductCount || 0) / 12)} pages
+                Site Expected: {Math.ceil((statusSummary.siteProductCount || 0) / 12)} vs Local: {Math.ceil((statusSummary.dbProductCount || 0) / 12)} pages
               </div>
             </div>
           )}
@@ -385,28 +338,19 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
               {analysisData.totalIncompletePages > 0 && (
                 <button
                   onClick={handleReCrawlIncompletePages}
-                  disabled={isCalculatingRanges || isMissingProductCrawling}
+                  disabled={isMissingProductCrawling}
                   className={`px-4 py-3 text-sm rounded-lg font-medium transition-all duration-200 shadow-sm ${
-                    isCalculatingRanges || isMissingProductCrawling
+                    isMissingProductCrawling
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-purple-200 hover:shadow-purple-300'
                   }`}
                 >
-                  {isCalculatingRanges ? (
-                    <>
-                      <svg className="w-4 h-4 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Preparing Re-crawl...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Re-crawl Incompletes ({analysisData.totalIncompletePages})
-                    </>
-                  )}
+                  <>
+                    <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Re-crawl Incompletes ({analysisData.totalIncompletePages})
+                  </>
                 </button>
               )}
             </div>
@@ -446,49 +390,6 @@ export const EnhancedMissingDataDisplay: React.FC<EnhancedMissingDataDisplayProp
             </div>
           )}
         </div>
-
-        {/* Page Ranges Display */}
-        {showPageRanges && pageRangeData && (
-          <div className="mt-4 border border-blue-200 dark:border-blue-600 rounded-lg p-4 bg-blue-50 dark:bg-blue-900/20">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                📊 Page Range Analysis
-              </h4>
-              <button
-                onClick={() => setShowPageRanges(false)}
-                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="space-y-3">
-              {/* Summary */}
-              <div className="text-sm text-blue-600 dark:text-blue-400">
-                <div>Total Incomplete Pages: <span className="font-semibold">{pageRangeData.totalIncompletePages}</span></div>
-                <div>Site Pages to Crawl: <span className="font-semibold">{pageRangeData.totalIncompletePages * 2}</span></div>
-                <div>Continuous Ranges: <span className="font-semibold">{pageRangeData.continuousRanges?.length || 0}</span></div>
-                <div>Non-continuous Ranges: <span className="font-semibold">{pageRangeData.nonContinuousRanges?.length || 0}</span></div>
-              </div>
-
-              {/* Formatted Range Display */}
-              {pageRangeData.formattedText && (
-                <div className="bg-white dark:bg-gray-800 rounded p-3 border">
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Suggested Crawling Ranges (Copy & Paste Ready):
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400 font-mono bg-gray-50 dark:bg-gray-700 p-2 rounded border select-all">
-                    {pageRangeData.formattedText}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    💡 Click to select all, then Cmd+C to copy
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Detailed Analysis with Categorization */}

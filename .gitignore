@@ -19,6 +19,9 @@ test-results
 .obsidian
 *.local
 
+# Build analysis files
+stats.html
+
 # Backup files
 *.backup
 *.bak

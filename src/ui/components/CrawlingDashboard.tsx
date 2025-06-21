@@ -182,11 +182,6 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
   const [forceUpdateCounter, setForceUpdateCounter] = useState(0); // 강제 리렌더링용
   
   // === Computed Values ===
-  const hasMissingProducts = useMemo(() => {
-    if (statusSummary?.diff && statusSummary.diff > 0) return true;
-    if (missingProductsInfo && missingProductsInfo.missingCount > 0) return true;
-    return false;
-  }, [statusSummary, missingProductsInfo]);
   const [animatedDigits, setAnimatedDigits] = useState({
     currentPage: false,
     processedItems: false,
@@ -1796,14 +1791,12 @@ const CrawlingDashboard: React.FC<CrawlingDashboardProps> = ({ appCompareExpande
           onStopCrawling={stopCrawling}
           isStopping={isStopping}
           // 누락 제품 수집 관련 props
-          hasMissingProducts={hasMissingProducts}
           isMissingProductCrawling={isMissingProductCrawling}
           isMissingAnalyzing={isMissingAnalyzing}
           onStartMissingProductCrawling={handleStartMissingProductCrawling}
           onAnalyzeMissingProducts={handleAnalyzeMissingProducts}
           // Manual crawling props
           totalSitePages={statusSummary?.siteTotalPages}
-          isManualCrawling={isManualCrawling}
           onStartManualCrawling={handleStartManualCrawling}
           // Missing data analysis props
           statusSummary={statusSummary || undefined}
