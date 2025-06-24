@@ -270,18 +270,19 @@ async function writeSummary(summary: DbSummaryData): Promise<void> {
 
 export async function getDatabaseSummaryFromDb(): Promise<DatabaseSummary> {
     return new Promise((resolve, reject) => {
-        // product_details 테이블에서 레코드 수를 조회하여 getProductsFromDb()와 일치시킴
-        const countQuery = `SELECT COUNT(*) as total FROM product_details`;
+        // products 테이블에서 레코드 수를 조회하여 Missing Data Analysis와 일치시킴
+        // pageId IS NOT NULL 조건을 사용하여 유효한 제품만 카운트
+        const countQuery = `SELECT COUNT(*) as total FROM products WHERE pageId IS NOT NULL`;
         db.get(countQuery, async (err, row: { total: number }) => {
             if (err) {
                 return reject(err);
             }
             const summaryData = await readSummary();
             
-            // Get the max pageId from the database (product_details 테이블에서)
+            // Get the max pageId from the database (products 테이블에서)
             try {
                 const maxPageId = await new Promise<number>((resolve, reject) => {
-                    db.get(`SELECT MAX(pageId) as maxPageId FROM product_details`, (err, row: { maxPageId: number | null }) => {
+                    db.get(`SELECT MAX(pageId) as maxPageId FROM products WHERE pageId IS NOT NULL`, (err, row: { maxPageId: number | null }) => {
                         if (err) {
                             return reject(err);
                         }
@@ -289,6 +290,8 @@ export async function getDatabaseSummaryFromDb(): Promise<DatabaseSummary> {
                         resolve(maxPageId);
                     });
                 });
+                
+                log.info(`[DB] getDatabaseSummaryFromDb: products table count (pageId IS NOT NULL) = ${row.total}, maxPageId = ${maxPageId}`);
                 
                 resolve({
                     totalProducts: row.total,
